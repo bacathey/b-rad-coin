@@ -16,9 +16,7 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import MiningIcon from '@mui/icons-material/Hardware';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CloseIcon from '@mui/icons-material/Close';
-
-// Import the version from package.json
-import packageJson from '../../package.json';
+import BlockchainStatus from './BlockchainStatus';
 
 interface SidebarProps {
   mode: 'light' | 'dark';
@@ -29,7 +27,6 @@ interface SidebarProps {
 export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const appVersion = packageJson.version;
 
   return (
     <Box sx={{ 
@@ -69,6 +66,7 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
             } : {}} />
           </ListItemButton>
         </ListItem>
+        
         <ListItem disablePadding>
           <ListItemButton 
             selected={location.pathname === '/transactions'} 
@@ -168,27 +166,11 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
         </ListItem>
       </List>
       
-      {/* Push the version to the bottom with flexbox */}
+      {/* Push the blockchain status to the bottom with flexbox */}
       <Box sx={{ flexGrow: 1 }} />
       
-      {/* Version display */}
-      <Box sx={{ 
-        padding: '12px 16px', 
-        textAlign: 'center',
-        borderTop: 1,
-        borderColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)'
-      }}>
-        <Typography 
-          variant="caption" 
-          sx={{ 
-            opacity: 0.7,
-            color: mode === 'dark' ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
-            fontWeight: 500
-          }}
-        >
-          Version {appVersion}
-        </Typography>
-      </Box>
+      {/* Use the BlockchainStatus component */}
+      <BlockchainStatus mode={mode} />
     </Box>
   );
 }

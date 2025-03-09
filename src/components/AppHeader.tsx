@@ -13,6 +13,9 @@ import LightModeIcon from '@mui/icons-material/LightMode';
 import bitcoinLogo from '../assets/bitcoin.svg';
 import { useNavigate } from 'react-router-dom';
 
+// Import the version from package.json
+import packageJson from '../../package.json';
+
 interface AppHeaderProps {
   mode: 'light' | 'dark';
   toggleColorMode: () => void;
@@ -21,6 +24,7 @@ interface AppHeaderProps {
 
 export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }: AppHeaderProps) {
   const navigate = useNavigate();
+  const appVersion = packageJson.version;
 
   return (
     <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
@@ -52,6 +56,22 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
         <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
           MyWallet
         </Typography>
+        
+        {/* Version number */}
+        <Typography 
+          variant="caption" 
+          sx={{ 
+            mr: 2, 
+            opacity: 0.8,
+            fontSize: '0.75rem',
+            fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center'
+          }}
+        >
+          v{appVersion}
+        </Typography>
+        
         <Tooltip title={mode === 'dark' ? "Light mode" : "Dark mode"}>
           <IconButton 
             sx={{ mr: 1 }} 
