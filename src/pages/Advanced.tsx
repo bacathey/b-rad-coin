@@ -40,9 +40,11 @@ export default function Advanced() {
       >
         Advanced
       </Typography>
-      <Grid container spacing={3} sx={{ width: '100%', maxWidth: 1200, mx: 'auto' }}>
-        {/* Backup/Recovery Card - Now positioned first and explicitly full width on all screens */}
-        <Grid item xs={12} sm={12} md={12} lg={12} xl={12}>
+      
+      {/* Container with fixed maximum width and full width */}
+      <Box sx={{ width: '100%', maxWidth: 1200, mx: 'auto' }}>
+        {/* Backup/Recovery Card - Now positioned first */}
+        <Box sx={{ mb: 3 }}>
           <Card sx={{ ...cardStyle }}>
             <CardContent>
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -53,10 +55,10 @@ export default function Advanced() {
               </Typography>
             </CardContent>
           </Card>
-        </Grid>
+        </Box>
         
-        {/* Mining Card - Now positioned second and explicitly full width on all screens */}
-        <Grid item xs={12} sm={12} md={12} lg={12} xl={12}>
+        {/* Mining Card - Now positioned second */}
+        <Box>
           <Card sx={{ ...cardStyle }}>
             <CardContent>
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -67,8 +69,8 @@ export default function Advanced() {
               </Typography>
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
     </Box>
   );
 }
