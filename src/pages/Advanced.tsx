@@ -41,19 +41,8 @@ export default function Advanced() {
         Advanced
       </Typography>
       <Grid container spacing={3} sx={{ width: '100%', maxWidth: 1200, mx: 'auto' }}>
-        <Grid item xs={12}>
-          <Card sx={{ ...cardStyle }}>
-            <CardContent>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Mining
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 1 }}>
-                Manage your mining operations and settings.
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12}>
+        {/* Backup/Recovery Card - Now positioned first and explicitly full width on all screens */}
+        <Grid item xs={12} sm={12} md={12} lg={12} xl={12}>
           <Card sx={{ ...cardStyle }}>
             <CardContent>
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -61,6 +50,20 @@ export default function Advanced() {
               </Typography>
               <Typography variant="body2" sx={{ mt: 1 }}>
                 Backup your wallet and manage recovery options.
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        {/* Mining Card - Now positioned second and explicitly full width on all screens */}
+        <Grid item xs={12} sm={12} md={12} lg={12} xl={12}>
+          <Card sx={{ ...cardStyle }}>
+            <CardContent>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Mining
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                Manage your mining operations and settings.
               </Typography>
             </CardContent>
           </Card>

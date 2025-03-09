@@ -23,6 +23,7 @@ import Account from "./pages/Account";
 import Transactions from "./pages/Transactions";
 import SendReceive from "./pages/SendReceive";
 import Advanced from "./pages/Advanced";
+import Settings from "./pages/Settings";
 
 // Sidebar width
 const drawerWidth = 240;
@@ -256,7 +257,7 @@ function AppContent({
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/send-receive" element={<SendReceive />} />
             <Route path="/advanced" element={<Advanced />} />
-
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </Container>
       </Box>

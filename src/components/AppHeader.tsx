@@ -11,6 +11,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import bitcoinLogo from '../assets/bitcoin.svg';
+import { useNavigate } from 'react-router-dom';
 
 interface AppHeaderProps {
   mode: 'light' | 'dark';
@@ -19,6 +20,8 @@ interface AppHeaderProps {
 }
 
 export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }: AppHeaderProps) {
+  const navigate = useNavigate();
+
   return (
     <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
       <Toolbar>
@@ -63,6 +66,7 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
           <IconButton 
             color="inherit"
             aria-label="settings"
+            onClick={() => navigate('/settings')}
           >
             <SettingsIcon />
           </IconButton>
