@@ -4,7 +4,9 @@ import {
   Typography,
   IconButton,
   Tooltip,
-  Box
+  Box,
+  CircularProgress,
+  Chip
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -13,6 +15,8 @@ import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import bitcoinLogo from '../assets/bitcoin.svg';
 import { useNavigate } from 'react-router-dom';
+import { useWallet } from '../context/WalletContext';
+import { invoke } from '@tauri-apps/api/core';
 
 // Import the version from package.json
 import packageJson from '../../package.json';
@@ -26,12 +30,20 @@ interface AppHeaderProps {
 export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }: AppHeaderProps) {
   const navigate = useNavigate();
   const appVersion = packageJson.version;
+  const { isWalletOpen, setIsWalletOpen, isWalletLoading, currentWallet, setCurrentWallet } = useWallet();
 
   // Function to handle closing the wallet
-  const handleCloseWallet = () => {
-    // In a real application, this would save data and close the wallet
-    console.log('Closing wallet...');
-    // Could navigate to a login page or perform other closing actions
+  const handleCloseWallet = async () => {
+    try {
+      // Call the Rust function to close the wallet
+      await invoke('close_wallet');
+      // Update React state
+      setIsWalletOpen(false);
+      setCurrentWallet(null);
+      console.log('Wallet closed successfully');
+    } catch (error) {
+      console.error('Error closing wallet:', error);
+    }
   };
 
   return (
@@ -62,7 +74,7 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
         />
         
         <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-          MyWallet
+          {currentWallet ? currentWallet.name : 'B-Rad Coin'}
         </Typography>
         
         {/* Version number */}
@@ -100,15 +112,23 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
             <SettingsIcon />
           </IconButton>
         </Tooltip>
-        <Tooltip title="Close Wallet">
-          <IconButton 
-            color="inherit"
-            aria-label="close wallet"
-            onClick={handleCloseWallet}
-          >
-            <ExitToAppIcon />
-          </IconButton>
-        </Tooltip>
+        
+        {/* Show loading state or close wallet button based on wallet state */}
+        {isWalletLoading ? (
+          <CircularProgress color="inherit" size={24} sx={{ mr: 1 }} />
+        ) : (
+          isWalletOpen && (
+            <Tooltip title="Close Wallet">
+              <IconButton 
+                color="inherit"
+                aria-label="close wallet"
+                onClick={handleCloseWallet}
+              >
+                <ExitToAppIcon />
+              </IconButton>
+            </Tooltip>
+          )
+        )}
       </Toolbar>
     </AppBar>
   );

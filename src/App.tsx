@@ -17,6 +17,7 @@ import {
 // Components
 import Sidebar from "./components/Sidebar";
 import AppHeader from "./components/AppHeader";
+import WalletDialog from "./components/WalletDialog";
 
 // Page components
 import Account from "./pages/Account";
@@ -24,6 +25,9 @@ import Transactions from "./pages/Transactions";
 import SendReceive from "./pages/SendReceive";
 import Advanced from "./pages/Advanced";
 import Settings from "./pages/Settings";
+
+// Import WalletProvider
+import { WalletProvider } from "./context/WalletContext";
 
 // Sidebar width
 const drawerWidth = 240;
@@ -144,21 +148,24 @@ function App() {
   }
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <BrowserRouter>
-        <AppContent 
-          mode={mode} 
-          toggleColorMode={toggleColorMode} 
-          mobileOpen={mobileOpen}
-          handleDrawerToggle={handleDrawerToggle}
-          greetMsg={greetMsg}
-          name={name}
-          setName={setName}
-          greet={greet}
-        />
-      </BrowserRouter>
-    </ThemeProvider>
+    <WalletProvider>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <BrowserRouter>
+          <AppContent 
+            mode={mode} 
+            toggleColorMode={toggleColorMode} 
+            mobileOpen={mobileOpen}
+            handleDrawerToggle={handleDrawerToggle}
+            greetMsg={greetMsg}
+            name={name}
+            setName={setName}
+            greet={greet}
+          />
+          <WalletDialog />
+        </BrowserRouter>
+      </ThemeProvider>
+    </WalletProvider>
   );
 }
 
