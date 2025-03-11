@@ -27,7 +27,7 @@ import Advanced from "./pages/Advanced";
 import Settings from "./pages/Settings";
 
 // Import WalletProvider
-import { WalletProvider } from "./context/WalletContext";
+import { WalletProvider, useWallet } from "./context/WalletContext";
 
 // Sidebar width
 const drawerWidth = 240;
@@ -152,7 +152,7 @@ function App() {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <BrowserRouter>
-          <AppContent 
+          <AppContentWrapper 
             mode={mode} 
             toggleColorMode={toggleColorMode} 
             mobileOpen={mobileOpen}
@@ -167,6 +167,23 @@ function App() {
       </ThemeProvider>
     </WalletProvider>
   );
+}
+
+// Wrapper component that conditionally renders the AppContent
+function AppContentWrapper(props: {
+  mode: 'light' | 'dark',
+  toggleColorMode: () => void,
+  mobileOpen: boolean,
+  handleDrawerToggle: () => void,
+  greetMsg: string,
+  name: string,
+  setName: (name: string) => void,
+  greet: () => void
+}) {
+  const { isWalletOpen } = useWallet();
+
+  // Only render the AppContent if wallet is open
+  return isWalletOpen ? <AppContent {...props} /> : null;
 }
 
 // Separate component to use React Router hooks
