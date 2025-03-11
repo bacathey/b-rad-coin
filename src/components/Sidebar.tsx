@@ -14,8 +14,6 @@ import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import MiningIcon from '@mui/icons-material/Hardware';
-import SettingsIcon from '@mui/icons-material/Settings';
-import CloseIcon from '@mui/icons-material/Close';
 import BlockchainStatus from './BlockchainStatus';
 
 interface SidebarProps {
@@ -131,37 +129,6 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
               color: '#1a237e',
               fontWeight: 500
             } : {}} />
-          </ListItemButton>
-        </ListItem>
-        <ListItem disablePadding>
-          <ListItemButton 
-            selected={location.pathname === '/settings'} 
-            onClick={() => {
-              navigate('/settings');
-              if (mobileOpen) handleDrawerToggle();
-            }}
-            sx={mode === 'light' && location.pathname === '/settings' ? {
-              borderLeft: '4px solid #1a237e'
-            } : {}}
-          >
-            <ListItemIcon sx={mode === 'light' ? {
-              color: location.pathname === '/settings' ? '#1a237e' : 'rgba(0, 0, 0, 0.54)'
-            } : {}}>
-              <SettingsIcon />
-            </ListItemIcon>
-            <ListItemText primary="Settings" sx={mode === 'light' && location.pathname === '/settings' ? {
-              color: '#1a237e',
-              fontWeight: 500
-            } : {}} />
-          </ListItemButton>
-        </ListItem>
-        <Divider sx={{ my: 1 }} />
-        <ListItem disablePadding>
-          <ListItemButton>
-            <ListItemIcon>
-              <CloseIcon />
-            </ListItemIcon>
-            <ListItemText primary="Close Wallet" />
           </ListItemButton>
         </ListItem>
       </List>

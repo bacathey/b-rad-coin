@@ -8,6 +8,7 @@ import {
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import SettingsIcon from '@mui/icons-material/Settings';
+import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import bitcoinLogo from '../assets/bitcoin.svg';
@@ -25,6 +26,13 @@ interface AppHeaderProps {
 export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }: AppHeaderProps) {
   const navigate = useNavigate();
   const appVersion = packageJson.version;
+
+  // Function to handle closing the wallet
+  const handleCloseWallet = () => {
+    // In a real application, this would save data and close the wallet
+    console.log('Closing wallet...');
+    // Could navigate to a login page or perform other closing actions
+  };
 
   return (
     <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
@@ -87,8 +95,18 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
             color="inherit"
             aria-label="settings"
             onClick={() => navigate('/settings')}
+            sx={{ mr: 1 }}
           >
             <SettingsIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Close Wallet">
+          <IconButton 
+            color="inherit"
+            aria-label="close wallet"
+            onClick={handleCloseWallet}
+          >
+            <ExitToAppIcon />
           </IconButton>
         </Tooltip>
       </Toolbar>

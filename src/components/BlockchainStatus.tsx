@@ -32,7 +32,7 @@ export default function BlockchainStatus({ mode }: BlockchainStatusProps) {
           mb: 2
         }}
       >
-        Blockchain Status
+        Blockchain Sync Status
       </Typography>
       
       <Stack spacing={2}>
