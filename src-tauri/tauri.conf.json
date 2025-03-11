@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "b-rad-coin",
+        "title": "B-Rad Coin - Full Node",
         "width": 800,
         "height": 600
       }

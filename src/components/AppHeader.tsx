@@ -5,9 +5,7 @@ import {
   IconButton,
   Tooltip,
   Box,
-  CircularProgress,
-  Chip
-} from '@mui/material';
+  CircularProgress} from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';

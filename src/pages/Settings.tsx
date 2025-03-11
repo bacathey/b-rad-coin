@@ -4,7 +4,6 @@ import {
   Card, 
   CardContent, 
   Switch,
-  FormControlLabel,
   Divider,
   List,
   ListItem,
@@ -32,7 +31,7 @@ export default function Settings() {
   const [autoBackup, setAutoBackup] = useState(true);
   const [anonymousData, setAnonymousData] = useState(false);
   const [nodeAddress, setNodeAddress] = useState('');
-  const [language, setLanguage] = useState('English');
+  const [language] = useState('English');
 
   // Card style based on theme mode
   const cardStyle = isDarkMode ? {
