@@ -3,7 +3,6 @@ import {
   Dialog, 
   DialogTitle, 
   DialogContent, 
-  DialogActions, 
   Button, 
   FormControl, 
   InputLabel, 
@@ -99,7 +98,7 @@ export default function WalletDialog() {
     setSelectedWallet(event.target.value as string);
   };
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
     // Reset error message when switching tabs
     setErrorMessage('');
