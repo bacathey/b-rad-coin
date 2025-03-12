@@ -17,7 +17,9 @@ import {
   Tabs,
   Tab,
   TextField,
-  Alert
+  Alert,
+  Fade,
+  Grow
 } from '@mui/material';
 import { invoke } from '@tauri-apps/api/core';
 import { useWallet } from '../context/WalletContext';
@@ -33,21 +35,31 @@ interface TabPanelProps {
 
 function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props;
+  const isActive = value === index;
 
   return (
     <div
       role="tabpanel"
-      hidden={value !== index}
+      hidden={!isActive}
       id={`wallet-tabpanel-${index}`}
       aria-labelledby={`wallet-tab-${index}`}
       {...other}
-      style={{ width: '100%' }}
+      style={{ 
+        width: '100%',
+        display: isActive ? 'block' : 'none'
+      }}
     >
-      {value === index && (
+      <Grow 
+        in={isActive} 
+        timeout={500}  // Increased from 300ms to 500ms
+        easing={{
+          enter: 'cubic-bezier(0.4, 0, 0.2, 1)'
+        }}
+      >
         <Box sx={{ pt: 3 }}>
           {children}
         </Box>
-      )}
+      </Grow>
     </div>
   );
 }
@@ -57,7 +69,7 @@ export default function WalletDialog() {
   const isDarkMode = theme.palette.mode === 'dark';
   const { isWalletOpen, setIsWalletOpen, setCurrentWallet } = useWallet();
   
-  const [open, setOpen] = useState(!isWalletOpen);
+  // Dialog state
   const [selectedWallet, setSelectedWallet] = useState('');
   const [availableWallets, setAvailableWallets] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -70,7 +82,7 @@ export default function WalletDialog() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Fetch available wallets when the dialog opens
+  // Fetch available wallets when the component mounts or when isWalletOpen changes
   useEffect(() => {
     async function fetchWallets() {
       try {
@@ -84,14 +96,9 @@ export default function WalletDialog() {
       }
     }
 
-    if (open) {
+    if (!isWalletOpen) {
       fetchWallets();
     }
-  }, [open]);
-
-  // Update open state based on wallet status
-  useEffect(() => {
-    setOpen(!isWalletOpen);
   }, [isWalletOpen]);
 
   const handleWalletChange = (event: SelectChangeEvent) => {
@@ -100,7 +107,6 @@ export default function WalletDialog() {
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
-    // Reset error message when switching tabs
     setErrorMessage('');
   };
 
@@ -111,25 +117,22 @@ export default function WalletDialog() {
     try {
       const result = await invoke<boolean>('open_wallet', { walletName: selectedWallet });
       if (result) {
-        // Set both the wallet open state and the current wallet info
-        setIsWalletOpen(true);
         setCurrentWallet({
           name: selectedWallet
         });
-        setOpen(false);
+        setIsWalletOpen(true);
       }
     } catch (error) {
       console.error('Failed to open wallet:', error);
+      setErrorMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleCreateWallet = async () => {
-    // Reset error message
     setErrorMessage('');
     
-    // Validate input
     if (!newWalletName) {
       setErrorMessage('Please enter a wallet name');
       return;
@@ -142,19 +145,16 @@ export default function WalletDialog() {
     
     setIsLoading(true);
     try {
-      // Call Rust function to create a new wallet
       const result = await invoke<boolean>('create_wallet', { 
         walletName: newWalletName, 
         password: walletPassword 
       });
       
       if (result) {
-        // Open the newly created wallet
-        setIsWalletOpen(true);
         setCurrentWallet({
           name: newWalletName
         });
-        setOpen(false);
+        setIsWalletOpen(true);
       } else {
         setErrorMessage('Failed to create wallet');
       }
@@ -170,9 +170,8 @@ export default function WalletDialog() {
     <>
       {/* Backdrop that covers the entire app when wallet is not open */}
       <Backdrop 
-        open={open} 
+        open={!isWalletOpen} 
         sx={{ 
-          // Use a higher z-index to cover the AppBar and Drawer
           zIndex: theme.zIndex.drawer + 2,
           background: isDarkMode 
             ? 'linear-gradient(145deg, #0a1929 0%, #0d2b59 50%, rgb(13, 75, 116) 100%)' 
@@ -187,11 +186,14 @@ export default function WalletDialog() {
       />
       
       <Dialog 
-        open={open} 
+        open={!isWalletOpen}
         maxWidth="sm" 
         fullWidth 
         disableEscapeKeyDown
-        // Ensure dialog appears above the backdrop
+        TransitionComponent={Fade}
+        TransitionProps={{ 
+          timeout: 500
+        }}
         sx={{
           zIndex: theme.zIndex.drawer + 3,
           '& .MuiPaper-root': {
@@ -200,7 +202,12 @@ export default function WalletDialog() {
               : 'linear-gradient(145deg, #ffffff 0%, #f5f7fa 100%)',
             borderRadius: '12px',
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-            border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.08)'
+            border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.08)',
+            // Add transition for height and max-height
+            transition: 'all 500ms cubic-bezier(0.4, 0, 0.2, 1) !important'
+          },
+          '& .MuiDialog-container': {
+            transition: 'all 500ms cubic-bezier(0.4, 0, 0.2, 1)'
           }
         }}
       >
@@ -226,13 +233,21 @@ export default function WalletDialog() {
             onChange={handleTabChange} 
             aria-label="wallet options"
             variant="fullWidth"
+            sx={{
+              '& .MuiTabs-indicator': {
+                transition: 'all 500ms cubic-bezier(0.4, 0, 0.2, 1)'  // Increased from 300ms and added easing
+              }
+            }}
           >
             <Tab label="Open Wallet" id="wallet-tab-0" aria-controls="wallet-tabpanel-0" />
             <Tab label="Create New" id="wallet-tab-1" aria-controls="wallet-tabpanel-1" />
           </Tabs>
         </Box>
         
-        <DialogContent>
+        <DialogContent sx={{ 
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
           {/* Open Wallet Tab */}
           <TabPanel value={tabValue} index={0}>
             <Typography variant="body1" sx={{ mb: 3 }}>

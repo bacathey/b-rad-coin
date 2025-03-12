@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
@@ -63,53 +63,70 @@ function App() {
       components: {
         MuiCssBaseline: {
           styleOverrides: {
+            '*': {
+              transition: 'background-color 400ms cubic-bezier(0.4, 0, 0.2, 1), color 400ms cubic-bezier(0.4, 0, 0.2, 1), border-color 400ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 400ms cubic-bezier(0.4, 0, 0.2, 1)'
+            },
             body: mode === 'dark' ? {
               background: 'linear-gradient(145deg, #0a1929 0%, #0d2b59 50%,rgb(13, 75, 116) 100%)',
               minHeight: '100vh',
               backgroundAttachment: 'fixed',
+              transition: 'background 400ms cubic-bezier(0.4, 0, 0.2, 1)'
             } : {
               background: '#f5f7fa',
               minHeight: '100vh',
               backgroundAttachment: 'fixed',
+              transition: 'background 400ms cubic-bezier(0.4, 0, 0.2, 1)'
             },
           }
         },
         MuiDrawer: {
           styleOverrides: {
-            paper: mode === 'dark' ? {
-              backgroundColor: 'rgba(19, 47, 76, 0.9)',
-              backdropFilter: 'blur(8px)'
-            } : {
-              backgroundColor: '#ffffff',
-              boxShadow: '0 0 20px rgba(0, 0, 0, 0.05)'
-            },
+            paper: {
+              ...(mode === 'dark' ? {
+                backgroundColor: 'rgba(19, 47, 76, 0.9)',
+                backdropFilter: 'blur(8px)'
+              } : {
+                backgroundColor: '#ffffff',
+                boxShadow: '0 0 20px rgba(0, 0, 0, 0.05)'
+              }),
+              transition: 'background-color 400ms cubic-bezier(0.4, 0, 0.2, 1), backdrop-filter 400ms cubic-bezier(0.4, 0, 0.2, 1)'
+            }
           }
         },
         MuiAppBar: {
           styleOverrides: {
-            root: mode === 'dark' ? {
-              background: 'linear-gradient(90deg, #0a1929 0%,rgb(13, 48, 89) 100%)',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.4)'
-            } : {
-              background: 'linear-gradient(90deg, #1a237e 0%,rgb(14, 96, 134) 100%)',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
-            },
+            root: {
+              ...(mode === 'dark' ? {
+                background: 'linear-gradient(90deg, #0a1929 0%,rgb(13, 48, 89) 100%)',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.4)'
+              } : {
+                background: 'linear-gradient(90deg, #1a237e 0%,rgb(14, 96, 134) 100%)',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
+              }),
+              transition: 'background 400ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 400ms cubic-bezier(0.4, 0, 0.2, 1)'
+            }
           }
         },
         MuiCard: {
           styleOverrides: {
-            root: mode === 'light' ? {
-              boxShadow: '0 2px 12px rgba(0, 0, 0, 0.1)',
-              border: '1px solid rgba(0, 0, 0, 0.05)'
-            } : {}
+            root: {
+              transition: 'background-color 400ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 400ms cubic-bezier(0.4, 0, 0.2, 1), border-color 400ms cubic-bezier(0.4, 0, 0.2, 1)',
+              ...(mode === 'light' ? {
+                boxShadow: '0 2px 12px rgba(0, 0, 0, 0.1)',
+                border: '1px solid rgba(0, 0, 0, 0.05)'
+              } : {})
+            }
           }
         },
         MuiPaper: {
           styleOverrides: {
-            root: mode === 'light' ? {
-              boxShadow: '0 2px 12px rgba(0, 0, 0, 0.1)',
-              border: '1px solid rgba(0, 0, 0, 0.05)'
-            } : {}
+            root: {
+              transition: 'background-color 400ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 400ms cubic-bezier(0.4, 0, 0.2, 1), border-color 400ms cubic-bezier(0.4, 0, 0.2, 1)',
+              ...(mode === 'light' ? {
+                boxShadow: '0 2px 12px rgba(0, 0, 0, 0.1)',
+                border: '1px solid rgba(0, 0, 0, 0.05)'
+              } : {})
+            }
           }
         },
         MuiListItemButton: {
@@ -186,29 +203,24 @@ function AppContentWrapper(props: {
   return isWalletOpen ? <AppContent {...props} /> : null;
 }
 
+// Add interface for AppContent props
+interface AppContentProps {
+  mode: 'light' | 'dark';
+  toggleColorMode: () => void;
+  mobileOpen: boolean;
+  handleDrawerToggle: () => void;
+  greetMsg: string;
+  name: string;
+  setName: (name: string) => void;
+  greet: () => void;
+}
+
 // Separate component to use React Router hooks
-function AppContent({ 
-  mode, 
-  toggleColorMode, 
-  mobileOpen, 
-  handleDrawerToggle,
-  greetMsg,
-  name,
-  setName,
-  greet
-}: {
-  mode: 'light' | 'dark',
-  toggleColorMode: () => void,
-  mobileOpen: boolean,
-  handleDrawerToggle: () => void,
-  greetMsg: string,
-  name: string,
-  setName: (name: string) => void,
-  greet: () => void
-}) {
+function AppContent({ mode, toggleColorMode, mobileOpen, handleDrawerToggle, greetMsg, name, setName, greet }: AppContentProps) {
+  const location = useLocation();
+
   return (
     <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      {/* Use the new AppHeader component */}
       <AppHeader
         mode={mode}
         toggleColorMode={toggleColorMode}
@@ -259,7 +271,7 @@ function AppContent({
         sx={{ 
           flexGrow: 1,
           width: { xs: '100%', sm: `calc(100% - ${drawerWidth}px)` },
-          mt: '64px', // Add top margin to account for AppBar
+          mt: '64px',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'auto',
@@ -273,10 +285,24 @@ function AppContent({
             flexDirection: 'column',
             alignItems: 'center',
             flexGrow: 1,
-            width: '100%'
+            width: '100%',
+            '& > *': {
+              // Add fade transition for route changes
+              animation: 'fadeIn 800ms cubic-bezier(0.4, 0, 0.2, 1)',
+              '@keyframes fadeIn': {
+                '0%': {
+                  opacity: 0,
+                  transform: 'translateY(10px)'
+                },
+                '100%': {
+                  opacity: 1,
+                  transform: 'translateY(0)'
+                }
+              }
+            }
           }}
         >
-          <Routes>
+          <Routes location={location}>
             <Route path="/" element={<Account greetMsg={greetMsg} name={name} setName={setName} greet={greet} />} />
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/send-receive" element={<SendReceive />} />

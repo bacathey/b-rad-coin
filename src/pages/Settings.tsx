@@ -12,15 +12,16 @@ import {
   TextField,
   Button,
   Grid,
-  useTheme,
-  Paper
+  useTheme
 } from '@mui/material';
 import SecurityIcon from '@mui/icons-material/Security';
 import LanguageIcon from '@mui/icons-material/Language';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import BackupIcon from '@mui/icons-material/Backup';
 import PrivacyTipIcon from '@mui/icons-material/PrivacyTip';
-import { useState } from 'react';
+import FolderIcon from '@mui/icons-material/Folder';
+import { useState, useEffect } from 'react';
+import { invoke } from "@tauri-apps/api/core";
 
 export default function Settings() {
   const theme = useTheme();
@@ -32,6 +33,14 @@ export default function Settings() {
   const [anonymousData, setAnonymousData] = useState(false);
   const [nodeAddress, setNodeAddress] = useState('');
   const [language] = useState('English');
+  const [configDirectory, setConfigDirectory] = useState<string>('');
+
+  useEffect(() => {
+    // Fetch config directory when component mounts
+    invoke('get_config_directory')
+      .then((dir) => setConfigDirectory(dir as string))
+      .catch(console.error);
+  }, []);
 
   // Card style based on theme mode
   const cardStyle = isDarkMode ? {
@@ -102,6 +111,19 @@ export default function Settings() {
                     checked={notificationsEnabled}
                     onChange={(e) => setNotificationsEnabled(e.target.checked)}
                     color="primary"
+                  />
+                </ListItem>
+                <Divider variant="inset" component="li" />
+                
+                <ListItem>
+                  <ListItemIcon>
+                    <FolderIcon 
+                      color={isDarkMode ? "primary" : "primary"} 
+                    />
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary="Config Directory" 
+                    secondary={configDirectory || 'Loading...'} 
                   />
                 </ListItem>
                 <Divider variant="inset" component="li" />

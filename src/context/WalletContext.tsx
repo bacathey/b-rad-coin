@@ -29,49 +29,51 @@ const WalletContext = createContext<WalletContextType>({
 // Create a provider component
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [isWalletOpen, setIsWalletOpen] = useState(false);
-  const [isWalletLoading, setIsWalletLoading] = useState(true);
+  const [isWalletLoading, setIsWalletLoading] = useState(true);  // Start with loading true
   const [currentWallet, setCurrentWallet] = useState<WalletInfo | null>(null);
 
   // Effect to fetch the initial wallet state from Rust backend
   useEffect(() => {
     async function checkWalletStatus() {
       try {
+        setIsWalletLoading(true);  // Ensure loading is true while checking
         // Call to Rust function to check if wallet is open
-        const walletStatus = await invoke('check_wallet_status');
+        const walletStatus = await invoke<boolean>('check_wallet_status');
         
         if (walletStatus) {
           // If a wallet is open, get its details
-          // In a real application, you would fetch actual wallet details from the backend
           try {
             const walletName = await invoke<string>('get_current_wallet_name');
             if (walletName) {
               setCurrentWallet({
                 name: walletName
               });
+              setIsWalletOpen(true);  // Only set to true if we successfully get the wallet name
+            } else {
+              // If we can't get the wallet name, treat it as no wallet open
+              setIsWalletOpen(false);
+              setCurrentWallet(null);
             }
           } catch (error) {
             console.error('Error getting current wallet details:', error);
+            setIsWalletOpen(false);
+            setCurrentWallet(null);
           }
+        } else {
+          setIsWalletOpen(false);
+          setCurrentWallet(null);
         }
-        
-        setIsWalletOpen(!!walletStatus);
       } catch (error) {
         console.error('Error checking wallet status:', error);
         setIsWalletOpen(false);
         setCurrentWallet(null);
       } finally {
-        setIsWalletLoading(false);
+        setIsWalletLoading(false);  // Always set loading to false when done
       }
     }
 
     checkWalletStatus();
   }, []);
-
-  // Provide a function to update both the wallet open state and the current wallet
-  const closeWallet = () => {
-    setIsWalletOpen(false);
-    setCurrentWallet(null);
-  };
 
   const value = {
     isWalletOpen,
