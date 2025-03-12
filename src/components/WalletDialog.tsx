@@ -14,11 +14,44 @@ import {
   CircularProgress,
   useTheme,
   SelectChangeEvent,
-  Backdrop
+  Backdrop,
+  Tabs,
+  Tab,
+  TextField,
+  Alert
 } from '@mui/material';
 import { invoke } from '@tauri-apps/api/core';
 import { useWallet } from '../context/WalletContext';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
+import AddIcon from '@mui/icons-material/Add';
+
+// Interface for tab panel props
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`wallet-tabpanel-${index}`}
+      aria-labelledby={`wallet-tab-${index}`}
+      {...other}
+      style={{ width: '100%' }}
+    >
+      {value === index && (
+        <Box sx={{ pt: 3 }}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
 
 export default function WalletDialog() {
   const theme = useTheme();
@@ -30,6 +63,13 @@ export default function WalletDialog() {
   const [availableWallets, setAvailableWallets] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isGettingWallets, setIsGettingWallets] = useState(true);
+  
+  // New state for wallet creation
+  const [tabValue, setTabValue] = useState(0);
+  const [newWalletName, setNewWalletName] = useState('');
+  const [walletPassword, setWalletPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Fetch available wallets when the dialog opens
   useEffect(() => {
@@ -59,6 +99,12 @@ export default function WalletDialog() {
     setSelectedWallet(event.target.value as string);
   };
 
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+    // Reset error message when switching tabs
+    setErrorMessage('');
+  };
+
   const handleOpenWallet = async () => {
     if (!selectedWallet) return;
 
@@ -75,6 +121,47 @@ export default function WalletDialog() {
       }
     } catch (error) {
       console.error('Failed to open wallet:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCreateWallet = async () => {
+    // Reset error message
+    setErrorMessage('');
+    
+    // Validate input
+    if (!newWalletName) {
+      setErrorMessage('Please enter a wallet name');
+      return;
+    }
+    
+    if (walletPassword !== confirmPassword) {
+      setErrorMessage('Passwords do not match');
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      // Call Rust function to create a new wallet
+      const result = await invoke<boolean>('create_wallet', { 
+        walletName: newWalletName, 
+        password: walletPassword 
+      });
+      
+      if (result) {
+        // Open the newly created wallet
+        setIsWalletOpen(true);
+        setCurrentWallet({
+          name: newWalletName
+        });
+        setOpen(false);
+      } else {
+        setErrorMessage('Failed to create wallet');
+      }
+    } catch (error) {
+      console.error('Failed to create wallet:', error);
+      setErrorMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -134,51 +221,130 @@ export default function WalletDialog() {
           </Typography>
         </DialogTitle>
         
-        <DialogContent>
-          <Typography variant="body1" sx={{ mb: 3 }}>
-            Please select a wallet to open:
-          </Typography>
-          
-          {isGettingWallets ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-              <CircularProgress />
-            </Box>
-          ) : (
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel id="wallet-select-label">Select Wallet</InputLabel>
-              <Select
-                labelId="wallet-select-label"
-                id="wallet-select"
-                value={selectedWallet}
-                label="Select Wallet"
-                onChange={handleWalletChange}
-              >
-                {availableWallets.map((wallet) => (
-                  <MenuItem key={wallet} value={wallet}>
-                    {wallet}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-        </DialogContent>
-        
-        <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button 
-            variant="contained"
-            color="primary"
-            onClick={handleOpenWallet}
-            disabled={!selectedWallet || isLoading}
-            startIcon={isLoading ? <CircularProgress size={20} /> : null}
-            sx={{ 
-              minWidth: '120px',
-              textTransform: 'none',
-              fontWeight: 600
-            }}
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
+          <Tabs 
+            value={tabValue} 
+            onChange={handleTabChange} 
+            aria-label="wallet options"
+            variant="fullWidth"
           >
-            {isLoading ? 'Opening...' : 'Open Wallet'}
-          </Button>
-        </DialogActions>
+            <Tab label="Open Wallet" id="wallet-tab-0" aria-controls="wallet-tabpanel-0" />
+            <Tab label="Create New" id="wallet-tab-1" aria-controls="wallet-tabpanel-1" />
+          </Tabs>
+        </Box>
+        
+        <DialogContent>
+          {/* Open Wallet Tab */}
+          <TabPanel value={tabValue} index={0}>
+            <Typography variant="body1" sx={{ mb: 3 }}>
+              Please select a wallet to open:
+            </Typography>
+            
+            {isGettingWallets ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel id="wallet-select-label">Select Wallet</InputLabel>
+                <Select
+                  labelId="wallet-select-label"
+                  id="wallet-select"
+                  value={selectedWallet}
+                  label="Select Wallet"
+                  onChange={handleWalletChange}
+                >
+                  {availableWallets.map((wallet) => (
+                    <MenuItem key={wallet} value={wallet}>
+                      {wallet}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+            
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+              <Button 
+                variant="contained"
+                color="primary"
+                onClick={handleOpenWallet}
+                disabled={!selectedWallet || isLoading}
+                startIcon={isLoading && tabValue === 0 ? <CircularProgress size={20} /> : null}
+                sx={{ 
+                  minWidth: '120px',
+                  textTransform: 'none',
+                  fontWeight: 600
+                }}
+              >
+                {isLoading && tabValue === 0 ? 'Opening...' : 'Open Wallet'}
+              </Button>
+            </Box>
+          </TabPanel>
+          
+          {/* Create New Wallet Tab */}
+          <TabPanel value={tabValue} index={1}>
+            <Typography variant="body1" sx={{ mb: 3 }}>
+              Create a new wallet:
+            </Typography>
+            
+            {errorMessage && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {errorMessage}
+              </Alert>
+            )}
+            
+            <TextField
+              fullWidth
+              label="Wallet Name"
+              variant="outlined"
+              value={newWalletName}
+              onChange={(e) => setNewWalletName(e.target.value)}
+              sx={{ mb: 2 }}
+              required
+            />
+            
+            <TextField
+              fullWidth
+              label="Password"
+              type="password"
+              variant="outlined"
+              value={walletPassword}
+              onChange={(e) => setWalletPassword(e.target.value)}
+              sx={{ mb: 2 }}
+              required
+            />
+            
+            <TextField
+              fullWidth
+              label="Confirm Password"
+              type="password"
+              variant="outlined"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              sx={{ mb: 2 }}
+              required
+              error={walletPassword !== confirmPassword && confirmPassword !== ''}
+              helperText={walletPassword !== confirmPassword && confirmPassword !== '' ? 'Passwords do not match' : ''}
+            />
+            
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+              <Button 
+                variant="contained"
+                color="primary"
+                onClick={handleCreateWallet}
+                disabled={isLoading}
+                startIcon={isLoading && tabValue === 1 ? <CircularProgress size={20} /> : <AddIcon />}
+                sx={{ 
+                  minWidth: '140px',
+                  textTransform: 'none',
+                  fontWeight: 600
+                }}
+              >
+                {isLoading && tabValue === 1 ? 'Creating...' : 'Create Wallet'}
+              </Button>
+            </Box>
+          </TabPanel>
+        </DialogContent>
       </Dialog>
     </>
   );
