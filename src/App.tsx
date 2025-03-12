@@ -64,7 +64,13 @@ function App() {
         MuiCssBaseline: {
           styleOverrides: {
             '*': {
-              transition: 'background-color 400ms cubic-bezier(0.4, 0, 0.2, 1), color 400ms cubic-bezier(0.4, 0, 0.2, 1), border-color 400ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 400ms cubic-bezier(0.4, 0, 0.2, 1)'
+              // Split transitions into separate properties for different speeds
+              transition: `
+                background-color 400ms cubic-bezier(0.4, 0, 0.2, 1),
+                color 250ms cubic-bezier(0.4, 0, 0.2, 1),
+                border-color 400ms cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 400ms cubic-bezier(0.4, 0, 0.2, 1)
+              `
             },
             body: mode === 'dark' ? {
               background: 'linear-gradient(145deg, #0a1929 0%, #0d2b59 50%,rgb(13, 75, 116) 100%)',
@@ -77,6 +83,23 @@ function App() {
               backgroundAttachment: 'fixed',
               transition: 'background 400ms cubic-bezier(0.4, 0, 0.2, 1)'
             },
+          }
+        },
+        MuiListItemText: {
+          styleOverrides: {
+            primary: {
+              transition: 'color 200ms cubic-bezier(0.4, 0, 0.2, 1) !important'
+            },
+            secondary: {
+              transition: 'color 200ms cubic-bezier(0.4, 0, 0.2, 1) !important'
+            }
+          }
+        },
+        MuiListItemIcon: {
+          styleOverrides: {
+            root: {
+              transition: 'color 200ms cubic-bezier(0.4, 0, 0.2, 1) !important'
+            }
           }
         },
         MuiDrawer: {
