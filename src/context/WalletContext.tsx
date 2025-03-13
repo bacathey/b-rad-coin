@@ -12,7 +12,6 @@ interface WalletInfo {
 interface WalletContextType {
   isWalletOpen: boolean;
   setIsWalletOpen: (isOpen: boolean) => void;
-  isWalletLoading: boolean;
   currentWallet: WalletInfo | null;
   setCurrentWallet: (wallet: WalletInfo | null) => void;
 }
@@ -21,22 +20,20 @@ interface WalletContextType {
 const WalletContext = createContext<WalletContextType>({
   isWalletOpen: false,
   setIsWalletOpen: () => {},
-  isWalletLoading: true,
   currentWallet: null,
   setCurrentWallet: () => {}
 });
 
 // Create a provider component
 export function WalletProvider({ children }: { children: ReactNode }) {
+  // Default to wallet closed (false)
   const [isWalletOpen, setIsWalletOpen] = useState(false);
-  const [isWalletLoading, setIsWalletLoading] = useState(true);  // Start with loading true
   const [currentWallet, setCurrentWallet] = useState<WalletInfo | null>(null);
 
   // Effect to fetch the initial wallet state from Rust backend
   useEffect(() => {
     async function checkWalletStatus() {
       try {
-        setIsWalletLoading(true);  // Ensure loading is true while checking
         // Call to Rust function to check if wallet is open
         const walletStatus = await invoke<boolean>('check_wallet_status');
         
@@ -67,8 +64,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         console.error('Error checking wallet status:', error);
         setIsWalletOpen(false);
         setCurrentWallet(null);
-      } finally {
-        setIsWalletLoading(false);  // Always set loading to false when done
       }
     }
 
@@ -78,7 +73,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const value = {
     isWalletOpen,
     setIsWalletOpen,
-    isWalletLoading,
     currentWallet,
     setCurrentWallet
   };
