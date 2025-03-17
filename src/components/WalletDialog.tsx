@@ -88,6 +88,11 @@ export default function WalletDialog() {
       try {
         const wallets = await invoke<string[]>('get_available_wallets');
         setAvailableWallets(wallets);
+        
+        // If we have wallets, select the first one by default for better UX
+        if (wallets.length > 0 && !selectedWallet) {
+          setSelectedWallet(wallets[0]);
+        }
       } catch (error) {
         console.error('Failed to fetch available wallets:', error);
         setAvailableWallets([]);
@@ -96,10 +101,18 @@ export default function WalletDialog() {
       }
     }
 
+    // Always fetch wallets when the dialog should be open
     if (!isWalletOpen) {
       fetchWallets();
     }
-  }, [isWalletOpen]);
+  }, [isWalletOpen, selectedWallet]);
+
+  // If wallets were available and we close the dialog, we should re-open it
+  useEffect(() => {
+    if (availableWallets.length > 0 && !isWalletOpen) {
+      setIsWalletOpen(true);
+    }
+  }, [availableWallets]);
 
   const handleWalletChange = (event: SelectChangeEvent) => {
     setSelectedWallet(event.target.value as string);
@@ -190,6 +203,12 @@ export default function WalletDialog() {
         maxWidth="sm" 
         fullWidth 
         disableEscapeKeyDown
+        hideBackdrop // Hide default backdrop since we're using a custom one
+        onClose={(_event, _reason) => {
+          // Prevent closing the dialog by clicking outside or pressing Escape
+          // We want to force the user to open/create a wallet
+          return false;
+        }}
         TransitionComponent={Fade}
         TransitionProps={{ 
           timeout: 500
@@ -203,7 +222,6 @@ export default function WalletDialog() {
             borderRadius: '12px',
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
             border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.08)',
-            // Add transition for height and max-height
             transition: 'all 500ms cubic-bezier(0.4, 0, 0.2, 1) !important'
           },
           '& .MuiDialog-container': {
