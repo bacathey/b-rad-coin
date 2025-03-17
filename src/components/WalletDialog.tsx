@@ -107,13 +107,6 @@ export default function WalletDialog() {
     }
   }, [isWalletOpen, selectedWallet]);
 
-  // If wallets were available and we close the dialog, we should re-open it
-  useEffect(() => {
-    if (availableWallets.length > 0 && !isWalletOpen) {
-      setIsWalletOpen(true);
-    }
-  }, [availableWallets]);
-
   const handleWalletChange = (event: SelectChangeEvent) => {
     setSelectedWallet(event.target.value as string);
   };
