@@ -6,7 +6,7 @@ use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{State, Manager};  // Added Manager trait for state management
 
 // Configuration structure to store wallet data
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -84,7 +84,16 @@ fn load_config() -> Result<(WalletConfig, PathBuf), Box<dyn Error>> {
     if config_path.exists() {
         // Read and parse the config file
         let config_content = fs::read_to_string(&config_path)?;
-        let config: WalletConfig = serde_json::from_str(&config_content)?;
+        let mut config: WalletConfig = serde_json::from_str(&config_content)?;
+        
+        // IMPORTANT: Always ensure no wallet is open at startup
+        // This enforces that the app always starts with no wallet open
+        config.current_wallet = None;
+        
+        // Save the updated config with no wallet open
+        let config_json = serde_json::to_string_pretty(&config)?;
+        fs::write(&config_path, config_json)?;
+        
         Ok((config, config_path))
     } else {
         // Create a default config if it doesn't exist
@@ -257,6 +266,21 @@ fn main() -> Result<(), Box<dyn Error>> {
             update_app_settings,
             get_app_settings
         ])
+        // Handle app exit with proper event handler
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                println!("Application closing, resetting wallet state");
+                
+                // Get the app state and call close_wallet directly
+                if let Some(state) = window.app_handle().try_state::<AppState>() {
+                    let _ = close_wallet(state);
+                }
+                
+                // Allow the window to close normally
+                api.prevent_close();
+                window.app_handle().exit(0);
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 

@@ -28,7 +28,7 @@ interface AppHeaderProps {
 export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }: AppHeaderProps) {
   const navigate = useNavigate();
   const appVersion = packageJson.version;
-  const { isWalletOpen, setIsWalletOpen, isWalletLoading, currentWallet, setCurrentWallet } = useWallet();
+  const { isWalletOpen, setIsWalletOpen, currentWallet, setCurrentWallet } = useWallet();
 
   // Function to handle closing the wallet
   const handleCloseWallet = async () => {
@@ -111,21 +111,17 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
           </IconButton>
         </Tooltip>
         
-        {/* Show loading state or close wallet button based on wallet state */}
-        {isWalletLoading ? (
-          <CircularProgress color="inherit" size={24} sx={{ mr: 1 }} />
-        ) : (
-          isWalletOpen && (
-            <Tooltip title="Close Wallet">
-              <IconButton 
-                color="inherit"
-                aria-label="close wallet"
-                onClick={handleCloseWallet}
-              >
-                <ExitToAppIcon />
-              </IconButton>
-            </Tooltip>
-          )
+        {/* Show close wallet button when a wallet is open */}
+        {isWalletOpen && (
+          <Tooltip title="Close Wallet">
+            <IconButton 
+              color="inherit"
+              aria-label="close wallet"
+              onClick={handleCloseWallet}
+            >
+              <ExitToAppIcon />
+            </IconButton>
+          </Tooltip>
         )}
       </Toolbar>
     </AppBar>
