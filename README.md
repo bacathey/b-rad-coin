@@ -1,6 +1,6 @@
-# Tauri + React + Typescript
+# B-Rad Coin Full Node Wallet
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+This is a learning application, written in React/Rust/Tauri, that is an implmentation of a BitCoin-like blockchain, wallet and network.
 
 ## Recommended IDE Setup
 
