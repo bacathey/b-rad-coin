@@ -4,8 +4,7 @@ import {
   Typography,
   IconButton,
   Tooltip,
-  Box,
-  CircularProgress} from '@mui/material';
+  Box} from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
