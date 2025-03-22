@@ -1,8 +1,10 @@
 [package]
 name = "b-rad-coin"
 version = "0.1.0"
-description = "A Tauri App"
+description = "B-Rad Coin Wallet"
 authors = ["you"]
+license = ""
+repository = ""
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -15,12 +17,38 @@ name = "b_rad_coin_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2.0.0-alpha.12", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tauri-plugin-fs = "2"
+# Tauri dependencies
+tauri = { version = "2.0.0-alpha.18", features = [] }
+tauri-plugin-fs = "2.0.0-alpha"
+tauri-plugin-opener = "2.0.0-alpha"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Crypto dependencies with features optimized for performance
+ring = "0.17.5"                 # High-performance cryptographic operations
+data-encoding = "2.4.0"         # For hex encoding/decoding
+sha2 = "0.10.8"                 # Modern SHA algorithms
+pbkdf2 = { version = "0.12.2", features = ["parallel"] } # Password hashing with parallelism
+rand = "0.8.5"                  # RNG for crypto operations
+aes-gcm = "0.10.3"              # AES encryption
+tokio = { version = "1.34.0", features = ["rt", "rt-multi-thread", "macros"] } # Async runtime
+
+# Performance optimizations
+rayon = "1.8.0"                 # Parallel iterations
+dashmap = "5.5.3"               # Thread-safe hashmaps
+lru = "0.12.1"                  # LRU cache implementation
+
+# Error handling and logging
+thiserror = "1.0.50"
+anyhow = "1.0.75"
+log = "0.4.20"
+env_logger = "0.10.1"
+
+[features]
+# this feature is used for production builds or when `devPath` points to the filesystem
+# DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]
 

@@ -37,17 +37,7 @@ struct AppSettings {
 impl Default for WalletConfig {
     fn default() -> Self {
         Self {
-            wallets: vec![
-                WalletInfo {
-                    name: "Main Wallet".to_string(),
-                },
-                WalletInfo {
-                    name: "Trading Wallet".to_string(),
-                },
-                WalletInfo {
-                    name: "Cold Storage".to_string(),
-                },
-            ],
+            wallets: Vec::new(), // Empty wallets - will be loaded from wallet_config.json
             current_wallet: None,
             app_settings: AppSettings {
                 theme: "system".to_string(),
@@ -97,7 +87,21 @@ fn load_config() -> Result<(WalletConfig, PathBuf), Box<dyn Error>> {
         Ok((config, config_path))
     } else {
         // Create a default config if it doesn't exist
-        let default_config = WalletConfig::default();
+        let default_config = WalletConfig {
+            wallets: vec![
+                WalletInfo { name: "Main Wallet".to_string() },
+                WalletInfo { name: "Trading Wallet".to_string() },
+                WalletInfo { name: "Cold Storage".to_string() },
+            ],
+            current_wallet: None,
+            app_settings: AppSettings {
+                theme: "system".to_string(),
+                auto_backup: true,
+                notifications_enabled: true,
+            },
+        };
+        
+        // Save the config
         let config_json = serde_json::to_string_pretty(&default_config)?;
         fs::write(&config_path, config_json)?;
         Ok((default_config, config_path))
