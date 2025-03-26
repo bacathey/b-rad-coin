@@ -257,6 +257,27 @@ fn main() -> Result<(), Box<dyn Error>> {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            println!("Attempting to launch second instance");
+            
+            // Focus the main window when a second instance tries to launch
+            let window = app.get_webview_window("main");
+            
+            if let Some(window) = window {
+                // Focus the window
+                let _ = window.set_focus();
+                
+                // Restore if minimized
+                if let Ok(false) = window.is_visible() {
+                    let _ = window.show();
+                }
+                
+                // Unminimize if needed
+                if let Ok(true) = window.is_minimized() {
+                    let _ = window.unminimize();
+                }
+            }
+        }))
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             greet,
