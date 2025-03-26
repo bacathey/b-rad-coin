@@ -14,7 +14,13 @@
       {
         "title": "B-Rad Coin - Full Node",
         "width": 1250,
-        "height": 800
+        "height": 800,
+        "maxWidth": 2000,
+        "maxHeight": 1280,
+        "minWidth": 550,
+        "minHeight": 500,
+        "resizable": true,
+        "visible": true
       }
     ],
     "security": {
