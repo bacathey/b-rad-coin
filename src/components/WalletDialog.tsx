@@ -19,18 +19,30 @@ import {
   TextField,
   Alert,
   Fade,
-  Grow
+  Grow,
+  ListItemIcon,
+  FormControlLabel,
+  Checkbox
 } from '@mui/material';
-import { invoke } from '@tauri-apps/api/core';
 import { useWallet } from '../context/WalletContext';
+import { getWalletDetails } from '../lib/wallet';
+import { invoke } from '@tauri-apps/api/core';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import AddIcon from '@mui/icons-material/Add';
+import LockIcon from '@mui/icons-material/Lock';
+import LockOpenIcon from '@mui/icons-material/LockOpen';
 
 // Interface for tab panel props
 interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
   value: number;
+}
+
+// Interface for wallet details
+interface WalletDetails {
+  name: string;
+  secured: boolean;
 }
 
 function TabPanel(props: TabPanelProps) {
@@ -67,11 +79,12 @@ function TabPanel(props: TabPanelProps) {
 export default function WalletDialog() {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
-  const { isWalletOpen, setIsWalletOpen, setCurrentWallet } = useWallet();
+  const { isWalletOpen, setIsWalletOpen, setCurrentWallet, refreshWalletDetails } = useWallet();
   
   // Dialog state
   const [selectedWallet, setSelectedWallet] = useState('');
-  const [availableWallets, setAvailableWallets] = useState<string[]>([]);
+  const [walletsList, setWalletsList] = useState<WalletDetails[]>([]);
+  const [isSelectedWalletSecured, setIsSelectedWalletSecured] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isGettingWallets, setIsGettingWallets] = useState(true);
   
@@ -79,23 +92,27 @@ export default function WalletDialog() {
   const [tabValue, setTabValue] = useState(0);
   const [newWalletName, setNewWalletName] = useState('');
   const [walletPassword, setWalletPassword] = useState('');
+  const [openWalletPassword, setOpenWalletPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [usePasswordProtection, setUsePasswordProtection] = useState(false);
 
   // Fetch available wallets when the component mounts or when isWalletOpen changes
   useEffect(() => {
     async function fetchWallets() {
       try {
-        const wallets = await invoke<string[]>('get_available_wallets');
-        setAvailableWallets(wallets);
+        setIsGettingWallets(true);
+        const wallets = await getWalletDetails();
+        setWalletsList(wallets);
         
         // If we have wallets, select the first one by default for better UX
         if (wallets.length > 0 && !selectedWallet) {
-          setSelectedWallet(wallets[0]);
+          setSelectedWallet(wallets[0].name);
+          setIsSelectedWalletSecured(wallets[0].secured);
         }
       } catch (error) {
         console.error('Failed to fetch available wallets:', error);
-        setAvailableWallets([]);
+        setWalletsList([]);
       } finally {
         setIsGettingWallets(false);
       }
@@ -108,7 +125,17 @@ export default function WalletDialog() {
   }, [isWalletOpen, selectedWallet]);
 
   const handleWalletChange = (event: SelectChangeEvent) => {
-    setSelectedWallet(event.target.value as string);
+    const walletName = event.target.value as string;
+    setSelectedWallet(walletName);
+    
+    // Find if the selected wallet is secured
+    const walletInfo = walletsList.find(w => w.name === walletName);
+    setIsSelectedWalletSecured(walletInfo?.secured || false);
+    
+    // Clear password if switching to an unsecured wallet
+    if (walletInfo && !walletInfo.secured) {
+      setOpenWalletPassword('');
+    }
   };
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
@@ -118,19 +145,37 @@ export default function WalletDialog() {
 
   const handleOpenWallet = async () => {
     if (!selectedWallet) return;
+    
+    // Clear any previous error messages
+    setErrorMessage('');
+    
+    // Check if the wallet is secured and validate password if needed
+    if (isSelectedWalletSecured && !openWalletPassword) {
+      setErrorMessage('Please enter your password for this secured wallet');
+      return;
+    }
 
     setIsLoading(true);
     try {
-      const result = await invoke<boolean>('open_wallet', { walletName: selectedWallet });
+      // Pass wallet name and password (only if it's a secured wallet)
+      const result = await invoke('open_wallet', { 
+        walletName: selectedWallet,
+        password: isSelectedWalletSecured ? openWalletPassword : undefined
+      });
+      
       if (result) {
         setCurrentWallet({
-          name: selectedWallet
+          name: selectedWallet,
+          secured: isSelectedWalletSecured
         });
         setIsWalletOpen(true);
+        await refreshWalletDetails(); // Refresh wallet details in context
+      } else {
+        setErrorMessage('Failed to open wallet');
       }
     } catch (error) {
       console.error('Failed to open wallet:', error);
-      setErrorMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setErrorMessage(`Error: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsLoading(false);
     }
@@ -144,23 +189,34 @@ export default function WalletDialog() {
       return;
     }
     
-    if (walletPassword !== confirmPassword) {
-      setErrorMessage('Passwords do not match');
-      return;
+    // Only validate passwords if using password protection
+    if (usePasswordProtection) {
+      if (!walletPassword) {
+        setErrorMessage('Please enter a password');
+        return;
+      }
+      
+      if (walletPassword !== confirmPassword) {
+        setErrorMessage('Passwords do not match');
+        return;
+      }
     }
     
     setIsLoading(true);
     try {
-      const result = await invoke<boolean>('create_wallet', { 
+      const result = await invoke('create_wallet', { 
         walletName: newWalletName, 
-        password: walletPassword 
+        password: walletPassword,
+        usePassword: usePasswordProtection
       });
       
       if (result) {
         setCurrentWallet({
-          name: newWalletName
+          name: newWalletName,
+          secured: usePasswordProtection
         });
         setIsWalletOpen(true);
+        await refreshWalletDetails(); // Refresh wallet details in context
       } else {
         setErrorMessage('Failed to create wallet');
       }
@@ -169,6 +225,16 @@ export default function WalletDialog() {
       setErrorMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handlePasswordProtectionToggle = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setUsePasswordProtection(event.target.checked);
+    
+    // Reset password fields when toggling off password protection
+    if (!event.target.checked) {
+      setWalletPassword('');
+      setConfirmPassword('');
     }
   };
 
@@ -259,6 +325,13 @@ export default function WalletDialog() {
           position: 'relative',
           overflow: 'hidden'
         }}>
+          {/* Error message for both tabs */}
+          {errorMessage && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {errorMessage}
+            </Alert>
+          )}
+          
           {/* Open Wallet Tab */}
           <TabPanel value={tabValue} index={0}>
             <Typography variant="body1" sx={{ mb: 3 }}>
@@ -279,13 +352,34 @@ export default function WalletDialog() {
                   label="Select Wallet"
                   onChange={handleWalletChange}
                 >
-                  {availableWallets.map((wallet) => (
-                    <MenuItem key={wallet} value={wallet}>
-                      {wallet}
+                  {walletsList.map((wallet) => (
+                    <MenuItem key={wallet.name} value={wallet.name}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                        <ListItemIcon>
+                          {wallet.secured ? 
+                            <LockIcon color="warning" fontSize="small" /> : 
+                            <LockOpenIcon color="success" fontSize="small" />}
+                        </ListItemIcon>
+                        {wallet.name}
+                      </Box>
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
+            )}
+            
+            {/* Only show password field for secured wallets */}
+            {isSelectedWalletSecured && (
+              <TextField
+                fullWidth
+                label="Password"
+                type="password"
+                variant="outlined"
+                value={openWalletPassword}
+                onChange={(e) => setOpenWalletPassword(e.target.value)}
+                sx={{ mb: 2 }}
+                required
+              />
             )}
             
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
@@ -293,7 +387,7 @@ export default function WalletDialog() {
                 variant="contained"
                 color="primary"
                 onClick={handleOpenWallet}
-                disabled={!selectedWallet || isLoading}
+                disabled={!selectedWallet || isLoading || (isSelectedWalletSecured && !openWalletPassword)}
                 startIcon={isLoading && tabValue === 0 ? <CircularProgress size={20} /> : null}
                 sx={{ 
                   minWidth: '120px',
@@ -312,12 +406,6 @@ export default function WalletDialog() {
               Create a new wallet:
             </Typography>
             
-            {errorMessage && (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                {errorMessage}
-              </Alert>
-            )}
-            
             <TextField
               fullWidth
               label="Wallet Name"
@@ -328,36 +416,62 @@ export default function WalletDialog() {
               required
             />
             
-            <TextField
-              fullWidth
-              label="Password"
-              type="password"
-              variant="outlined"
-              value={walletPassword}
-              onChange={(e) => setWalletPassword(e.target.value)}
+            <FormControlLabel
+              control={(
+                <Checkbox
+                  checked={usePasswordProtection}
+                  onChange={handlePasswordProtectionToggle}
+                  color="primary"
+                />
+              )}
+              label={(
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  {usePasswordProtection ? 
+                    <LockIcon color="warning" fontSize="small" sx={{ mr: 1 }} /> : 
+                    <LockOpenIcon color="success" fontSize="small" sx={{ mr: 1 }} />
+                  }
+                  <Typography>
+                    Password protect this wallet
+                  </Typography>
+                </Box>
+              )}
               sx={{ mb: 2 }}
-              required
             />
             
-            <TextField
-              fullWidth
-              label="Confirm Password"
-              type="password"
-              variant="outlined"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              sx={{ mb: 2 }}
-              required
-              error={walletPassword !== confirmPassword && confirmPassword !== ''}
-              helperText={walletPassword !== confirmPassword && confirmPassword !== '' ? 'Passwords do not match' : ''}
-            />
+            {usePasswordProtection && (
+              <>
+                <TextField
+                  fullWidth
+                  label="Password"
+                  type="password"
+                  variant="outlined"
+                  value={walletPassword}
+                  onChange={(e) => setWalletPassword(e.target.value)}
+                  sx={{ mb: 2 }}
+                  required={usePasswordProtection}
+                />
+                
+                <TextField
+                  fullWidth
+                  label="Confirm Password"
+                  type="password"
+                  variant="outlined"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  sx={{ mb: 2 }}
+                  required={usePasswordProtection}
+                  error={walletPassword !== confirmPassword && confirmPassword !== ''}
+                  helperText={walletPassword !== confirmPassword && confirmPassword !== '' ? 'Passwords do not match' : ''}
+                />
+              </>
+            )}
             
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
               <Button 
                 variant="contained"
                 color="primary"
                 onClick={handleCreateWallet}
-                disabled={isLoading}
+                disabled={isLoading || !newWalletName || (usePasswordProtection && (!walletPassword || walletPassword !== confirmPassword))}
                 startIcon={isLoading && tabValue === 1 ? <CircularProgress size={20} /> : <AddIcon />}
                 sx={{ 
                   minWidth: '140px',

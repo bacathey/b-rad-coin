@@ -10,6 +10,8 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import ExitToAppIcon from '@mui/icons-material/ExitToApp';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
+import LockIcon from '@mui/icons-material/Lock';
+import LockOpenIcon from '@mui/icons-material/LockOpen';
 import bitcoinLogo from '../assets/bitcoin.svg';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
@@ -27,7 +29,7 @@ interface AppHeaderProps {
 export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }: AppHeaderProps) {
   const navigate = useNavigate();
   const appVersion = packageJson.version;
-  const { isWalletOpen, setIsWalletOpen, currentWallet, setCurrentWallet } = useWallet();
+  const { isWalletOpen, setIsWalletOpen, currentWallet, setCurrentWallet, isWalletSecured } = useWallet();
 
   // Function to handle closing the wallet
   const handleCloseWallet = async () => {
@@ -70,8 +72,24 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
           }}
         />
         
-        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-          {currentWallet ? currentWallet.name : 'B-Rad Coin'}
+        <Typography variant="h6" component="div" sx={{ flexGrow: 1, display: 'flex', alignItems: 'center' }}>
+          {currentWallet ? (
+            <>
+              {currentWallet.name}
+              {/* Show lock icon based on wallet security status */}
+              {isWalletOpen && (
+                <Tooltip title={isWalletSecured ? "Password Protected" : "No Password Protection"}>
+                  <Box component="span" sx={{ display: 'inline-flex', ml: 1 }}>
+                    {isWalletSecured ? (
+                      <LockIcon color="warning" fontSize="small" />
+                    ) : (
+                      <LockOpenIcon color="success" fontSize="small" />
+                    )}
+                  </Box>
+                </Tooltip>
+              )}
+            </>
+          ) : 'B-Rad Coin'}
         </Typography>
         
         {/* Version number */}
