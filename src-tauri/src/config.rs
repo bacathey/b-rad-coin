@@ -44,7 +44,7 @@ impl Default for Config {
         debug!("Creating default configuration");
         Self {
             wallets: vec![
-                WalletInfo { 
+/*                 WalletInfo { 
                     name: "Main Wallet".to_string(), 
                     path: "wallets/main".to_string(), 
                     secured: false,
@@ -58,7 +58,7 @@ impl Default for Config {
                     name: "Cold Storage".to_string(), 
                     path: "wallets/cold-storage".to_string(), 
                     secured: false,
-                },
+                }, */
             ],
             app_settings: AppSettings::default(),
         }
