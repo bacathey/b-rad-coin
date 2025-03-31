@@ -111,13 +111,18 @@ export default function OpenCreateWalletDialog() {
         setWalletsList(wallets);
         
         // If we have wallets, select the first one by default for better UX
-        if (wallets.length > 0 && !selectedWallet) {
+        if (wallets.length > 0) {
           setSelectedWallet(wallets[0].name);
           setIsSelectedWalletSecured(wallets[0].secured);
+          setTabValue(0); // Set to Open Wallet tab when wallets exist
+        } else if (wallets.length === 0) {
+          // If no wallets exist, set to Create Wallet tab
+          setTabValue(1);
         }
       } catch (error) {
         console.error('Failed to fetch available wallets:', error);
         setWalletsList([]);
+        setTabValue(1); // Set to Create Wallet tab on error
       } finally {
         setIsGettingWallets(false);
       }
@@ -127,7 +132,7 @@ export default function OpenCreateWalletDialog() {
     if (!isWalletOpen) {
       fetchWallets();
     }
-  }, [isWalletOpen, selectedWallet]);
+  }, [isWalletOpen]); // Remove selectedWallet dependency to avoid loop
 
   const handleWalletChange = (event: SelectChangeEvent) => {
     const walletName = event.target.value as string;
@@ -347,75 +352,101 @@ export default function OpenCreateWalletDialog() {
           
           {/* Open Wallet Tab */}
           <TabPanel value={tabValue} index={0}>
-            <Typography variant="body1" sx={{ mb: 3 }}>
-              Please select a wallet to open:
-            </Typography>
-            
-            {isGettingWallets ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-                <CircularProgress />
-              </Box>
+            {walletsList.length > 0 ? (
+              <>
+                <Typography variant="body1" sx={{ mb: 3 }}>
+                  Please select a wallet to open:
+                </Typography>
+                
+                {isGettingWallets ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                    <CircularProgress />
+                  </Box>
+                ) : (
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel id="wallet-select-label">Select Wallet</InputLabel>
+                    <Select
+                      labelId="wallet-select-label"
+                      id="wallet-select"
+                      value={selectedWallet}
+                      label="Select Wallet"
+                      onChange={handleWalletChange}
+                    >
+                      {walletsList.map((wallet) => (
+                        <MenuItem key={wallet.name} value={wallet.name}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                            <ListItemIcon sx={{ minWidth: 36 }}>
+                              {wallet.secured ? 
+                                <LockIcon color="warning" fontSize="small" /> : 
+                                <LockOpenIcon color="success" fontSize="small" />
+                              }
+                            </ListItemIcon>
+                            {wallet.name}
+                          </Box>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
+                
+                {/* Only show password field for secured wallets */}
+                {isSelectedWalletSecured && (
+                  <TextField
+                    fullWidth
+                    label="Password"
+                    type="password"
+                    variant="outlined"
+                    value={openWalletPassword}
+                    onChange={(e) => setOpenWalletPassword(e.target.value)}
+                    sx={{ mb: 2 }}
+                    required
+                  />
+                )}
+                
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                  <Button 
+                    variant="contained"
+                    color="primary"
+                    onClick={handleOpenWallet}
+                    disabled={!selectedWallet || isLoading || (isSelectedWalletSecured && !openWalletPassword)}
+                    startIcon={isLoading && tabValue === 0 ? <CircularProgress size={20} /> : null}
+                    sx={{ 
+                      minWidth: '120px',
+                      textTransform: 'none',
+                      fontWeight: 600
+                    }}
+                  >
+                    {isLoading && tabValue === 0 ? 'Opening...' : 'Open Wallet'}
+                  </Button>
+                </Box>
+              </>
             ) : (
-              <FormControl fullWidth sx={{ mb: 2 }}>
-                <InputLabel id="wallet-select-label">Select Wallet</InputLabel>
-                <Select
-                  labelId="wallet-select-label"
-                  id="wallet-select"
-                  value={selectedWallet}
-                  label="Select Wallet"
-                  onChange={handleWalletChange}
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Typography variant="body1" sx={{ mb: 2 }}>
+                  No wallets found.
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Please switch to the "Create New" tab to create your first wallet.
+                </Typography>
+                <Button 
+                  sx={{ mt: 3 }}
+                  onClick={() => setTabValue(1)}
+                  variant="outlined"
                 >
-                  {walletsList.map((wallet) => (
-                    <MenuItem key={wallet.name} value={wallet.name}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                        <ListItemIcon sx={{ minWidth: 36 }}>
-                          {wallet.secured ? 
-                            <LockIcon color="warning" fontSize="small" /> : 
-                            <LockOpenIcon color="success" fontSize="small" />
-                          }
-                        </ListItemIcon>
-                        {wallet.name}
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+                  Create New Wallet
+                </Button>
+              </Box>
             )}
-            
-            {/* Only show password field for secured wallets */}
-            {isSelectedWalletSecured && (
-              <TextField
-                fullWidth
-                label="Password"
-                type="password"
-                variant="outlined"
-                value={openWalletPassword}
-                onChange={(e) => setOpenWalletPassword(e.target.value)}
-                sx={{ mb: 2 }}
-                required
-              />
-            )}
-            
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-              <Button 
-                variant="contained"
-                color="primary"
-                onClick={handleOpenWallet}
-                disabled={!selectedWallet || isLoading || (isSelectedWalletSecured && !openWalletPassword)}
-                startIcon={isLoading && tabValue === 0 ? <CircularProgress size={20} /> : null}
-                sx={{ 
-                  minWidth: '120px',
-                  textTransform: 'none',
-                  fontWeight: 600
-                }}
-              >
-                {isLoading && tabValue === 0 ? 'Opening...' : 'Open Wallet'}
-              </Button>
-            </Box>
           </TabPanel>
           
           {/* Create New Wallet Tab */}
           <TabPanel value={tabValue} index={1}>
+            {walletsList.length === 0 && (
+              <Alert severity="info" sx={{ mb: 3 }}>
+                No wallets found. Create your first wallet below.
+              </Alert>
+            )}
+            
             <Typography variant="body1" sx={{ mb: 3 }}>
               Create a new wallet:
             </Typography>

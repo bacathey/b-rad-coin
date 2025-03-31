@@ -278,4 +278,35 @@ impl ConfigManager {
         debug!("Configuration file path: {}", config_path.display());
         Ok(config_path)
     }
+    
+    /// Update wallet security status
+    pub async fn update_wallet_security(&self, wallet_name: &str, secured: bool) -> Result<(), ConfigError> {
+        info!("Updating wallet security status for wallet: {}", wallet_name);
+        
+        // Clone the config first to avoid holding the mutex guard across an await point
+        let config_clone;
+        {
+            let mut config = self.config.lock().unwrap();
+            
+            // Find the wallet to update
+            if let Some(wallet) = config.wallets.iter_mut().find(|w| w.name == wallet_name) {
+                // Update the secured flag
+                wallet.secured = secured;
+                config_clone = config.clone();
+            } else {
+                error!("Wallet '{}' not found in configuration", wallet_name);
+                return Err(ConfigError::Generic(format!("Wallet '{}' not found", wallet_name)));
+            }
+        } // Mutex guard is dropped here
+        
+        // Now we can await without holding the mutex guard
+        self.save_config_to_path(&config_clone, &self.config_path).await?;
+        
+        // Update the stored config
+        let mut config = self.config.lock().unwrap();
+        *config = config_clone;
+        
+        info!("Wallet security status updated successfully");
+        Ok(())
+    }
 }

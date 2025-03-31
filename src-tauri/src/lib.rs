@@ -182,6 +182,10 @@ async fn initialize_app() -> AppResult<AppState> {
     let wallet_manager = WalletManager::new(config_manager.get_config().clone());
     let async_wallet_manager = AsyncWalletManager::new(wallet_manager);
     
+    // Connect the wallet manager to the config manager for persistence
+    debug!("Connecting wallet manager to config manager for persistence");
+    async_wallet_manager.set_config_manager(config_manager.clone()).await;
+    
     info!("Application components initialized successfully");
     
     // Return the application state with all components

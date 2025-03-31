@@ -1,4 +1,4 @@
-use crate::config::{Config, WalletInfo};
+use crate::config::{Config, WalletInfo, ConfigManager};
 use crate::errors::WalletError;
 use log::{info, error, debug};
 use std::sync::Arc;
@@ -15,6 +15,7 @@ pub struct Wallet {
 /// WalletManager handles all wallet operations
 pub struct WalletManager {
     config: Config,
+    config_manager: Option<Arc<ConfigManager>>,
     current_wallet: Option<Wallet>, // This state is not persisted
 }
 
@@ -24,8 +25,15 @@ impl WalletManager {
         info!("Initializing wallet manager");
         WalletManager {
             config,
+            config_manager: None,
             current_wallet: None,
         }
+    }
+    
+    /// Set the ConfigManager to enable persistence
+    pub fn set_config_manager(&mut self, config_manager: Arc<ConfigManager>) {
+        debug!("Setting ConfigManager for wallet persistence");
+        self.config_manager = Some(config_manager);
     }
     
     /// Get a list of available wallets
@@ -133,26 +141,38 @@ impl WalletManager {
         let wallet_path = format!("wallets/{}", name);
         debug!("Creating wallet with path: {}", wallet_path);
         
-        // Add to config
-        self.config.wallets.push(WalletInfo {
+        // Create wallet info object
+        let wallet_info = WalletInfo {
             name: name.to_string(),
             path: wallet_path,
             secured: is_secured,
-        });
+        };
+        
+        // Add to in-memory config
+        self.config.wallets.push(wallet_info.clone());
+        
+        // Persist to disk if we have a ConfigManager
+        if let Some(config_manager) = &self.config_manager {
+            // Use tokio block_in_place since we're in a sync function but need to call async
+            match tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    config_manager.add_wallet(wallet_info).await
+                })
+            }) {
+                Ok(_) => {
+                    info!("Wallet configuration persisted to disk: {}", name);
+                },
+                Err(e) => {
+                    error!("Failed to persist wallet configuration: {}", e);
+                    // Continue anyway as the wallet is created in memory
+                }
+            }
+        } else {
+            debug!("No ConfigManager available, wallet will not persist across sessions");
+        }
         
         info!("Successfully created wallet: {}", name);
         Ok(())
-    }
-    
-    /// Get current wallet security status
-    pub fn is_current_wallet_secured(&self) -> Option<bool> {
-        if let Some(wallet) = &self.current_wallet {
-            // Find the wallet in config to get its secured status
-            if let Some(wallet_info) = self.config.wallets.iter().find(|w| w.name == wallet.name) {
-                return Some(wallet_info.secured);
-            }
-        }
-        None
     }
     
     /// Update a wallet to be secured with a password
@@ -176,12 +196,32 @@ impl WalletManager {
                     return Err(WalletError::Generic(format!("Wallet '{}' is already secured", name)));
                 }
                 
-                // Update the wallet to be secured
+                // Update the wallet to be secured in memory
                 debug!("Updating wallet '{}' to be secured", name);
                 self.config.wallets[index].secured = true;
                 
+                // Persist changes to disk if we have a ConfigManager
+                if let Some(config_manager) = &self.config_manager {
+                    // Use tokio block_in_place since we're in a sync function but need to call async
+                    match tokio::task::block_in_place(|| {
+                        tokio::runtime::Handle::current().block_on(async {
+                            // Use the new update_wallet_security method
+                            config_manager.update_wallet_security(name, true).await
+                        })
+                    }) {
+                        Ok(_) => {
+                            info!("Updated wallet security status persisted to disk: {}", name);
+                        },
+                        Err(e) => {
+                            error!("Failed to persist wallet security status: {}", e);
+                            // Continue anyway as the status is updated in memory
+                        }
+                    }
+                } else {
+                    debug!("No ConfigManager available, wallet security status will not persist across sessions");
+                }
+                
                 // In a real implementation, we would encrypt the wallet data here
-                // For now, we just change the flag
                 
                 info!("Successfully secured wallet: {}", name);
                 Ok(())
@@ -191,6 +231,17 @@ impl WalletManager {
                 Err(WalletError::NotFound(name.to_string()))
             }
         }
+    }
+    
+    /// Get current wallet security status
+    pub fn is_current_wallet_secured(&self) -> Option<bool> {
+        if let Some(wallet) = &self.current_wallet {
+            // Find the wallet in config to get its secured status
+            if let Some(wallet_info) = self.config.wallets.iter().find(|w| w.name == wallet.name) {
+                return Some(wallet_info.secured);
+            }
+        }
+        None
     }
     
     /// Shutdown the wallet manager
@@ -218,6 +269,12 @@ impl AsyncWalletManager {
         AsyncWalletManager {
             inner: Arc::new(Mutex::new(wallet_manager)),
         }
+    }
+    
+    /// Set the ConfigManager for persistence
+    pub async fn set_config_manager(&self, config_manager: Arc<ConfigManager>) {
+        let mut manager = self.inner.lock().await;
+        manager.set_config_manager(config_manager);
     }
     
     /// Get a reference to the inner wallet manager
