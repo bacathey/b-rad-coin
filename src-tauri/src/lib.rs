@@ -1,7 +1,11 @@
 // B-Rad Coin Application
 use log::{LevelFilter, info, error, debug};
 use std::sync::Arc;
-use tauri::{Manager, generate_context, generate_handler, Emitter};
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::{Manager, generate_context, generate_handler};
+
+// Add static flag to track shutdown state
+static SHUTDOWN_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
 // Import modules
 pub mod errors;
@@ -56,7 +60,8 @@ pub fn run() {
                         create_wallet,
                         get_current_wallet_name,
                         update_app_settings,
-                        get_app_settings
+                        get_app_settings,
+                        shutdown_application
                     ])
                     .setup(|_app| {
                         info!("Setting up application");
@@ -66,59 +71,62 @@ pub fn run() {
                         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                             debug!("Window close requested");
                             
-
-                            // Prevent the window from closing immediately
-                            api.prevent_close();
-                            
-
-                            // Clone what we need from the window
-                            let window_label = window.label().to_string();
-                            let app_handle = window.app_handle().clone();
-                            
-
-                            // Spawn a new async task to handle the shutdown sequence
-                            tokio::spawn(async move {
-                                info!("Starting application shutdown sequence");
+                            // Only proceed if shutdown is not already in progress
+                            if !SHUTDOWN_IN_PROGRESS.load(Ordering::SeqCst) {
+                                // Get the app handle to initiate shutdown
+                                let app_handle = window.app_handle().clone();
                                 
-
-                                // Get the wallet manager and close any open wallet
-                                if let Some(wallet_manager) = app_handle.try_state::<AsyncWalletManager>() {
-                                    match wallet_manager.shutdown().await {
-                                        Ok(_) => info!("Wallet manager shutdown completed successfully"),
-                                        Err(e) => error!("Wallet manager shutdown error: {}", e),
+                                // Use our shutdown command directly instead of duplicating code
+                                tokio::spawn(async move {
+                                    // This will handle all the shutdown steps properly
+                                    match commands::shutdown_application(app_handle).await {
+                                        Ok(_) => debug!("Shutdown initiated successfully from window close event"),
+                                        Err(e) => error!("Failed to initiate shutdown: {}", e),
                                     }
-                                }
+                                });
                                 
-
-                                // Log application shutdown
-                                logging::log_app_shutdown();
-                                
-
-                                // Get the main window again and emit the event
-                                if let Some(main_window) = app_handle.get_webview_window(&window_label) {
-                                    // Send shutdown complete event
-                                    let _ = main_window.emit("app-shutdown-complete", ());
-                                }
-                                
-
-                                // Exit the application
-                                std::thread::sleep(std::time::Duration::from_millis(500));
-                                app_handle.exit(0);
-                            });
+                                // Prevent immediate close, our shutdown sequence will handle it
+                                api.prevent_close();
+                            } else {
+                                debug!("Shutdown already in progress, allowing close to proceed");
+                                // Do not prevent close if shutdown is already in progress
+                            }
                         }
                     })
                     .build(generate_context!())
                     .expect("Error while building tauri application");
                 
                 // Run the application
-                app.run(|_app_handle, event| {
+                app.run(|app_handle, event| {
                     match event {
                         tauri::RunEvent::Exit => {
                             info!("Application exited cleanly");
                         },
                         tauri::RunEvent::ExitRequested { api, .. } => {
-                            debug!("Application exit requested");
-                            api.prevent_exit();
+                            debug!("Application exit requested via system event");
+                            
+
+                            // Only proceed if shutdown is not already in progress
+                            if !SHUTDOWN_IN_PROGRESS.load(Ordering::SeqCst) {
+                                // Prevent immediate exit
+                                api.prevent_exit();
+                                
+
+                                // Get a clone of the app handle to initiate shutdown
+                                let handle = app_handle.clone();
+                                
+
+                                // Initiate proper shutdown sequence
+                                tokio::spawn(async move {
+                                    match commands::shutdown_application(handle).await {
+                                        Ok(_) => debug!("Shutdown initiated successfully from exit request"),
+                                        Err(e) => error!("Failed to initiate shutdown: {}", e),
+                                    }
+                                });
+                            } else {
+                                debug!("Shutdown already in progress, allowing exit to proceed");
+                                // Allow the exit to proceed if shutdown is already in progress
+                            }
                         },
                         _ => {}
                     }

@@ -1,9 +1,10 @@
-use tauri::{State, command};
+use tauri::{State, command, Manager};
+use tauri::Emitter;
 use log::{info, error, debug};
+use crate::logging;
 
 use crate::wallet_manager::AsyncWalletManager;
 use crate::config::{AppSettings, ConfigManager};
-// AsyncSecurityManager is used in open_wallet command
 use crate::security::AsyncSecurityManager;
 
 /// Response type for commands with proper error handling
@@ -213,23 +214,40 @@ pub async fn open_wallet(
 ) -> CommandResult<bool> {
     info!("Command: open_wallet for wallet: {}", wallet_name);
     
-    // Get the wallet to check if it's secured
-    let manager = wallet_manager.get_manager().await;
-    let wallet_info = manager.find_wallet_by_name(&wallet_name)
-        .ok_or_else(|| format!("Wallet '{}' not found", wallet_name))?;
+    // First, determine if the wallet exists and if it's secured
+    let is_wallet_secured = {
+        let manager = wallet_manager.get_manager().await;
+        match manager.find_wallet_by_name(&wallet_name) {
+            Some(info) => {
+                debug!("Found wallet info for '{}', secured: {}", wallet_name, info.secured);
+                info.secured
+            },
+            None => {
+                error!("Wallet '{}' not found", wallet_name);
+                return Err(format!("Wallet '{}' not found", wallet_name));
+            }
+        }
+    }; // Release the mutex lock here
     
-    if wallet_info.secured {
-        // If wallet is secured, password is required
+    // Handle secured vs unsecured wallets separately
+    if is_wallet_secured {
+        // For secured wallets, validate the password
         let password = match password {
             Some(pwd) if !pwd.is_empty() => pwd,
-            _ => return Err("Password is required for this secured wallet".to_string())
+            _ => {
+                error!("Password is required for secured wallet '{}'", wallet_name);
+                return Err("Password is required for this secured wallet".to_string());
+            }
         };
         
-        // Authenticate with security manager
+        // Authenticate with security manager first
         let mut sec_manager = security_manager.get_manager().await;
         match sec_manager.authenticate(&password) {
             Ok(_) => {
-                // Authentication successful, attempt to open wallet
+                debug!("Authentication succeeded for secured wallet: {}", wallet_name);
+                drop(sec_manager); // Explicitly release security manager lock
+                
+                // Now open the wallet with the validated password
                 let mut manager = wallet_manager.get_manager().await;
                 match manager.open_wallet(&wallet_name, Some(&password)) {
                     Ok(_) => {
@@ -248,7 +266,7 @@ pub async fn open_wallet(
             }
         }
     } else {
-        // For unsecured wallets, we don't need password authentication
+        // For unsecured wallets, just open directly
         let mut manager = wallet_manager.get_manager().await;
         match manager.open_wallet(&wallet_name, None) {
             Ok(_) => {
@@ -261,4 +279,47 @@ pub async fn open_wallet(
             }
         }
     }
+}
+
+/// Command to initiate application shutdown
+#[command]
+pub async fn shutdown_application(app: tauri::AppHandle) -> CommandResult<bool> {
+    info!("Command: shutdown_application received");
+    
+    // Set the shutdown flag to prevent infinite loops
+    crate::SHUTDOWN_IN_PROGRESS.store(true, std::sync::atomic::Ordering::SeqCst);
+    
+    // Run shutdown process in another thread to avoid blocking
+    let app_handle = app.clone();
+    tokio::spawn(async move {
+        info!("Starting application shutdown sequence");
+        
+        // Close any open wallet first
+        if let Some(wallet_manager) = app_handle.try_state::<AsyncWalletManager>() {
+            match wallet_manager.shutdown().await {
+                Ok(_) => info!("Wallet manager shutdown completed successfully"),
+                Err(e) => error!("Wallet manager shutdown error: {}", e),
+            }
+        }
+        
+        // Log application shutdown
+        logging::log_app_shutdown();
+        
+        // Wait a moment to ensure logs are written
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        
+        // Send shutdown complete event to frontend
+        if let Some(main_window) = app_handle.get_webview_window("main") {
+            let _ = main_window.emit("app-shutdown-complete", ());
+            
+            // Give the frontend a moment to react
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        }
+        
+        // Exit the application
+        app_handle.exit(0);
+    });
+    
+    // Return immediately, the actual shutdown happens in the background
+    Ok(true)
 }
