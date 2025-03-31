@@ -17,7 +17,7 @@ import {
 // Components
 import Sidebar from "./components/Sidebar";
 import AppHeader from "./components/AppHeader";
-import WalletDialog from "./components/WalletDialog";
+import OpenCreateWalletDialog from "./components/OpenCreateWalletDialog";
 
 // Page components
 import Account from "./pages/Account";
@@ -202,7 +202,7 @@ function App() {
             setName={setName}
             greet={greet}
           />
-          <WalletDialog />
+          <OpenCreateWalletDialog />
         </BrowserRouter>
       </ThemeProvider>
     </WalletProvider>

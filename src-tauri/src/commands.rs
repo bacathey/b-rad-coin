@@ -323,3 +323,25 @@ pub async fn shutdown_application(app: tauri::AppHandle) -> CommandResult<bool> 
     // Return immediately, the actual shutdown happens in the background
     Ok(true)
 }
+
+/// Command to secure an existing wallet with a password
+#[command]
+pub async fn secure_wallet(
+    wallet_name: String,
+    password: String,
+    wallet_manager: State<'_, AsyncWalletManager>,
+) -> CommandResult<bool> {
+    info!("Command: secure_wallet for wallet: {}", wallet_name);
+    
+    let mut manager = wallet_manager.get_manager().await;
+    match manager.secure_wallet(&wallet_name, &password) {
+        Ok(_) => {
+            info!("Successfully secured wallet: {}", wallet_name);
+            Ok(true)
+        },
+        Err(e) => {
+            error!("Failed to secure wallet: {}", e);
+            Err(format_error(e))
+        }
+    }
+}

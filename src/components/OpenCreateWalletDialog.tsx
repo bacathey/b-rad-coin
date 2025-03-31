@@ -77,7 +77,7 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
-export default function WalletDialog() {
+export default function OpenCreateWalletDialog() {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
   const { isWalletOpen, setIsWalletOpen, setCurrentWallet, refreshWalletDetails } = useWallet();

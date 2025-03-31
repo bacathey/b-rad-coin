@@ -16,6 +16,8 @@ import bitcoinLogo from '../assets/bitcoin.svg';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { invoke } from '@tauri-apps/api/core';
+import { useState } from 'react';
+import SecureWalletDialog from './SecureWalletDialog';
 
 // Import the version from package.json
 import packageJson from '../../package.json';
@@ -29,7 +31,10 @@ interface AppHeaderProps {
 export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }: AppHeaderProps) {
   const navigate = useNavigate();
   const appVersion = packageJson.version;
-  const { isWalletOpen, setIsWalletOpen, currentWallet, setCurrentWallet, isWalletSecured } = useWallet();
+  const { isWalletOpen, setIsWalletOpen, currentWallet, setCurrentWallet, isWalletSecured, refreshWalletDetails } = useWallet();
+  
+  // State for secure wallet dialog
+  const [secureDialogOpen, setSecureDialogOpen] = useState(false);
 
   // Function to handle closing the wallet
   const handleCloseWallet = async () => {
@@ -45,102 +50,130 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
     }
   };
 
+  // Function to open secure wallet dialog when clicking on unsecured lock icon
+  const handleOpenSecureDialog = () => {
+    if (currentWallet && !isWalletSecured) {
+      setSecureDialogOpen(true);
+    }
+  };
+
   return (
-    <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
-      <Toolbar>
-        <IconButton
-          color="inherit"
-          aria-label="open drawer"
-          edge="start"
-          onClick={handleDrawerToggle}
-          sx={{ mr: 2, display: { sm: 'none' } }}
-        >
-          <MenuIcon />
-        </IconButton>
-        
-        {/* Bitcoin logo */}
-        <Box
-          component="img"
-          src={bitcoinLogo}
-          alt="Bitcoin Logo"
-          sx={{
-            height: 28,
-            width: 28,
-            mr: 1.5,
-            display: 'flex',
-            alignItems: 'center'
-          }}
-        />
-        
-        <Typography variant="h6" component="div" sx={{ flexGrow: 1, display: 'flex', alignItems: 'center' }}>
-          {currentWallet ? (
-            <>
-              {currentWallet.name}
-              {/* Show lock icon based on wallet security status */}
-              {isWalletOpen && (
-                <Tooltip title={isWalletSecured ? "Password Protected" : "No Password Protection"}>
-                  <Box component="span" sx={{ display: 'inline-flex', ml: 1 }}>
-                    {isWalletSecured ? (
-                      <LockIcon color="warning" fontSize="small" />
-                    ) : (
-                      <LockOpenIcon color="success" fontSize="small" />
-                    )}
-                  </Box>
-                </Tooltip>
-              )}
-            </>
-          ) : 'B-Rad Coin'}
-        </Typography>
-        
-        {/* Version number */}
-        <Typography 
-          variant="caption" 
-          sx={{ 
-            mr: 2, 
-            opacity: 0.8,
-            fontSize: '0.75rem',
-            fontWeight: 500,
-            display: 'flex',
-            alignItems: 'center'
-          }}
-        >
-          v{appVersion}
-        </Typography>
-        
-        <Tooltip title={mode === 'dark' ? "Light mode" : "Dark mode"}>
-          <IconButton 
-            sx={{ mr: 1 }} 
-            onClick={toggleColorMode} 
+    <>
+      <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
+        <Toolbar>
+          <IconButton
             color="inherit"
-            aria-label="toggle theme"
+            aria-label="open drawer"
+            edge="start"
+            onClick={handleDrawerToggle}
+            sx={{ mr: 2, display: { sm: 'none' } }}
           >
-            {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
+            <MenuIcon />
           </IconButton>
-        </Tooltip>
-        <Tooltip title="Settings">
-          <IconButton 
-            color="inherit"
-            aria-label="settings"
-            onClick={() => navigate('/settings')}
-            sx={{ mr: 1 }}
+          
+          {/* Bitcoin logo */}
+          <Box
+            component="img"
+            src={bitcoinLogo}
+            alt="Bitcoin Logo"
+            sx={{
+              height: 28,
+              width: 28,
+              mr: 1.5,
+              display: 'flex',
+              alignItems: 'center'
+            }}
+          />
+          
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1, display: 'flex', alignItems: 'center' }}>
+            {currentWallet ? (
+              <>
+                {currentWallet.name}
+                {/* Show lock icon based on wallet security status */}
+                {isWalletOpen && (
+                  isWalletSecured ? (
+                    <Tooltip title="This wallet is secured">
+                      <Box component="span" sx={{ display: 'inline-flex', ml: 1 }}>
+                        <LockIcon color="warning" fontSize="small" />
+                      </Box>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip title="Click to add password protection">
+                      <IconButton
+                        size="small"
+                        color="success"
+                        onClick={handleOpenSecureDialog}
+                        sx={{ ml: 0.5, p: 0.5 }}
+                      >
+                        <LockOpenIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )
+                )}
+              </>
+            ) : 'B-Rad Coin'}
+          </Typography>
+          
+          {/* Version number */}
+          <Typography 
+            variant="caption" 
+            sx={{ 
+              mr: 2, 
+              opacity: 0.8,
+              fontSize: '0.75rem',
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center'
+            }}
           >
-            <SettingsIcon />
-          </IconButton>
-        </Tooltip>
-        
-        {/* Show close wallet button when a wallet is open */}
-        {isWalletOpen && (
-          <Tooltip title="Close Wallet">
+            v{appVersion}
+          </Typography>
+          
+          <Tooltip title={mode === 'dark' ? "Light mode" : "Dark mode"}>
             <IconButton 
+              sx={{ mr: 1 }} 
+              onClick={toggleColorMode} 
               color="inherit"
-              aria-label="close wallet"
-              onClick={handleCloseWallet}
+              aria-label="toggle theme"
             >
-              <ExitToAppIcon />
+              {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
             </IconButton>
           </Tooltip>
-        )}
-      </Toolbar>
-    </AppBar>
+          <Tooltip title="Settings">
+            <IconButton 
+              color="inherit"
+              aria-label="settings"
+              onClick={() => navigate('/settings')}
+              sx={{ mr: 1 }}
+            >
+              <SettingsIcon />
+            </IconButton>
+          </Tooltip>
+          
+          {/* Show close wallet button when a wallet is open */}
+          {isWalletOpen && (
+            <Tooltip title="Close Wallet">
+              <IconButton 
+                color="inherit"
+                aria-label="close wallet"
+                onClick={handleCloseWallet}
+              >
+                <ExitToAppIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Toolbar>
+      </AppBar>
+      
+      {/* Secure Wallet Dialog */}
+      {currentWallet && (
+        <SecureWalletDialog
+          open={secureDialogOpen}
+          onClose={() => setSecureDialogOpen(false)}
+          walletName={currentWallet.name}
+          onSuccess={refreshWalletDetails}
+        />
+      )}
+    </>
   );
 }

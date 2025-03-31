@@ -155,6 +155,44 @@ impl WalletManager {
         None
     }
     
+    /// Update a wallet to be secured with a password
+    pub fn secure_wallet(&mut self, name: &str, password: &str) -> Result<(), WalletError> {
+        info!("Attempting to secure wallet: {}", name);
+        
+        // Validate input
+        if password.is_empty() {
+            error!("Cannot secure wallet with empty password");
+            return Err(WalletError::Generic("Password cannot be empty".to_string()));
+        }
+        
+        // Find the wallet in the config
+        let wallet_index = self.config.wallets.iter().position(|w| w.name == name);
+        
+        match wallet_index {
+            Some(index) => {
+                // Check if wallet is already secured
+                if self.config.wallets[index].secured {
+                    error!("Wallet is already secured: {}", name);
+                    return Err(WalletError::Generic(format!("Wallet '{}' is already secured", name)));
+                }
+                
+                // Update the wallet to be secured
+                debug!("Updating wallet '{}' to be secured", name);
+                self.config.wallets[index].secured = true;
+                
+                // In a real implementation, we would encrypt the wallet data here
+                // For now, we just change the flag
+                
+                info!("Successfully secured wallet: {}", name);
+                Ok(())
+            },
+            None => {
+                error!("Wallet not found: {}", name);
+                Err(WalletError::NotFound(name.to_string()))
+            }
+        }
+    }
+    
     /// Shutdown the wallet manager
     pub fn shutdown(&mut self) -> Result<(), WalletError> {
         info!("Shutting down wallet manager");

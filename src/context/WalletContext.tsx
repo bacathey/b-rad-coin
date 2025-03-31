@@ -50,11 +50,32 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     try {
       const wallets = await invoke<WalletDetails[]>('get_wallet_details');
       setAvailableWallets(wallets);
+      
+      // If we have a current wallet open, update its security status
+      if (currentWallet && isWalletOpen) {
+        const currentWalletDetails = wallets.find(w => w.name === currentWallet.name);
+        if (currentWalletDetails) {
+          setIsWalletSecured(currentWalletDetails.secured);
+          setCurrentWallet({
+            ...currentWallet,
+            secured: currentWalletDetails.secured
+          });
+        }
+      }
     } catch (error) {
       console.error('Error fetching wallet details:', error);
       setAvailableWallets([]);
     }
   };
+
+  // Update isWalletSecured whenever currentWallet changes
+  useEffect(() => {
+    if (currentWallet) {
+      setIsWalletSecured(currentWallet.secured === true);
+    } else {
+      setIsWalletSecured(false);
+    }
+  }, [currentWallet]);
 
   // Effect to fetch the initial wallet state from Rust backend
   useEffect(() => {

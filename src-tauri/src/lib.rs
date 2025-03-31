@@ -61,6 +61,7 @@ pub fn run() {
                         get_current_wallet_name,
                         update_app_settings,
                         get_app_settings,
+                        secure_wallet,
                         shutdown_application
                     ])
                     .setup(|_app| {
