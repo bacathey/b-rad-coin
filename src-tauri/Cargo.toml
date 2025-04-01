@@ -42,6 +42,9 @@ env_logger = "0.10.1"
 chrono = "0.4.31"
 once_cell = "1.18.0"
 
+# Platform-specific directories
+dirs = "5.0.1"
+
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
 # DO NOT REMOVE!!

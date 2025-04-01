@@ -43,23 +43,7 @@ impl Default for Config {
     fn default() -> Self {
         debug!("Creating default configuration");
         Self {
-            wallets: vec![
-/*                 WalletInfo { 
-                    name: "Main Wallet".to_string(), 
-                    path: "wallets/main".to_string(), 
-                    secured: false,
-                },
-                WalletInfo { 
-                    name: "Trading Wallet".to_string(), 
-                    path: "wallets/trading".to_string(), 
-                    secured: false,
-                },
-                WalletInfo { 
-                    name: "Cold Storage".to_string(), 
-                    path: "wallets/cold-storage".to_string(), 
-                    secured: false,
-                }, */
-            ],
+            wallets: vec![],
             app_settings: AppSettings::default(),
         }
     }
@@ -245,21 +229,20 @@ impl ConfigManager {
     
     /// Get the configuration directory path
     pub async fn get_config_dir() -> Result<PathBuf, ConfigError> {
-        let exe_dir = match std::env::current_exe() {
-            Ok(path) => match path.parent() {
-                Some(dir) => dir.to_path_buf(),
-                None => {
-                    error!("Failed to get executable parent directory");
-                    return Err(ConfigError::PathError("Failed to get executable directory".to_string()));
-                }
-            },
-            Err(e) => {
-                error!("Failed to get executable path: {}", e);
-                return Err(ConfigError::PathError(format!("Failed to get executable path: {}", e)));
+        // In Tauri 2.0, we need to fall back to standard platform-specific paths
+        // since we can't access the Tauri API directly during initialization
+        
+        // Get the app-specific data directory based on the platform
+        let app_data_dir = match dirs::data_dir() {
+            Some(dir) => dir.join("com.b-rad-coin.app"), // Match the identifier in tauri.conf.json
+            None => {
+                error!("Failed to get app data directory");
+                return Err(ConfigError::PathError("Failed to get app data directory".to_string()));
             }
         };
         
-        let config_dir = exe_dir.join("config");
+        // Join with our config directory name
+        let config_dir = app_data_dir.join("config");
         debug!("Configuration directory: {}", config_dir.display());
         
         // Create directory if it doesn't exist

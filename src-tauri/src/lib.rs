@@ -58,6 +58,7 @@ pub fn run() {
                         is_current_wallet_secured,
                         open_wallet,
                         create_wallet,
+                        recover_wallet,
                         get_current_wallet_name,
                         update_app_settings,
                         get_app_settings,
@@ -150,15 +151,11 @@ struct AppState {
 
 /// Set up application logging
 fn setup_logging() -> Result<(), String> {
-    // Get executable directory for logs
-    let exe_dir = match std::env::current_exe() {
-        Ok(path) => path,
-        Err(e) => return Err(format!("Failed to get executable path: {}", e)),
+    // Use platform-specific directories in a way compatible with Tauri 2.0
+    let log_dir = match dirs::data_dir() {
+        Some(dir) => dir.join("com.b-rad-coin.app").join("logs"),
+        None => return Err("Failed to determine log directory".to_string()),
     };
-    
-    let log_dir = exe_dir.parent()
-        .map(|p| p.join("logs"))
-        .ok_or_else(|| "Failed to determine log directory".to_string())?;
     
     // Initialize logging with file output
     logging::init(Some(log_dir), LevelFilter::Info)

@@ -20,22 +20,40 @@
         "minWidth": 550,
         "minHeight": 500,
         "resizable": true,
-        "visible": true
+        "visible": true,
+        "decorations": true,
+        "fullscreen": false
       }
     ],
     "security": {
       "csp": null
-    }
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ]
+      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.16.png",
+      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.24.png",
+      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.32.png",
+      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.48.png",
+      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.64.png",
+      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.72.png",
+      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.96.png",
+      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.128.png",
+      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.256.png",
+      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.512.png",
+      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.icns",
+      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.ico"
+    ],
+    "resources": [
+      "config/*"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
   }
 }

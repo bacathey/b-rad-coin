@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   Dialog, 
   DialogTitle, 
@@ -23,6 +23,7 @@ import {
   ListItemIcon,
   FormControlLabel,
   Checkbox,
+  Link,
 } from '@mui/material';
 import { useWallet } from '../context/WalletContext';
 import { getWalletDetails } from '../lib/wallet';
@@ -31,6 +32,7 @@ import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import AddIcon from '@mui/icons-material/Add';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
+import RestoreIcon from '@mui/icons-material/Restore';
 import SecureWalletDialog from './SecureWalletDialog';
 
 // Interface for tab panel props
@@ -102,6 +104,33 @@ export default function OpenCreateWalletDialog() {
   const [secureDialogOpen, setSecureDialogOpen] = useState(false);
   const [walletToSecure] = useState('');
 
+  // State for wallet recovery
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+  const [seedPhrase, setSeedPhrase] = useState('');
+  
+  // Validation state
+  const [isWalletNameDuplicate, setIsWalletNameDuplicate] = useState(false);
+  
+  // Check for duplicate wallet names when wallet name changes
+  useEffect(() => {
+    if (newWalletName.trim()) {
+      const isDuplicate = walletsList.some(wallet => 
+        wallet.name.toLowerCase() === newWalletName.trim().toLowerCase()
+      );
+      setIsWalletNameDuplicate(isDuplicate);
+    } else {
+      setIsWalletNameDuplicate(false);
+    }
+  }, [newWalletName, walletsList]);
+  
+  // Generate error message for duplicate wallet name
+  const walletNameErrorMessage = useMemo(() => {
+    if (isWalletNameDuplicate) {
+      return `A wallet with name "${newWalletName}" already exists`;
+    }
+    return "";
+  }, [isWalletNameDuplicate, newWalletName]);
+
   // Fetch available wallets when the component mounts or when isWalletOpen changes
   useEffect(() => {
     async function fetchWallets() {
@@ -151,6 +180,8 @@ export default function OpenCreateWalletDialog() {
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
     setErrorMessage('');
+    // Reset recovery mode when changing tabs
+    setIsRecoveryMode(false);
   };
 
   const handleOpenWallet = async () => {
@@ -198,6 +229,11 @@ export default function OpenCreateWalletDialog() {
       setErrorMessage('Please enter a wallet name');
       return;
     }
+
+    if (isWalletNameDuplicate) {
+      setErrorMessage(`A wallet with name "${newWalletName}" already exists`);
+      return;
+    }
     
     // Only validate passwords if using password protection
     if (usePasswordProtection) {
@@ -238,6 +274,65 @@ export default function OpenCreateWalletDialog() {
     }
   };
 
+  // New handler for wallet recovery
+  const handleRecoverWallet = async () => {
+    setErrorMessage('');
+    
+    if (!newWalletName) {
+      setErrorMessage('Please enter a wallet name');
+      return;
+    }
+
+    if (isWalletNameDuplicate) {
+      setErrorMessage(`A wallet with name "${newWalletName}" already exists`);
+      return;
+    }
+    
+    if (!seedPhrase || seedPhrase.trim().split(/\s+/).length < 12) {
+      setErrorMessage('Please enter a valid seed phrase (at least 12 words)');
+      return;
+    }
+    
+    // Only validate passwords if using password protection
+    if (usePasswordProtection) {
+      if (!walletPassword) {
+        setErrorMessage('Please enter a password');
+        return;
+      }
+      
+      if (walletPassword !== confirmPassword) {
+        setErrorMessage('Passwords do not match');
+        return;
+      }
+    }
+    
+    setIsLoading(true);
+    try {
+      const result = await invoke('recover_wallet', { 
+        walletName: newWalletName, 
+        seedPhrase: seedPhrase,
+        password: walletPassword,
+        usePassword: usePasswordProtection
+      });
+      
+      if (result) {
+        setCurrentWallet({
+          name: newWalletName,
+          secured: usePasswordProtection
+        });
+        setIsWalletOpen(true);
+        await refreshWalletDetails(); // Refresh wallet details in context
+      } else {
+        setErrorMessage('Failed to recover wallet');
+      }
+    } catch (error) {
+      console.error('Failed to recover wallet:', error);
+      setErrorMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handlePasswordProtectionToggle = (event: React.ChangeEvent<HTMLInputElement>) => {
     setUsePasswordProtection(event.target.checked);
     
@@ -245,6 +340,16 @@ export default function OpenCreateWalletDialog() {
     if (!event.target.checked) {
       setWalletPassword('');
       setConfirmPassword('');
+    }
+  };
+
+  const toggleRecoveryMode = () => {
+    setIsRecoveryMode(!isRecoveryMode);
+    // Clear any error messages when toggling modes
+    setErrorMessage('');
+    // Clear seed phrase when exiting recovery mode
+    if (isRecoveryMode) {
+      setSeedPhrase('');
     }
   };
 
@@ -448,7 +553,7 @@ export default function OpenCreateWalletDialog() {
             )}
             
             <Typography variant="body1" sx={{ mb: 3 }}>
-              Create a new wallet:
+              {isRecoveryMode ? 'Recover an existing wallet:' : 'Create a new wallet:'}
             </Typography>
             
             <TextField
@@ -459,7 +564,30 @@ export default function OpenCreateWalletDialog() {
               onChange={(e) => setNewWalletName(e.target.value)}
               sx={{ mb: 2 }}
               required
+              error={isWalletNameDuplicate}
+              helperText={walletNameErrorMessage}
+              autoComplete="off" // Disable autocomplete to prevent saved information tooltip
+              inputProps={{ 
+                autoComplete: "new-password", // Force browsers to not show saved passwords
+                "data-form-type": "other" // Additional hint to browsers that this isn't for credentials
+              }}
             />
+            
+            {isRecoveryMode && (
+              <TextField
+                fullWidth
+                label="Seed Phrase"
+                variant="outlined"
+                value={seedPhrase}
+                onChange={(e) => setSeedPhrase(e.target.value)}
+                multiline
+                rows={3}
+                placeholder="Enter your 12 or 24-word seed phrase separated by spaces"
+                sx={{ mb: 2 }}
+                required
+                helperText="Your seed phrase will allow you to recover your wallet"
+              />
+            )}
             
             <FormControlLabel
               control={(
@@ -506,28 +634,49 @@ export default function OpenCreateWalletDialog() {
                   sx={{ mb: 2 }}
                   required={usePasswordProtection}
                   error={walletPassword !== confirmPassword && confirmPassword !== ''}
-
                   helperText={walletPassword !== confirmPassword && confirmPassword !== '' ? 'Passwords do not match' : ''}
-
                 />
               </>
             )}
             
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-              <Button 
-                variant="contained"
-                color="primary"
-                onClick={handleCreateWallet}
-                disabled={isLoading || !newWalletName || (usePasswordProtection && (!walletPassword || walletPassword !== confirmPassword))}
-                startIcon={isLoading && tabValue === 1 ? <CircularProgress size={20} /> : <AddIcon />}
-                sx={{ 
-                  minWidth: '140px',
-                  textTransform: 'none',
-                  fontWeight: 600
-                }}
-              >
-                {isLoading && tabValue === 1 ? 'Creating...' : 'Create Wallet'}
-              </Button>
+            <Box sx={{ display: 'flex', flexDirection: 'column', mt: 2, gap: 2 }}>
+              {/* Action buttons with Recover wallet link moved to the left */}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                {/* Recovery mode toggle button now on the left */}
+                <Link
+                  component="button"
+                  underline="hover"
+                  onClick={toggleRecoveryMode}
+                  sx={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    color: theme.palette.primary.main,
+                    fontSize: '0.875rem'
+                  }}
+                >
+                  <RestoreIcon fontSize="small" />
+                  {isRecoveryMode ? 'Create a new wallet instead' : 'Recover existing wallet'}
+                </Link>
+                
+                {/* Action button on the right */}
+                <Button 
+                  variant="contained"
+                  color="primary"
+                  onClick={isRecoveryMode ? handleRecoverWallet : handleCreateWallet}
+                  disabled={isLoading || !newWalletName || isWalletNameDuplicate || (usePasswordProtection && (!walletPassword || walletPassword !== confirmPassword)) || (isRecoveryMode && (!seedPhrase || seedPhrase.trim() === ''))}
+                  startIcon={isLoading && tabValue === 1 ? <CircularProgress size={20} /> : isRecoveryMode ? <RestoreIcon /> : <AddIcon />}
+                  sx={{ 
+                    minWidth: '160px',
+                    textTransform: 'none',
+                    fontWeight: 600
+                  }}
+                >
+                  {isLoading && tabValue === 1 
+                    ? (isRecoveryMode ? 'Recovering...' : 'Creating...') 
+                    : (isRecoveryMode ? 'Recover Wallet' : 'Create Wallet')}
+                </Button>
+              </Box>
             </Box>
           </TabPanel>
         </DialogContent>

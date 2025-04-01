@@ -345,3 +345,44 @@ pub async fn secure_wallet(
         }
     }
 }
+
+/// Command to recover a wallet using a seed phrase
+#[command]
+pub async fn recover_wallet(
+    wallet_name: String, 
+    _seed_phrase: String,
+    password: String, 
+    use_password: bool,
+    wallet_manager: State<'_, AsyncWalletManager>
+) -> CommandResult<bool> {
+    info!("Command: recover_wallet with name: {}", wallet_name);
+    debug!("Recovering wallet using seed phrase");
+    
+    // TODO: In the future, implement proper recovery from seed phrase
+    // For now, we'll reuse the create_wallet logic as a placeholder
+    
+    // If password protection is disabled, use empty password
+    let effective_password = if use_password { password } else { String::new() };
+    
+    let mut manager = wallet_manager.get_manager().await;
+    match manager.create_wallet(&wallet_name, &effective_password) {
+        Ok(_) => {
+            info!("Successfully recovered wallet: {}", wallet_name);
+            // Now open the newly created wallet
+            match manager.open_wallet(&wallet_name, if use_password { Some(&effective_password) } else { None }) {
+                Ok(_) => {
+                    info!("Successfully opened recovered wallet: {}", wallet_name);
+                    Ok(true)
+                },
+                Err(e) => {
+                    error!("Recovered wallet but failed to open it: {}", e);
+                    Err(format_error(e))
+                }
+            }
+        },
+        Err(e) => {
+            error!("Failed to recover wallet: {}", e);
+            Err(format_error(e))
+        }
+    }
+}
