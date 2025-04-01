@@ -34,18 +34,14 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.16.png",
-      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.24.png",
-      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.32.png",
-      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.48.png",
-      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.64.png",
-      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.72.png",
-      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.96.png",
-      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.128.png",
-      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.256.png",
-      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.512.png",
-      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.icns",
-      "icons/Cjdowner-Cryptocurrency-Flat-Bitcoin-BTC.ico"
+      "icons/Bradcoin-16x16.png",
+      "icons/Bradcoin-32x32.png",
+      "icons/Bradcoin-192x192.png",
+      "icons/Bradcoin-512x512.png",
+      "icons/Bradcoin.ico",
+      "icons/icon.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
     ],
     "resources": [
       "config/*"

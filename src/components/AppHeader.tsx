@@ -12,7 +12,6 @@ import DarkModeIcon from '@mui/icons-material/DarkMode';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
-import bitcoinLogo from '../assets/bitcoin.svg';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { invoke } from '@tauri-apps/api/core';
@@ -71,11 +70,11 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
             <MenuIcon />
           </IconButton>
           
-          {/* Bitcoin logo */}
+          {/* Bradcoin logo */}
           <Box
             component="img"
-            src={bitcoinLogo}
-            alt="Bitcoin Logo"
+            src="/bradcoin.png"
+            alt="Bradcoin Logo"
             sx={{
               height: 28,
               width: 28,

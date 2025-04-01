@@ -1,5 +1,6 @@
-// filepath: c:\Users\bacat\source\repos\my-tauri-app\src\pages\Account.tsx
+// filepath: c:\Users\bacat\source\repos\b-rad-coin\src\pages\Account.tsx
 import reactLogo from "../assets/react.svg";
+import bradcoinLogo from "../assets/bradcoin.png";
 import { 
   Typography, 
   Box, 
@@ -51,7 +52,7 @@ export default function Account({ greetMsg, name, setName, greet }: AccountProps
         Account Dashboard
       </Typography>
 
-      <Stack direction="row" spacing={2} justifyContent="center" sx={{ mb: 4 }}>
+      <Stack direction="row" spacing={2} justifyContent="center" alignItems="center" sx={{ mb: 4 }}>
         <a href="https://vitejs.dev" target="_blank">
           <img src="/vite.svg" className="logo vite" alt="Vite logo" />
         </a>
@@ -60,6 +61,9 @@ export default function Account({ greetMsg, name, setName, greet }: AccountProps
         </a>
         <a href="https://reactjs.org" target="_blank">
           <img src={reactLogo} className="logo react" alt="React logo" />
+        </a>
+        <a href="https://reactjs.org" target="_blank">
+          <img src="/Bradcoin-192x192.png" className="logo bradcoin" alt="Bradcoin logo" />
         </a>
       </Stack>
       
@@ -71,7 +75,7 @@ export default function Account({ greetMsg, name, setName, greet }: AccountProps
           fontWeight: 500
         }}
       >
-        Click on the Tauri, Vite, and React logos to learn more.
+        Click on the Tauri, Vite, React, and Bradcoin logos to learn more.
       </Typography>
 
       <Card sx={{ 
