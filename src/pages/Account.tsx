@@ -1,6 +1,6 @@
 // filepath: c:\Users\bacat\source\repos\b-rad-coin\src\pages\Account.tsx
 import reactLogo from "../assets/react.svg";
-import bradcoinLogo from "../assets/bradcoin.png";
+
 import { 
   Typography, 
   Box, 
