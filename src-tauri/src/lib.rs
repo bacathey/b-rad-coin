@@ -65,7 +65,8 @@ pub fn run() {
                         update_app_settings,
                         get_app_settings,
                         secure_wallet,
-                        shutdown_application
+                        shutdown_application,
+                        get_app_version
                     ])
                     .setup(|app| {
                         info!("Setting up application");

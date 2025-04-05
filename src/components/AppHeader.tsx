@@ -15,11 +15,8 @@ import LockOpenIcon from '@mui/icons-material/LockOpen';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '../context/WalletContext';
 import { invoke } from '@tauri-apps/api/core';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import SecureWalletDialog from './SecureWalletDialog';
-
-// Import the version from package.json
-import packageJson from '../../package.json';
 
 interface AppHeaderProps {
   mode: 'light' | 'dark';
@@ -29,11 +26,26 @@ interface AppHeaderProps {
 
 export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }: AppHeaderProps) {
   const navigate = useNavigate();
-  const appVersion = packageJson.version;
+  const [appVersion, setAppVersion] = useState('');
   const { isWalletOpen, setIsWalletOpen, currentWallet, setCurrentWallet, isWalletSecured, refreshWalletDetails } = useWallet();
   
   // State for secure wallet dialog
   const [secureDialogOpen, setSecureDialogOpen] = useState(false);
+
+  // Fetch app version from Rust backend on component mount
+  useEffect(() => {
+    const fetchAppVersion = async () => {
+      try {
+        const version = await invoke<string>('get_app_version');
+        setAppVersion(version);
+      } catch (error) {
+        console.error('Failed to fetch app version:', error);
+        setAppVersion('unknown');
+      }
+    };
+    
+    fetchAppVersion();
+  }, []);
 
   // Function to handle closing the wallet
   const handleCloseWallet = async () => {
@@ -113,7 +125,7 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
             ) : 'B-Rad Coin'}
           </Typography>
           
-          {/* Version number */}
+          {/* Version number from Tauri backend */}
           <Typography 
             variant="caption" 
             sx={{ 

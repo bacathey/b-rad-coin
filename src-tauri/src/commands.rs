@@ -200,7 +200,6 @@ pub async fn update_app_settings(
 
     if let Some(log_level) = log_level {
         info!("Updating log_level to: {}", log_level);
-        config.app_settings.log_level = log_level;
 
         // TODO: Update actual log level at runtime if needed
     }
@@ -431,4 +430,14 @@ pub async fn recover_wallet(
             Err(format_error(e))
         }
     }
+}
+
+/// Command to get the application version
+#[command]
+pub fn get_app_version() -> CommandResult<String> {
+    debug!("Command: get_app_version");
+    // Get version from the Cargo.toml via environment variable
+    let version = crate::APP_VERSION;
+    debug!("App version: {}", version);
+    Ok(version.to_string())
 }
