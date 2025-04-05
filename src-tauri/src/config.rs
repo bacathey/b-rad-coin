@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+
 /// Configuration structure for the application
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
