@@ -1,7 +1,7 @@
-use std::fmt;
-use std::error::Error;
-use std::io;
 use serde_json;
+use std::error::Error;
+use std::fmt;
+use std::io;
 
 /// Custom error types for B-Rad Coin application
 #[derive(Debug)]

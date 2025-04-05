@@ -1,10 +1,10 @@
-use std::sync::Once;
-use log::{LevelFilter, Record, Level, Metadata};
 use chrono::Local;
-use std::fs::{File, OpenOptions, create_dir_all};
+use log::{Level, LevelFilter, Metadata, Record};
+use std::fs::{create_dir_all, File, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::sync::Once;
 
 /// Custom logger for B-Rad Coin application
 pub struct AppLogger {
@@ -33,7 +33,7 @@ impl log::Log for AppLogger {
                 Level::Debug => "DEBUG",
                 Level::Trace => "TRACE",
             };
-            
+
             let log_message = format!(
                 "{} [{}] [{}] {}\n",
                 now.format("%Y-%m-%d %H:%M:%S"),
@@ -41,7 +41,7 @@ impl log::Log for AppLogger {
                 record.target(),
                 record.args()
             );
-            
+
             // Always print to console
             print!("{}", log_message);
 
@@ -73,13 +73,13 @@ pub fn init(log_dir: Option<PathBuf>, level: LevelFilter) -> Result<(), String> 
                 eprintln!("Failed to initialize log file: {}", e);
             }
         }
-        
+
         // Register our logger
         if let Err(e) = log::set_logger(&APP_LOGGER).map(|()| log::set_max_level(level)) {
             eprintln!("Failed to set logger: {}", e);
         }
     });
-    
+
     Ok(())
 }
 
@@ -89,23 +89,23 @@ fn initialize_log_file(log_dir: &PathBuf) -> Result<(), String> {
     if let Err(e) = create_dir_all(log_dir) {
         return Err(format!("Failed to create log directory: {}", e));
     }
-    
+
     // Create log file with timestamp
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
     let log_file_path = log_dir.join(format!("b_rad_coin_{}.log", timestamp));
-    
+
     let file = OpenOptions::new()
         .create(true)
         .write(true)
         .append(true)
         .open(&log_file_path)
         .map_err(|e| format!("Failed to open log file: {}", e))?;
-    
+
     // Store the file handle in our logger
     if let Ok(mut logger_file) = APP_LOGGER.log_file.lock() {
         *logger_file = Some(file);
     }
-    
+
     Ok(())
 }
 
