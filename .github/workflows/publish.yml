@@ -28,12 +28,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      #Setup environment variables from GitHub secrets
-      - name: Setup environment variables
-        env:
-          "TAURI_SIGNING_PRIVATE_KEY": ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          "TAURI_SIGNING_PRIVATE_KEY_PASSWORD": ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
       - name: setup node
         uses: actions/setup-node@v4
         with:
