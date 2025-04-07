@@ -17,6 +17,7 @@ import { useWallet } from '../context/WalletContext';
 import { invoke } from '@tauri-apps/api/core';
 import { useState, useEffect } from 'react';
 import SecureWalletDialog from './SecureWalletDialog';
+import { transitions } from '../styles/themeConstants';
 
 interface AppHeaderProps {
   mode: 'light' | 'dark';
@@ -96,7 +97,16 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
             }}
           />
           
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1, display: 'flex', alignItems: 'center' }}>
+          <Typography 
+            variant="h6" 
+            component="div" 
+            sx={{ 
+              flexGrow: 1, 
+              display: 'flex', 
+              alignItems: 'center',
+              transition: `${transitions.fontWeight}, ${transitions.color}, ${transitions.fontFamily}`
+            }}
+          >
             {currentWallet ? (
               <>
                 {currentWallet.name}
@@ -134,7 +144,8 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
               fontSize: '0.75rem',
               fontWeight: 500,
               display: 'flex',
-              alignItems: 'center'
+              alignItems: 'center',
+              transition: transitions.all
             }}
           >
             v{appVersion}

@@ -88,7 +88,11 @@ export const transitions = {
   backgroundColor: 'background-color 400ms cubic-bezier(0.4, 0, 0.2, 1)',
   borderColor: 'border-color 400ms cubic-bezier(0.4, 0, 0.2, 1)',
   boxShadow: 'box-shadow 400ms cubic-bezier(0.4, 0, 0.2, 1)',
-  transform: 'transform 250ms cubic-bezier(0.4, 0, 0.2, 1)'
+  transform: 'transform 250ms cubic-bezier(0.4, 0, 0.2, 1)',
+  fontWeight: 'font-weight 180ms cubic-bezier(0.4, 0, 0.2, 1)',
+  fontFamily: 'font-family 180ms cubic-bezier(0.4, 0, 0.2, 1)',
+  fontSize: 'font-size 180ms cubic-bezier(0.4, 0, 0.2, 1)',
+  all: 'all 250ms cubic-bezier(0.4, 0, 0.2, 1)'
 };
 
 // Spacing values (in pixels) for consistent layout

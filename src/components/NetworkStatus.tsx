@@ -1,3 +1,4 @@
+// filepath: c:\Users\bacat\source\repos\b-rad-coin\src\components\NetworkStatus.tsx
 import React, { useState, useEffect } from 'react';
 import { Box, LinearProgress, Typography, Paper, Stack, Chip } from '@mui/material';
 import { useThemeMode } from '../hooks/useThemeMode';
@@ -6,7 +7,7 @@ import CloudOffIcon from '@mui/icons-material/CloudOff';
 import SyncIcon from '@mui/icons-material/Sync';
 import PeopleIcon from '@mui/icons-material/People';
 
-interface BlockchainStatusProps {
+interface NetworkStatusProps {
   className?: string;
 }
 
@@ -16,7 +17,7 @@ interface BlockchainInfo {
   peers: number;
 }
 
-export const BlockchainStatus: React.FC<BlockchainStatusProps> = ({ className }) => {
+export const NetworkStatus: React.FC<NetworkStatusProps> = ({ className }) => {
   const { isDarkMode } = useThemeMode();
   const [blockchainInfo, setBlockchainInfo] = useState<BlockchainInfo>({
     connected: false,
@@ -26,7 +27,7 @@ export const BlockchainStatus: React.FC<BlockchainStatusProps> = ({ className })
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchBlockchainStatus = async () => {
+    const fetchNetworkStatus = async () => {
       try {
         // In real implementation, this would call a Tauri command to get blockchain info
         // const result = await invoke('get_blockchain_status');
@@ -42,13 +43,13 @@ export const BlockchainStatus: React.FC<BlockchainStatusProps> = ({ className })
         setLoading(false);
         
       } catch (error) {
-        console.error('Failed to fetch blockchain status:', error);
+        console.error('Failed to fetch network status:', error);
         setLoading(false);
       }
     };
 
-    fetchBlockchainStatus();
-    const intervalId = setInterval(fetchBlockchainStatus, 10000); // Update every 10 seconds
+    fetchNetworkStatus();
+    const intervalId = setInterval(fetchNetworkStatus, 10000); // Update every 10 seconds
     
     return () => clearInterval(intervalId);
   }, []);
@@ -60,8 +61,13 @@ export const BlockchainStatus: React.FC<BlockchainStatusProps> = ({ className })
       sx={{ 
         p: 2, 
         borderRadius: 2,
-        backgroundColor: isDarkMode ? 'rgba(30, 30, 30, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+        backgroundColor: isDarkMode 
+          ? 'rgba(20, 27, 45, 0.9)' 
+          : 'rgba(240, 242, 255, 0.9)', // Much lighter blue in light mode
         backdropFilter: 'blur(10px)',
+        color: isDarkMode 
+          ? 'rgba(255, 255, 255, 0.9)' 
+          : 'rgba(26, 35, 126, 0.9)', // Dark blue text in light mode
         boxShadow: isDarkMode 
           ? '0 4px 20px rgba(0, 0, 0, 0.5)' 
           : '0 4px 20px rgba(0, 0, 0, 0.1)'
@@ -89,9 +95,13 @@ export const BlockchainStatus: React.FC<BlockchainStatusProps> = ({ className })
               <Chip 
                 icon={<CloudOffIcon />} 
                 label="Disconnected" 
-                color="error" 
+                color={isDarkMode ? "error" : "warning"} // Use warning instead of error in light mode
                 size="small" 
                 variant="outlined" 
+                sx={{
+                  borderColor: isDarkMode ? undefined : "rgba(237, 108, 2, 0.7)", // More subdued color for light mode
+                  color: isDarkMode ? undefined : "rgba(237, 108, 2, 0.9)"
+                }}
               />
             }
             
@@ -101,6 +111,10 @@ export const BlockchainStatus: React.FC<BlockchainStatusProps> = ({ className })
               color={blockchainInfo.peers > 0 ? "primary" : "warning"} 
               size="small" 
               variant="outlined"
+              sx={{
+                borderColor: isDarkMode ? undefined : "rgba(25, 118, 210, 0.7)", // Customized for light mode
+                color: isDarkMode ? undefined : "rgba(25, 118, 210, 0.9)"
+              }}
             />
           </Stack>
           
@@ -112,12 +126,19 @@ export const BlockchainStatus: React.FC<BlockchainStatusProps> = ({ className })
             <LinearProgress 
               variant="determinate" 
               value={blockchainInfo.syncProgress} 
-              sx={{ height: 8, borderRadius: 2 }}
+              sx={{ 
+                height: 8, 
+                borderRadius: 2,
+                backgroundColor: isDarkMode ? undefined : 'rgba(200, 208, 255, 0.5)',
+                '& .MuiLinearProgress-bar': {
+                  backgroundColor: isDarkMode ? undefined : '#4051B5'
+                }
+              }}
             />
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1 }}>
               <Typography variant="caption">
                 {blockchainInfo.syncProgress < 100 ? 
-                  'Synchronizing...' : 
+                  'XXX blocks remaining' : 
                   'Fully synchronized'}
               </Typography>
               <Typography variant="caption">
@@ -131,4 +152,4 @@ export const BlockchainStatus: React.FC<BlockchainStatusProps> = ({ className })
   );
 };
 
-export default BlockchainStatus;
+export default NetworkStatus;
