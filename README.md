@@ -1,6 +1,6 @@
 # B-Rad Coin Full Node Wallet
 
-This is a learning application, written in React/Rust/Tauri, that is an implmentation of a BitCoin-like blockchain, wallet and network.
+This is a learning application, written in React/Rust/Tauri, that is an implementation of a BitCoin-like blockchain, wallet and network.
 
 ## Recommended IDE Setup
 
