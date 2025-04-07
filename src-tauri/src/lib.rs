@@ -3,7 +3,7 @@ use log::{debug, error, info, LevelFilter};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{generate_context, generate_handler, Manager};
-use tauri_plugin_updater::UpdaterExt;
+//use tauri_plugin_updater::UpdaterExt;
 
 // Add static flag to track shutdown state
 static SHUTDOWN_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
@@ -68,12 +68,12 @@ pub fn run() {
                         shutdown_application,
                         get_app_version
                     ])
-                    .setup(|app| {
+                    .setup(|_app| {
                         info!("Setting up application");
-                        let handle = app.handle().clone();
-                        tauri::async_runtime::spawn(async move {
-                            update(handle).await.unwrap();
-                        });
+                        //let handle = _app.handle().clone();
+                        //tauri::async_runtime::spawn(async move {
+                            //update(handle).await.unwrap();
+                        //});
                         Ok(())
                     })
                     .on_window_event(|window, event| {
@@ -200,26 +200,26 @@ async fn initialize_app() -> AppResult<AppState> {
 }
 
 
-async fn update(app: tauri::AppHandle) -> tauri_plugin_updater::Result<()> {
-    if let Some(update) = app.updater()?.check().await? {
-      let mut downloaded = 0;
-  
-      // alternatively we could also call update.download() and update.install() separately
-      update
-        .download_and_install(
-          |chunk_length, content_length| {
-            downloaded += chunk_length;
-            println!("downloaded {downloaded} from {content_length:?}");
-          },
-          || {
-            println!("download finished");
-          },
-        )
-        .await?;
-  
-      println!("update installed");
-      app.restart();
-    }
-  
-    Ok(())
-  }
+//async fn update(app: tauri::AppHandle) -> tauri_plugin_updater::Result<()> {
+//    if let Some(update) = app.updater()?.check().await? {
+//      let mut downloaded = 0;
+//  
+//      // alternatively we could also call update.download() and update.install() separately
+//      update
+//        .download_and_install(
+//          |chunk_length, content_length| {
+//            downloaded += chunk_length;
+//            println!("downloaded {downloaded} from {content_length:?}");
+//          },
+//          || {
+//           println!("download finished");
+//         },
+//        )
+//        .await?;
+//  
+//      println!("update installed");
+//      app.restart();
+//    }
+//  
+//    Ok(())
+//  }
