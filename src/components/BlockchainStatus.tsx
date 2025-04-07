@@ -1,113 +1,134 @@
-import {
-  Box,
-  Typography,
-  Stack,
-  LinearProgress
-} from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { Box, LinearProgress, Typography, Paper, Stack, Chip } from '@mui/material';
+import { useThemeMode } from '../hooks/useThemeMode';
+import CloudDoneIcon from '@mui/icons-material/CloudDone';
+import CloudOffIcon from '@mui/icons-material/CloudOff';
+import SyncIcon from '@mui/icons-material/Sync';
+import PeopleIcon from '@mui/icons-material/People';
 
 interface BlockchainStatusProps {
-  mode: 'light' | 'dark';
+  className?: string;
 }
 
-export default function BlockchainStatus({ mode }: BlockchainStatusProps) {
-  // Sample blockchain status data - in a real application this would come from your blockchain API
-  const blockchainStatus = {
-    blocksProgress: 85, // percentage
-    blocksText: "682,049 / 800,281",
-    agentProgress: 92, // percentage
-    agentText: "Active (6 connections)"
-  };
+interface BlockchainInfo {
+  connected: boolean;
+  syncProgress: number;
+  peers: number;
+}
+
+export const BlockchainStatus: React.FC<BlockchainStatusProps> = ({ className }) => {
+  const { isDarkMode } = useThemeMode();
+  const [blockchainInfo, setBlockchainInfo] = useState<BlockchainInfo>({
+    connected: false,
+    syncProgress: 0,
+    peers: 0,
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchBlockchainStatus = async () => {
+      try {
+        // In real implementation, this would call a Tauri command to get blockchain info
+        // const result = await invoke('get_blockchain_status');
+        
+        // Mock data for now
+        const mockData: BlockchainInfo = {
+          connected: true,
+          syncProgress: Math.floor(Math.random() * 30) + 70, // 70-100% sync
+          peers: Math.floor(Math.random() * 5) + 4, // 4-8 peers
+        };
+        
+        setBlockchainInfo(mockData);
+        setLoading(false);
+        
+      } catch (error) {
+        console.error('Failed to fetch blockchain status:', error);
+        setLoading(false);
+      }
+    };
+
+    fetchBlockchainStatus();
+    const intervalId = setInterval(fetchBlockchainStatus, 10000); // Update every 10 seconds
+    
+    return () => clearInterval(intervalId);
+  }, []);
 
   return (
-    <Box sx={{ 
-      padding: '16px', 
-      borderTop: 1,
-      borderColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)'
-    }}>
-      <Typography 
-        variant="subtitle2" 
-        sx={{ 
-          color: mode === 'dark' ? 'rgba(255, 255, 255, 0.9)' : '#1a237e',
-          fontWeight: 600,
-          mb: 2
-        }}
-      >
-        Blockchain Sync Status
+    <Paper 
+      className={className}
+      elevation={2}
+      sx={{ 
+        p: 2, 
+        borderRadius: 2,
+        backgroundColor: isDarkMode ? 'rgba(30, 30, 30, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+        backdropFilter: 'blur(10px)',
+        boxShadow: isDarkMode 
+          ? '0 4px 20px rgba(0, 0, 0, 0.5)' 
+          : '0 4px 20px rgba(0, 0, 0, 0.1)'
+      }}
+    >
+      <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
+        Network Status
       </Typography>
-      
-      <Stack spacing={2}>
-        {/* Blocks Progress */}
-        <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-            <Typography 
-              variant="caption" 
-              sx={{ 
-                color: mode === 'dark' ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
-                fontWeight: 500
-              }}
-            >
-              Blocks
-            </Typography>
-            <Typography 
-              variant="caption" 
-              sx={{ 
-                color: mode === 'dark' ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
-                fontWeight: 500
-              }}
-            >
-              {blockchainStatus.blocksText}
-            </Typography>
-          </Box>
-          <LinearProgress 
-            variant="determinate" 
-            value={blockchainStatus.blocksProgress} 
-            sx={{
-              borderRadius: 1,
-              height: 6,
-              backgroundColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-              '& .MuiLinearProgress-bar': {
-                backgroundColor: mode === 'dark' ? '#64b5f6' : '#1a237e',
-              }
-            }}
-          />
+
+      {loading ? (
+        <Box sx={{ width: '100%' }}>
+          <LinearProgress />
         </Box>
-        
-        {/* Agent Progress */}
-        <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-            <Typography 
-              variant="caption" 
-              sx={{ 
-                color: mode === 'dark' ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
-                fontWeight: 500
-              }}
-            >
-              Agent
+      ) : (
+        <>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+            {blockchainInfo.connected ? 
+              <Chip 
+                icon={<CloudDoneIcon />} 
+                label="Connected" 
+                color="success" 
+                size="small" 
+                variant="outlined"
+              /> : 
+              <Chip 
+                icon={<CloudOffIcon />} 
+                label="Disconnected" 
+                color="error" 
+                size="small" 
+                variant="outlined" 
+              />
+            }
+            
+            <Chip 
+              icon={<PeopleIcon />} 
+              label={`${blockchainInfo.peers} Peers`} 
+              color={blockchainInfo.peers > 0 ? "primary" : "warning"} 
+              size="small" 
+              variant="outlined"
+            />
+          </Stack>
+          
+          <Box sx={{ mb: 1 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              <SyncIcon fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
+              Synchronization
             </Typography>
-            <Typography 
-              variant="caption" 
-              sx={{ 
-                color: mode === 'dark' ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)',
-                fontWeight: 500
-              }}
-            >
-              {blockchainStatus.agentText}
-            </Typography>
+            <LinearProgress 
+              variant="determinate" 
+              value={blockchainInfo.syncProgress} 
+              sx={{ height: 8, borderRadius: 2 }}
+            />
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1 }}>
+              <Typography variant="caption">
+                {blockchainInfo.syncProgress < 100 ? 
+                  'Synchronizing...' : 
+                  'Fully synchronized'}
+              </Typography>
+              <Typography variant="caption">
+                {blockchainInfo.syncProgress}%
+              </Typography>
+            </Stack>
           </Box>
-          <LinearProgress 
-            variant="determinate" 
-            value={blockchainStatus.agentProgress} 
-            sx={{
-              borderRadius: 1,
-              height: 6,
-              backgroundColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-              '& .MuiLinearProgress-bar': {
-                backgroundColor: mode === 'dark' ? '#81c784' : '#2e7d32',
-              }
-            }}
-          />
-        </Box>
-      </Stack>
-    </Box>
+        </>
+      )}
+    </Paper>
   );
-}
+};
+
+export default BlockchainStatus;

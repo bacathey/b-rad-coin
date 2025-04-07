@@ -1,18 +1,10 @@
 import { 
-  Typography, 
-  Box, 
-  Card, 
-  CardContent, 
   Switch,
   Divider,
   List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
   TextField,
   Button,
-  Grid,
-  useTheme
+  Grid
 } from '@mui/material';
 import SecurityIcon from '@mui/icons-material/Security';
 import LanguageIcon from '@mui/icons-material/Language';
@@ -22,229 +14,183 @@ import PrivacyTipIcon from '@mui/icons-material/PrivacyTip';
 import FolderIcon from '@mui/icons-material/Folder';
 import { useState, useEffect } from 'react';
 import { invoke } from "@tauri-apps/api/core";
+import { StyledCard } from '../components/ui/StyledCard';
+import { SettingsItem } from '../components/ui/SettingsItem';
+import { PageContainer } from '../components/ui/PageContainer';
+import { FormField } from '../components/ui/FormField';
+import { useThemeMode } from '../hooks/useThemeMode';
+import { useForm } from '../hooks/useForm';
 
 export default function Settings() {
-  const theme = useTheme();
-  const isDarkMode = theme.palette.mode === 'dark';
-
+  const { getTextFieldStyle } = useThemeMode();
+  
   // State for the various settings
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [autoBackup, setAutoBackup] = useState(true);
   const [anonymousData, setAnonymousData] = useState(false);
-  const [nodeAddress, setNodeAddress] = useState('');
   const [language] = useState('English');
   const [configDirectory, setConfigDirectory] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+
+  // Use our custom form hook for the custom node form
+  const nodeForm = useForm(
+    { nodeAddress: '' },
+    {
+      nodeAddress: (value) => {
+        if (!value) return null;
+        // Simple validation for demonstration - could be more robust
+        if (!value.includes(':')) return 'Node address should include a port number';
+        return null;
+      }
+    },
+    async (values) => {
+      console.log('Connecting to node:', values.nodeAddress);
+      // In a real app, we would connect to the node here
+    }
+  );
 
   useEffect(() => {
     // Fetch config directory when component mounts
     invoke('get_config_directory')
       .then((dir) => setConfigDirectory(dir as string))
-      .catch(console.error);
+      .catch(err => {
+        console.error(err);
+        setError('Failed to load configuration directory');
+      });
   }, []);
 
-  // Card style based on theme mode
-  const cardStyle = isDarkMode ? {
-    background: 'rgba(19, 47, 76, 0.6)',
-    backdropFilter: 'blur(10px)',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-    border: '1px solid rgba(255, 255, 255, 0.1)'
-  } : {
-    background: 'linear-gradient(180deg, #ffffff 0%, #f5f7fa 100%)',
-    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
-    border: '1px solid rgba(0, 0, 0, 0.08)'
-  };
-
   return (
-    <Box 
-      sx={{ 
-        width: '100%',
-        maxWidth: '100%',
-        pt: 3,
-        px: { xs: 2, sm: 3 },
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center'
-      }}
+    <PageContainer 
+      title="Settings" 
+      error={error}
     >
-      <Typography 
-        variant="h4" 
-        component="h1" 
-        gutterBottom
-        sx={{
-          color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : '#1a237e',
-          textShadow: isDarkMode ? '0 2px 10px rgba(0,0,0,0.3)' : 'none',
-          fontWeight: 600,
-          mb: 3
-        }}
-      >
-        Settings
-      </Typography>
-      
-      <Grid container spacing={3} sx={{ width: '100%', maxWidth: 1200, mx: 'auto' }}>
+      <Grid container spacing={3} sx={{ width: '100%' }}>
         {/* General Settings */}
         <Grid item xs={12} md={6}>
-          <Card sx={{ ...cardStyle, height: '100%' }}>
-            <CardContent>
-              <Typography 
-                variant="h6" 
-                sx={{
-                  color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : '#1a237e',
-                  fontWeight: 600,
-                  mb: 2
-                }}
-              >
-                General Settings
-              </Typography>
-              
-              <List>
-                <ListItem>
-                  <ListItemIcon>
-                    <NotificationsIcon 
-                      color={isDarkMode ? "primary" : "primary"} 
-                    />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary="Notifications" 
-                    secondary="Enable or disable notifications" 
-                  />
+          <StyledCard title="General Settings" fullHeight>
+            <List>
+              <SettingsItem
+                icon={<NotificationsIcon color="primary" />}
+                primary="Notifications"
+                secondary="Enable or disable notifications"
+                action={
                   <Switch 
                     checked={notificationsEnabled}
                     onChange={(e) => setNotificationsEnabled(e.target.checked)}
                     color="primary"
                   />
-                </ListItem>
-                <Divider variant="inset" component="li" />
-                
-                <ListItem>
-                  <ListItemIcon>
-                    <FolderIcon 
-                      color={isDarkMode ? "primary" : "primary"} 
-                    />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary="Config Directory" 
-                    secondary={configDirectory || 'Loading...'} 
-                  />
-                </ListItem>
-                <Divider variant="inset" component="li" />
-                
-                <ListItem>
-                  <ListItemIcon>
-                    <LanguageIcon 
-                      color={isDarkMode ? "primary" : "primary"} 
-                    />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary="Language" 
-                    secondary={language} 
-                  />
+                }
+              />
+              <Divider variant="inset" component="li" />
+              
+              <SettingsItem
+                icon={<FolderIcon color="primary" />}
+                primary="Config Directory"
+                secondary={configDirectory || 'Loading...'}
+              />
+              <Divider variant="inset" component="li" />
+              
+              <SettingsItem
+                icon={<LanguageIcon color="primary" />}
+                primary="Language"
+                secondary={language}
+                action={
                   <Button color="primary" variant="outlined" size="small">
                     Change
                   </Button>
-                </ListItem>
-                <Divider variant="inset" component="li" />
-                
-                <ListItem>
-                  <ListItemIcon>
-                    <BackupIcon 
-                      color={isDarkMode ? "primary" : "primary"} 
-                    />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary="Automatic Backup" 
-                    secondary="Back up wallet data automatically" 
-                  />
+                }
+              />
+              <Divider variant="inset" component="li" />
+              
+              <SettingsItem
+                icon={<BackupIcon color="primary" />}
+                primary="Automatic Backup"
+                secondary="Back up wallet data automatically"
+                action={
                   <Switch 
                     checked={autoBackup}
                     onChange={(e) => setAutoBackup(e.target.checked)}
                     color="primary"
                   />
-                </ListItem>
-              </List>
-            </CardContent>
-          </Card>
+                }
+              />
+            </List>
+          </StyledCard>
         </Grid>
         
         {/* Advanced Settings */}
         <Grid item xs={12} md={6}>
-          <Card sx={{ ...cardStyle, height: '100%' }}>
-            <CardContent>
-              <Typography 
-                variant="h6" 
-                sx={{
-                  color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : '#1a237e',
-                  fontWeight: 600,
-                  mb: 2
-                }}
-              >
-                Advanced Settings
-              </Typography>
-              
-              <List>
-                <ListItem>
-                  <ListItemIcon>
-                    <SecurityIcon 
-                      color={isDarkMode ? "primary" : "primary"} 
-                    />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary="Security Settings" 
-                    secondary="Configure 2FA and security options" 
-                  />
+          <StyledCard title="Advanced Settings" fullHeight>
+            <List>
+              <SettingsItem
+                icon={<SecurityIcon color="primary" />}
+                primary="Security Settings"
+                secondary="Configure 2FA and security options"
+                action={
                   <Button color="primary" variant="outlined" size="small">
                     Manage
                   </Button>
-                </ListItem>
-                <Divider variant="inset" component="li" />
-                
-                <ListItem sx={{ alignItems: 'flex-start' }}>
-                  <ListItemIcon sx={{ mt: 1 }}>
-                    <PrivacyTipIcon 
-                      color={isDarkMode ? "primary" : "primary"} 
-                    />
-                  </ListItemIcon>
-                  <Box sx={{ width: '100%' }}>
-                    <ListItemText 
-                      primary="Custom Node" 
-                      secondary="Connect to your own Bitcoin node" 
-                      sx={{ mb: 1 }}
-                    />
-                    <TextField
-                      fullWidth
+                }
+              />
+              <Divider variant="inset" component="li" />
+              
+              <SettingsItem
+                icon={<PrivacyTipIcon color="primary" />}
+                primary="Custom Node"
+                secondary="Connect to your own Bitcoin node"
+                extraContent={
+                  <form onSubmit={nodeForm.handleSubmit}>
+                    <FormField 
+                      label="Node Address"
+                      helperText={
+                        nodeForm.touched.nodeAddress && nodeForm.errors.nodeAddress
+                          ? nodeForm.errors.nodeAddress
+                          : "Enter your node address with port (e.g. node.example.com:8333)"
+                      }
+                      error={!!(nodeForm.touched.nodeAddress && nodeForm.errors.nodeAddress)}
+                      marginBottom={1}
+                    >
+                      <TextField
+                        fullWidth
+                        size="small"
+                        name="nodeAddress"
+                        placeholder="node.example.com:8333"
+                        value={nodeForm.values.nodeAddress}
+                        onChange={nodeForm.handleChange}
+                        error={!!(nodeForm.touched.nodeAddress && nodeForm.errors.nodeAddress)}
+                        sx={getTextFieldStyle()}
+                      />
+                    </FormField>
+                    <Button 
+                      color="primary" 
+                      variant="contained" 
                       size="small"
-                      placeholder="node.example.com:8333"
-                      value={nodeAddress}
-                      onChange={(e) => setNodeAddress(e.target.value)}
-                      sx={{ mb: 1 }}
-                    />
-                    <Button color="primary" variant="contained" size="small">
+                      type="submit"
+                      disabled={nodeForm.isSubmitting}
+                    >
                       Connect
                     </Button>
-                  </Box>
-                </ListItem>
-                <Divider variant="inset" component="li" />
-                
-                <ListItem>
-                  <ListItemIcon>
-                    <PrivacyTipIcon 
-                      color={isDarkMode ? "primary" : "primary"} 
-                    />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary="Usage Data" 
-                    secondary="Send anonymous usage data" 
-                  />
+                  </form>
+                }
+              />
+              <Divider variant="inset" component="li" />
+              
+              <SettingsItem
+                icon={<PrivacyTipIcon color="primary" />}
+                primary="Usage Data"
+                secondary="Send anonymous usage data"
+                action={
                   <Switch 
                     checked={anonymousData}
                     onChange={(e) => setAnonymousData(e.target.checked)}
                     color="primary"
                   />
-                </ListItem>
-              </List>
-            </CardContent>
-          </Card>
+                }
+              />
+            </List>
+          </StyledCard>
         </Grid>
       </Grid>
-    </Box>
+    </PageContainer>
   );
 }
