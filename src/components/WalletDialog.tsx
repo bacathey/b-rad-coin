@@ -32,6 +32,8 @@ import AddIcon from '@mui/icons-material/Add';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
 import SecureWalletDialog from './SecureWalletDialog';
+import SeedPhraseDialog from './SeedPhraseDialog';
+import VerifySeedPhraseDialog from './VerifySeedPhraseDialog';
 
 // Interface for tab panel props
 interface TabPanelProps {
@@ -97,10 +99,15 @@ export default function WalletDialog() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [usePasswordProtection, setUsePasswordProtection] = useState(false);
-
   // State for secure wallet dialog
   const [secureDialogOpen, setSecureDialogOpen] = useState(false);
   const [walletToSecure] = useState('');
+  
+  // State for seed phrase dialogs
+  const [seedPhraseDialogOpen, setSeedPhraseDialogOpen] = useState(false);
+  const [verifySeedDialogOpen, setVerifySeedDialogOpen] = useState(false);
+  const [seedPhrase, setSeedPhrase] = useState('');
+  const [tempWalletData, setTempWalletData] = useState<{name: string; password: string; usePassword: boolean} | null>(null);
 
   // Fetch available wallets when the component mounts or when isWalletOpen changes
   useEffect(() => {
@@ -185,7 +192,6 @@ export default function WalletDialog() {
       setIsLoading(false);
     }
   };
-
   const handleCreateWallet = async () => {
     setErrorMessage('');
     
@@ -209,19 +215,55 @@ export default function WalletDialog() {
     
     setIsLoading(true);
     try {
+      // Generate a seed phrase for the new wallet
+      const generatedSeedPhrase = await invoke<string>('generate_seed_phrase');
+      
+      if (generatedSeedPhrase) {
+        // Store wallet data temporarily until seed phrase is verified
+        setTempWalletData({
+          name: newWalletName,
+          password: walletPassword,
+          usePassword: usePasswordProtection
+        });
+        
+        // Set the seed phrase and show the dialog
+        setSeedPhrase(generatedSeedPhrase);
+        setSeedPhraseDialogOpen(true);
+      } else {
+        setErrorMessage('Failed to generate seed phrase');
+      }
+    } catch (error) {
+      console.error('Failed to start wallet creation:', error);
+      setErrorMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Function to create the wallet after seed phrase verification
+  const finalizeWalletCreation = async () => {
+    if (!tempWalletData) return;
+    
+    setIsLoading(true);
+    try {
       const result = await invoke('create_wallet', { 
-        walletName: newWalletName, 
-        password: walletPassword,
-        usePassword: usePasswordProtection
+        walletName: tempWalletData.name, 
+        password: tempWalletData.password,
+        usePassword: tempWalletData.usePassword,
+        seedPhrase: seedPhrase // Pass the seed phrase to create wallet with this specific phrase
       });
       
       if (result) {
         setCurrentWallet({
-          name: newWalletName,
-          secured: usePasswordProtection
+          name: tempWalletData.name,
+          secured: tempWalletData.usePassword
         });
         setIsWalletOpen(true);
         await refreshWalletDetails(); // Refresh wallet details in context
+        
+        // Reset temporary data and close dialogs
+        setTempWalletData(null);
+        setSeedPhrase('');
       } else {
         setErrorMessage('Failed to create wallet');
       }
@@ -261,13 +303,42 @@ export default function WalletDialog() {
           bottom: 0
         }}
       />
-      
-      {/* Secure Wallet Dialog */}
+        {/* Secure Wallet Dialog */}
       <SecureWalletDialog
         open={secureDialogOpen}
         onClose={() => setSecureDialogOpen(false)}
         walletName={walletToSecure}
         onSuccess={refreshWalletDetails}
+      />
+      
+      {/* Seed Phrase Dialog */}
+      <SeedPhraseDialog
+        open={seedPhraseDialogOpen}
+        seedPhrase={seedPhrase}
+        onClose={() => {
+          setSeedPhraseDialogOpen(false);
+          setTempWalletData(null);
+          setSeedPhrase('');
+        }}
+        onContinue={() => {
+          setSeedPhraseDialogOpen(false);
+          setVerifySeedDialogOpen(true);
+        }}
+      />
+      
+      {/* Verify Seed Phrase Dialog */}
+      <VerifySeedPhraseDialog
+        open={verifySeedDialogOpen}
+        seedPhrase={seedPhrase}
+        onClose={() => {
+          setVerifySeedDialogOpen(false);
+          setTempWalletData(null);
+          setSeedPhrase('');
+        }}
+        onVerified={() => {
+          setVerifySeedDialogOpen(false);
+          finalizeWalletCreation();
+        }}
       />
       
       <Dialog 
@@ -499,8 +570,45 @@ export default function WalletDialog() {
               </Button>
             </Box>
           </TabPanel>
-        </DialogContent>
-      </Dialog>
+        </DialogContent>      </Dialog>
+
+      {/* Secure Wallet Dialog */}
+      <SecureWalletDialog
+        open={secureDialogOpen}
+        onClose={() => setSecureDialogOpen(false)}
+        walletName={walletToSecure}
+        onSuccess={refreshWalletDetails}
+      />
+      
+      {/* Seed Phrase Dialog */}
+      <SeedPhraseDialog
+        open={seedPhraseDialogOpen}
+        seedPhrase={seedPhrase}
+        onClose={() => {
+          setSeedPhraseDialogOpen(false);
+          setTempWalletData(null);
+          setSeedPhrase('');
+        }}
+        onContinue={() => {
+          setSeedPhraseDialogOpen(false);
+          setVerifySeedDialogOpen(true);
+        }}
+      />
+      
+      {/* Verify Seed Phrase Dialog */}
+      <VerifySeedPhraseDialog
+        open={verifySeedDialogOpen}
+        seedPhrase={seedPhrase}
+        onClose={() => {
+          setVerifySeedDialogOpen(false);
+          setTempWalletData(null);
+          setSeedPhrase('');
+        }}
+        onVerified={() => {
+          setVerifySeedDialogOpen(false);
+          finalizeWalletCreation();
+        }}
+      />
     </>
   );
 }

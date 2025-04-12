@@ -26,7 +26,7 @@ import {
   Link,
 } from '@mui/material';
 import { useWallet } from '../context/WalletContext';
-import { getWalletDetails } from '../lib/wallet';
+import { getWalletDetails } from '../lib/wallet'; 
 import { invoke } from '@tauri-apps/api/core';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import AddIcon from '@mui/icons-material/Add';
@@ -34,6 +34,8 @@ import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
 import RestoreIcon from '@mui/icons-material/Restore';
 import SecureWalletDialog from './SecureWalletDialog';
+import SeedPhraseDialog from './SeedPhraseDialog';
+import VerifySeedPhraseDialog from './VerifySeedPhraseDialog';
 
 // Interface for tab panel props
 interface TabPanelProps {
@@ -102,14 +104,21 @@ export default function OpenCreateWalletDialog() {
 
   // State for secure wallet dialog
   const [secureDialogOpen, setSecureDialogOpen] = useState(false);
-  const [walletToSecure] = useState('');
+  const [walletToSecure] = useState(''); // Keep if needed, otherwise remove
 
   // State for wallet recovery
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
-  const [seedPhrase, setSeedPhrase] = useState('');
+  // Rename seedPhrase state used for recovery input
+  const [recoverySeedPhrase, setRecoverySeedPhrase] = useState(''); 
   
   // Validation state
   const [isWalletNameDuplicate, setIsWalletNameDuplicate] = useState(false);
+
+  // Add state for seed phrase flow
+  const [seedPhraseDialogOpen, setSeedPhraseDialogOpen] = useState(false);
+  const [verifySeedDialogOpen, setVerifySeedDialogOpen] = useState(false);
+  const [generatedSeedPhrase, setGeneratedSeedPhrase] = useState(''); // State for the generated phrase
+  const [tempWalletData, setTempWalletData] = useState<{name: string; password: string; usePassword: boolean} | null>(null);
   
   // Check for duplicate wallet names when wallet name changes
   useEffect(() => {
@@ -222,6 +231,7 @@ export default function OpenCreateWalletDialog() {
     }
   };
 
+  // Modified handleCreateWallet to start the seed phrase flow
   const handleCreateWallet = async () => {
     setErrorMessage('');
     
@@ -250,31 +260,79 @@ export default function OpenCreateWalletDialog() {
     
     setIsLoading(true);
     try {
-      const result = await invoke('create_wallet', { 
-        walletName: newWalletName, 
-        password: walletPassword,
-        usePassword: usePasswordProtection
-      });
+      // Generate a seed phrase for the new wallet
+      const phrase = await invoke<string>('generate_seed_phrase');
       
-      if (result) {
-        setCurrentWallet({
+      if (phrase) {
+        // Store wallet data temporarily until seed phrase is verified
+        setTempWalletData({
           name: newWalletName,
-          secured: usePasswordProtection
+          password: walletPassword,
+          usePassword: usePasswordProtection
         });
-        setIsWalletOpen(true);
-        await refreshWalletDetails(); // Refresh wallet details in context
+        
+        // Set the seed phrase and show the dialog
+        setGeneratedSeedPhrase(phrase);
+        setSeedPhraseDialogOpen(true);
       } else {
-        setErrorMessage('Failed to create wallet');
+        setErrorMessage('Failed to generate seed phrase');
       }
     } catch (error) {
-      console.error('Failed to create wallet:', error);
+      console.error('Failed to start wallet creation:', error);
       setErrorMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
   };
+  
+  // Function to create the wallet after seed phrase verification
+  const finalizeWalletCreation = async () => {
+    if (!tempWalletData) return;
+    
+    setIsLoading(true);
+    setErrorMessage(''); // Clear previous errors
+    try {
+      const result = await invoke('create_wallet', { 
+        walletName: tempWalletData.name, 
+        password: tempWalletData.password,
+        usePassword: tempWalletData.usePassword,
+        seedPhrase: generatedSeedPhrase // Pass the generated seed phrase
+      });
+      
+      if (result) {
+        setCurrentWallet({
+          name: tempWalletData.name,
+          secured: tempWalletData.usePassword
+        });
+        setIsWalletOpen(true);
+        await refreshWalletDetails(); // Refresh wallet details in context
+        
+        // Reset temporary data and close dialogs
+        setTempWalletData(null);
+        setGeneratedSeedPhrase('');
+        // Reset form fields
+        setNewWalletName('');
+        setWalletPassword('');
+        setConfirmPassword('');
+        setUsePasswordProtection(false);
+      } else {
+        setErrorMessage('Failed to create wallet after verification');
+      }
+    } catch (error) {
+      console.error('Failed to finalize wallet creation:', error);
+      setErrorMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Keep dialogs closed but show error
+      setTempWalletData(null); 
+      setGeneratedSeedPhrase('');
+    } finally {
+      setIsLoading(false);
+      // Ensure dialogs are closed even on error during finalization
+      setSeedPhraseDialogOpen(false); 
+      setVerifySeedDialogOpen(false);
+    }
+  };
 
-  // New handler for wallet recovery
+  // Renamed handleRecoverWallet, uses recoverySeedPhrase state
   const handleRecoverWallet = async () => {
     setErrorMessage('');
     
@@ -288,7 +346,8 @@ export default function OpenCreateWalletDialog() {
       return;
     }
     
-    if (!seedPhrase || seedPhrase.trim().split(/\s+/).length < 12) {
+    // Use recoverySeedPhrase state here
+    if (!recoverySeedPhrase || recoverySeedPhrase.trim().split(/\s+/).length < 12) { 
       setErrorMessage('Please enter a valid seed phrase (at least 12 words)');
       return;
     }
@@ -308,9 +367,10 @@ export default function OpenCreateWalletDialog() {
     
     setIsLoading(true);
     try {
+      // Call recover_wallet with recoverySeedPhrase
       const result = await invoke('recover_wallet', { 
         walletName: newWalletName, 
-        seedPhrase: seedPhrase,
+        seedPhrase: recoverySeedPhrase, // Pass the recovery seed phrase
         password: walletPassword,
         usePassword: usePasswordProtection
       });
@@ -322,6 +382,13 @@ export default function OpenCreateWalletDialog() {
         });
         setIsWalletOpen(true);
         await refreshWalletDetails(); // Refresh wallet details in context
+        // Reset form fields
+        setNewWalletName('');
+        setWalletPassword('');
+        setConfirmPassword('');
+        setUsePasswordProtection(false);
+        setRecoverySeedPhrase('');
+        setIsRecoveryMode(false); 
       } else {
         setErrorMessage('Failed to recover wallet');
       }
@@ -345,12 +412,16 @@ export default function OpenCreateWalletDialog() {
 
   const toggleRecoveryMode = () => {
     setIsRecoveryMode(!isRecoveryMode);
-    // Clear any error messages when toggling modes
     setErrorMessage('');
-    // Clear seed phrase when exiting recovery mode
-    if (isRecoveryMode) {
-      setSeedPhrase('');
+    // Clear recovery seed phrase when exiting recovery mode
+    if (isRecoveryMode) { 
+      setRecoverySeedPhrase('');
     }
+    // Also clear create wallet fields when toggling
+    setNewWalletName('');
+    setWalletPassword('');
+    setConfirmPassword('');
+    setUsePasswordProtection(false);
   };
 
   return (
@@ -372,12 +443,42 @@ export default function OpenCreateWalletDialog() {
         }}
       />
       
-      {/* Secure Wallet Dialog */}
+      {/* Secure Wallet Dialog (keep if needed) */}
       <SecureWalletDialog
         open={secureDialogOpen}
         onClose={() => setSecureDialogOpen(false)}
-        walletName={walletToSecure}
+        walletName={walletToSecure} // Ensure walletToSecure state is managed if used
         onSuccess={refreshWalletDetails}
+      />
+
+      {/* Add Seed Phrase Dialog */}
+      <SeedPhraseDialog
+        open={seedPhraseDialogOpen}
+        seedPhrase={generatedSeedPhrase}
+        onClose={() => {
+          setSeedPhraseDialogOpen(false);
+          setTempWalletData(null); // Clear temp data if user cancels
+          setGeneratedSeedPhrase('');
+        }}
+        onContinue={() => {
+          setSeedPhraseDialogOpen(false);
+          setVerifySeedDialogOpen(true); // Open verification dialog
+        }}
+      />
+      
+      {/* Add Verify Seed Phrase Dialog */}
+      <VerifySeedPhraseDialog
+        open={verifySeedDialogOpen}
+        seedPhrase={generatedSeedPhrase}
+        onClose={() => {
+          setVerifySeedDialogOpen(false);
+          setTempWalletData(null); // Clear temp data if user cancels verification
+          setGeneratedSeedPhrase('');
+        }}
+        onVerified={() => {
+          setVerifySeedDialogOpen(false);
+          finalizeWalletCreation(); // Call the final creation step
+        }}
       />
       
       <Dialog 
@@ -446,7 +547,7 @@ export default function OpenCreateWalletDialog() {
         
         <DialogContent sx={{ 
           position: 'relative',
-          overflow: 'hidden'
+          overflow: 'hidden' // Consider 'auto' or 'visible' if content gets cut off
         }}>
           {/* Error message for both tabs */}
           {errorMessage && (
@@ -578,8 +679,8 @@ export default function OpenCreateWalletDialog() {
                 fullWidth
                 label="Seed Phrase"
                 variant="outlined"
-                value={seedPhrase}
-                onChange={(e) => setSeedPhrase(e.target.value)}
+                value={recoverySeedPhrase} // Use recoverySeedPhrase state
+                onChange={(e) => setRecoverySeedPhrase(e.target.value)} // Update recoverySeedPhrase state
                 multiline
                 rows={3}
                 placeholder="Enter your 12 or 24-word seed phrase separated by spaces"
@@ -640,9 +741,7 @@ export default function OpenCreateWalletDialog() {
             )}
             
             <Box sx={{ display: 'flex', flexDirection: 'column', mt: 2, gap: 2 }}>
-              {/* Action buttons with Recover wallet link moved to the left */}
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                {/* Recovery mode toggle button now on the left */}
                 <Link
                   component="button"
                   underline="hover"
@@ -659,12 +758,13 @@ export default function OpenCreateWalletDialog() {
                   {isRecoveryMode ? 'Create a new wallet instead' : 'Recover existing wallet'}
                 </Link>
                 
-                {/* Action button on the right */}
                 <Button 
                   variant="contained"
                   color="primary"
-                  onClick={isRecoveryMode ? handleRecoverWallet : handleCreateWallet}
-                  disabled={isLoading || !newWalletName || isWalletNameDuplicate || (usePasswordProtection && (!walletPassword || walletPassword !== confirmPassword)) || (isRecoveryMode && (!seedPhrase || seedPhrase.trim() === ''))}
+                  // Use correct handler based on mode
+                  onClick={isRecoveryMode ? handleRecoverWallet : handleCreateWallet} 
+                  // Update disabled logic for recovery mode seed phrase
+                  disabled={isLoading || !newWalletName || isWalletNameDuplicate || (usePasswordProtection && (!walletPassword || walletPassword !== confirmPassword)) || (isRecoveryMode && (!recoverySeedPhrase || recoverySeedPhrase.trim() === ''))} 
                   startIcon={isLoading && tabValue === 1 ? <CircularProgress size={20} /> : isRecoveryMode ? <RestoreIcon /> : <AddIcon />}
                   sx={{ 
                     minWidth: '160px',
