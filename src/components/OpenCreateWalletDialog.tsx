@@ -24,6 +24,7 @@ import {
   FormControlLabel,
   Checkbox,
   Link,
+  Collapse, // Add Collapse import
 } from '@mui/material';
 import { useWallet } from '../context/WalletContext';
 import { getWalletDetails } from '../lib/wallet'; 
@@ -595,19 +596,21 @@ export default function OpenCreateWalletDialog() {
                   </FormControl>
                 )}
                 
-                {/* Only show password field for secured wallets */}
-                {isSelectedWalletSecured && (
-                  <TextField
-                    fullWidth
-                    label="Password"
-                    type="password"
-                    variant="outlined"
-                    value={openWalletPassword}
-                    onChange={(e) => setOpenWalletPassword(e.target.value)}
-                    sx={{ mb: 2 }}
-                    required
-                  />
-                )}
+                {/* Only show password field for secured wallets, wrapped in Collapse */}
+                <Collapse in={isSelectedWalletSecured} timeout="auto" unmountOnExit>
+                  <Box sx={{ pt: 2 }}> {/* Add padding top for spacing */}
+                    <TextField
+                      fullWidth
+                      label="Password"
+                      type="password"
+                      variant="outlined"
+                      value={openWalletPassword}
+                      onChange={(e) => setOpenWalletPassword(e.target.value)}
+                      sx={{ mb: 2 }}
+                      required
+                    />
+                  </Box>
+                </Collapse>
                 
                 <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
                   <Button 
@@ -674,21 +677,24 @@ export default function OpenCreateWalletDialog() {
               }}
             />
             
-            {isRecoveryMode && (
-              <TextField
-                fullWidth
-                label="Seed Phrase"
-                variant="outlined"
-                value={recoverySeedPhrase} // Use recoverySeedPhrase state
-                onChange={(e) => setRecoverySeedPhrase(e.target.value)} // Update recoverySeedPhrase state
-                multiline
-                rows={3}
-                placeholder="Enter your 12 or 24-word seed phrase separated by spaces"
-                sx={{ mb: 2 }}
-                required
-                helperText="Your seed phrase will allow you to recover your wallet"
-              />
-            )}
+            {/* Wrap recovery seed phrase field in Collapse */}
+            <Collapse in={isRecoveryMode} timeout="auto" unmountOnExit>
+              <Box sx={{ pt: 2 }}> {/* Add padding top for spacing */}
+                <TextField
+                  fullWidth
+                  label="Seed Phrase"
+                  variant="outlined"
+                  value={recoverySeedPhrase} // Use recoverySeedPhrase state
+                  onChange={(e) => setRecoverySeedPhrase(e.target.value)} // Update recoverySeedPhrase state
+                  multiline
+                  rows={3}
+                  placeholder="Enter your 12 or 24-word seed phrase separated by spaces"
+                  sx={{ mb: 2 }}
+                  required
+                  helperText="Your seed phrase will allow you to recover your wallet"
+                />
+              </Box>
+            </Collapse>
             
             <FormControlLabel
               control={(
@@ -709,11 +715,12 @@ export default function OpenCreateWalletDialog() {
                   </Typography>
                 </Box>
               )}
-              sx={{ mb: 2 }}
+              sx={{ mb: usePasswordProtection ? 0 : 2 }} // Adjust margin based on visibility
             />
             
-            {usePasswordProtection && (
-              <>
+            {/* Wrap password fields in Collapse */}
+            <Collapse in={usePasswordProtection} timeout="auto" unmountOnExit>
+              <Box sx={{ pt: 2 }}> {/* Add padding top for spacing */}
                 <TextField
                   fullWidth
                   label="Password"
@@ -737,8 +744,8 @@ export default function OpenCreateWalletDialog() {
                   error={walletPassword !== confirmPassword && confirmPassword !== ''}
                   helperText={walletPassword !== confirmPassword && confirmPassword !== '' ? 'Passwords do not match' : ''}
                 />
-              </>
-            )}
+              </Box>
+            </Collapse>
             
             <Box sx={{ display: 'flex', flexDirection: 'column', mt: 2, gap: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
