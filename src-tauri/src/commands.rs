@@ -6,6 +6,8 @@ use tauri::{command, Manager, State};
 use crate::config::{AppSettings, ConfigManager};
 use crate::security::AsyncSecurityManager;
 use crate::wallet_manager::AsyncWalletManager;
+use rand::seq::SliceRandom;
+use crate::bip39_words::WORD_LIST;
 
 /// Response type for commands with proper error handling
 type CommandResult<T> = Result<T, String>;
@@ -104,12 +106,13 @@ pub async fn is_current_wallet_secured(
     Ok(manager.is_current_wallet_secured())
 }
 
-/// Command to create a new wallet with optional password protection
+/// Command to create a new wallet with optional password protection and a specific seed phrase
 #[command]
 pub async fn create_wallet(
     wallet_name: String,
     password: String,
     use_password: bool,
+    seed_phrase: Option<String>, // Add seed_phrase parameter (optional for now)
     wallet_manager: State<'_, AsyncWalletManager>,
 ) -> CommandResult<bool> {
     info!("Command: create_wallet with name: {}", wallet_name);
@@ -122,9 +125,21 @@ pub async fn create_wallet(
     };
 
     let mut manager = wallet_manager.get_manager().await;
-    match manager.create_wallet(&wallet_name, &effective_password) {
+    
+    // TODO: Modify WalletManager::create_wallet to accept and use the seed phrase
+    // For now, we'll log if a seed phrase was provided
+    if let Some(phrase) = &seed_phrase {
+        debug!("Creating wallet with provided seed phrase (first word: {}, last word: {})", 
+               phrase.split(' ').next().unwrap_or(""), 
+               phrase.split(' ').last().unwrap_or(""));
+    } else {
+        debug!("Creating wallet with a new, randomly generated seed phrase (implementation needed in WalletManager)");
+    }
+
+    // Call the existing create_wallet logic (needs modification in WalletManager later)
+    match manager.create_wallet(&wallet_name, &effective_password) { // Pass seed_phrase here when WalletManager is updated
         Ok(_) => {
-            info!("Successfully created wallet: {}", wallet_name);
+            info!("Successfully created wallet structure for: {}", wallet_name);
             // Now open the newly created wallet
             match manager.open_wallet(
                 &wallet_name,
@@ -440,4 +455,23 @@ pub fn get_app_version() -> CommandResult<String> {
     let version = crate::APP_VERSION;
     debug!("App version: {}", version);
     Ok(version.to_string())
+}
+
+/// Command to generate a new 12-word BIP-39 seed phrase
+#[command]
+pub async fn generate_seed_phrase() -> CommandResult<String> {
+    debug!("Command: generate_seed_phrase");
+    let mut rng = rand::thread_rng();
+    
+    // Select 12 unique words randomly from the BIP-39 English list
+    let words: Vec<&str> = WORD_LIST
+        .choose_multiple(&mut rng, 12)
+        .cloned()
+        .collect();
+        
+    // Join the words with spaces
+    let phrase = words.join(" ");
+    
+    debug!("Generated seed phrase (first word: {}, last word: {})", words.first().unwrap_or(&""), words.last().unwrap_or(&"")); // Avoid logging the full phrase
+    Ok(phrase)
 }

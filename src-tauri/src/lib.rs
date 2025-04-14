@@ -1,3 +1,5 @@
+mod bip39_words;
+
 // B-Rad Coin Application
 use log::{debug, error, info, LevelFilter};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -60,6 +62,7 @@ pub fn run() {
                         is_current_wallet_secured,
                         open_wallet,
                         create_wallet,
+                        generate_seed_phrase, // Add the new command here
                         recover_wallet,
                         get_current_wallet_name,
                         update_app_settings,

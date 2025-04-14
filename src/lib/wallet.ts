@@ -32,8 +32,18 @@ export async function getWalletStatus(): Promise<WalletStatus> {
   return { isOpen, name, secured };
 }
 
-export async function createWallet(name: string, password: string, usePassword: boolean): Promise<boolean> {
-  return invoke('create_wallet', { walletName: name, password, usePassword });
+export async function createWallet(
+  name: string, 
+  password: string, 
+  usePassword: boolean, 
+  seedPhrase?: string
+): Promise<boolean> {
+  return invoke('create_wallet', { 
+    walletName: name, 
+    password, 
+    usePassword, 
+    seedPhrase
+  });
 }
 
 export async function getWalletDetails(): Promise<WalletDetails[]> {
@@ -42,4 +52,22 @@ export async function getWalletDetails(): Promise<WalletDetails[]> {
 
 export async function isCurrentWalletSecured(): Promise<boolean | null> {
   return invoke('is_current_wallet_secured');
+}
+
+export async function generateSeedPhrase(): Promise<string> {
+  return invoke('generate_seed_phrase');
+}
+
+export async function recoverWallet(
+  name: string, 
+  seedPhrase: string, 
+  password: string, 
+  usePassword: boolean
+): Promise<boolean> {
+  return invoke('recover_wallet', { 
+    walletName: name, 
+    seedPhrase, 
+    password, 
+    usePassword 
+  });
 }

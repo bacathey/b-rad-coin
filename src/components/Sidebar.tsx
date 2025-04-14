@@ -14,7 +14,8 @@ import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import MiningIcon from '@mui/icons-material/Hardware';
-import BlockchainStatus from './BlockchainStatus';
+import NetworkStatus from './NetworkStatus';
+import { transitions } from '../styles/themeConstants';
 
 interface SidebarProps {
   mode: 'light' | 'dark';
@@ -35,7 +36,8 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
       <Toolbar sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
         <Typography variant="h6" noWrap component="div" sx={{ 
           fontWeight: 600,
-          color: mode === 'light' ? '#1a237e' : undefined 
+          color: mode === 'light' ? '#1a237e' : undefined,
+          transition: `${transitions.color}, ${transitions.fontWeight}`
         }}>
           Navigation
         </Typography>
@@ -50,18 +52,30 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
               if (mobileOpen) handleDrawerToggle();
             }}
             sx={mode === 'light' && location.pathname === '/' ? {
-              borderLeft: '4px solid #1a237e'
-            } : {}}
+              borderLeft: '4px solid #1a237e',
+              transition: transitions.all
+            } : {
+              transition: transitions.all
+            }}
           >
             <ListItemIcon sx={mode === 'light' ? {
-              color: location.pathname === '/' ? '#1a237e' : 'rgba(0, 0, 0, 0.54)'
-            } : {}}>
+              color: location.pathname === '/' ? '#1a237e' : 'rgba(0, 0, 0, 0.54)',
+              transition: transitions.color
+            } : {
+              transition: transitions.color
+            }}>
               <AccountCircleIcon />
             </ListItemIcon>
-            <ListItemText primary="Account" sx={mode === 'light' && location.pathname === '/' ? {
-              color: '#1a237e',
-              fontWeight: 500
-            } : {}} />
+            <ListItemText 
+              primary="Account" 
+              primaryTypographyProps={{
+                sx: {
+                  color: mode === 'light' && location.pathname === '/' ? '#1a237e' : undefined,
+                  fontWeight: location.pathname === '/' ? 500 : 400,
+                  transition: `${transitions.color}, ${transitions.fontWeight}`
+                }
+              }}
+            />
           </ListItemButton>
         </ListItem>
         
@@ -73,18 +87,30 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
               if (mobileOpen) handleDrawerToggle();
             }}
             sx={mode === 'light' && location.pathname === '/transactions' ? {
-              borderLeft: '4px solid #1a237e'
-            } : {}}
+              borderLeft: '4px solid #1a237e',
+              transition: transitions.all
+            } : {
+              transition: transitions.all
+            }}
           >
             <ListItemIcon sx={mode === 'light' ? {
-              color: location.pathname === '/transactions' ? '#1a237e' : 'rgba(0, 0, 0, 0.54)'
-            } : {}}>
+              color: location.pathname === '/transactions' ? '#1a237e' : 'rgba(0, 0, 0, 0.54)',
+              transition: transitions.color
+            } : {
+              transition: transitions.color
+            }}>
               <ReceiptLongIcon />
             </ListItemIcon>
-            <ListItemText primary="Transactions" sx={mode === 'light' && location.pathname === '/transactions' ? {
-              color: '#1a237e',
-              fontWeight: 500
-            } : {}} />
+            <ListItemText 
+              primary="Transactions" 
+              primaryTypographyProps={{
+                sx: {
+                  color: mode === 'light' && location.pathname === '/transactions' ? '#1a237e' : undefined,
+                  fontWeight: location.pathname === '/transactions' ? 500 : 400,
+                  transition: `${transitions.color}, ${transitions.fontWeight}`
+                }
+              }}
+            />
           </ListItemButton>
         </ListItem>
         <ListItem disablePadding>
@@ -95,18 +121,30 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
               if (mobileOpen) handleDrawerToggle();
             }}
             sx={mode === 'light' && location.pathname === '/send-receive' ? {
-              borderLeft: '4px solid #1a237e'
-            } : {}}
+              borderLeft: '4px solid #1a237e',
+              transition: transitions.all
+            } : {
+              transition: transitions.all
+            }}
           >
             <ListItemIcon sx={mode === 'light' ? {
-              color: location.pathname === '/send-receive' ? '#1a237e' : 'rgba(0, 0, 0, 0.54)'
-            } : {}}>
+              color: location.pathname === '/send-receive' ? '#1a237e' : 'rgba(0, 0, 0, 0.54)',
+              transition: transitions.color
+            } : {
+              transition: transitions.color
+            }}>
               <SwapHorizIcon />
             </ListItemIcon>
-            <ListItemText primary="Send/Receive" sx={mode === 'light' && location.pathname === '/send-receive' ? {
-              color: '#1a237e',
-              fontWeight: 500
-            } : {}} />
+            <ListItemText 
+              primary="Send/Receive" 
+              primaryTypographyProps={{
+                sx: {
+                  color: mode === 'light' && location.pathname === '/send-receive' ? '#1a237e' : undefined,
+                  fontWeight: location.pathname === '/send-receive' ? 500 : 400,
+                  transition: `${transitions.color}, ${transitions.fontWeight}`
+                }
+              }}
+            />
           </ListItemButton>
         </ListItem>
         <ListItem disablePadding>
@@ -117,27 +155,39 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
               if (mobileOpen) handleDrawerToggle();
             }}
             sx={mode === 'light' && location.pathname === '/advanced' ? {
-              borderLeft: '4px solid #1a237e'
-            } : {}}
+              borderLeft: '4px solid #1a237e',
+              transition: transitions.all
+            } : {
+              transition: transitions.all
+            }}
           >
             <ListItemIcon sx={mode === 'light' ? {
-              color: location.pathname === '/advanced' ? '#1a237e' : 'rgba(0, 0, 0, 0.54)'
-            } : {}}>
+              color: location.pathname === '/advanced' ? '#1a237e' : 'rgba(0, 0, 0, 0.54)',
+              transition: transitions.color
+            } : {
+              transition: transitions.color
+            }}>
               <MiningIcon />
             </ListItemIcon>
-            <ListItemText primary="Advanced" sx={mode === 'light' && location.pathname === '/advanced' ? {
-              color: '#1a237e',
-              fontWeight: 500
-            } : {}} />
+            <ListItemText 
+              primary="Advanced" 
+              primaryTypographyProps={{
+                sx: {
+                  color: mode === 'light' && location.pathname === '/advanced' ? '#1a237e' : undefined,
+                  fontWeight: location.pathname === '/advanced' ? 500 : 400,
+                  transition: `${transitions.color}, ${transitions.fontWeight}`
+                }
+              }}
+            />
           </ListItemButton>
         </ListItem>
       </List>
       
-      {/* Push the blockchain status to the bottom with flexbox */}
+      {/* Push the network status to the bottom with flexbox */}
       <Box sx={{ flexGrow: 1 }} />
       
-      {/* Use the BlockchainStatus component */}
-      <BlockchainStatus mode={mode} />
+      {/* Use the NetworkStatus component */}
+      <NetworkStatus className="sidebar-network-status" />
     </Box>
   );
 }
