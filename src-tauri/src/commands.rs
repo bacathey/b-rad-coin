@@ -1,5 +1,6 @@
 use crate::logging;
 use log::{debug, error, info};
+use std::sync::Arc;  // Add this import for Arc
 use tauri::Emitter;
 use tauri::{command, Manager, State};
 
@@ -190,9 +191,13 @@ pub async fn update_app_settings(
     auto_backup: Option<bool>,
     notifications_enabled: Option<bool>,
     log_level: Option<String>,
-    config_manager: State<'_, ConfigManager>,
+    show_seed_phrase_dialogs: Option<bool>,
+    config_manager_arc: State<'_, Arc<ConfigManager>>, // Change type to State<'_, Arc<ConfigManager>>
 ) -> CommandResult<bool> {
     info!("Command: update_app_settings");
+
+    // Get the inner ConfigManager from the Arc
+    let config_manager = config_manager_arc.inner();
 
     // Get a copy of the current config
     let mut config = config_manager.get_config().clone();
@@ -215,11 +220,16 @@ pub async fn update_app_settings(
 
     if let Some(log_level) = log_level {
         info!("Updating log_level to: {}", log_level);
-
+        config.app_settings.log_level = log_level;
         // TODO: Update actual log level at runtime if needed
     }
 
-    // Save the updated config
+    if let Some(show_dialogs) = show_seed_phrase_dialogs {
+        info!("Updating show_seed_phrase_dialogs to: {}", show_dialogs);
+        config.app_settings.show_seed_phrase_dialogs = show_dialogs;
+    }
+
+    // Save the updated config using the inner ConfigManager
     match config_manager
         .update_app_settings(config.app_settings)
         .await
@@ -238,12 +248,12 @@ pub async fn update_app_settings(
 /// Command to get current application settings
 #[command]
 pub async fn get_app_settings(
-    config_manager: State<'_, ConfigManager>,
+    config_manager_arc: State<'_, Arc<ConfigManager>>, // Change type to State<'_, Arc<ConfigManager>>
 ) -> CommandResult<AppSettings> {
     debug!("Command: get_app_settings");
 
-    // Get config is now returning a reference directly, not a Result
-    let config = config_manager.get_config();
+    // Access the inner ConfigManager through the Arc
+    let config = config_manager_arc.inner().get_config();
     Ok(config.app_settings.clone())
 }
 

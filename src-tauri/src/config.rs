@@ -37,6 +37,8 @@ pub struct AppSettings {
     pub notifications_enabled: bool,
     /// Log level setting
     pub log_level: String,
+    /// Whether to show seed phrase dialogs during wallet creation
+    pub show_seed_phrase_dialogs: bool,
 }
 
 /// Default implementation for Config
@@ -58,6 +60,7 @@ impl Default for AppSettings {
             auto_backup: true,
             notifications_enabled: true,
             log_level: "info".to_string(),
+            show_seed_phrase_dialogs: false, // Default to NOT showing the dialogs
         }
     }
 }
@@ -310,7 +313,7 @@ impl ConfigManager {
     /// Get the configuration file path
     pub async fn get_config_path() -> Result<PathBuf, ConfigError> {
         let config_dir = Self::get_config_dir().await?;
-        let config_path = config_dir.join("wallet_config.json");
+        let config_path = config_dir.join("app_config.json"); // Changed filename
         debug!("Configuration file path: {}", config_path.display());
         Ok(config_path)
     }
