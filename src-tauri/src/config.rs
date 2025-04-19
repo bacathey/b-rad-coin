@@ -60,7 +60,7 @@ impl Default for AppSettings {
             auto_backup: true,
             notifications_enabled: true,
             log_level: "info".to_string(),
-            show_seed_phrase_dialogs: false, // Default to NOT showing the dialogs
+            show_seed_phrase_dialogs: true, // Default to NOT showing the dialogs
         }
     }
 }
