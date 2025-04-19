@@ -16,6 +16,7 @@ pub mod config;
 pub mod errors;
 pub mod logging;
 pub mod security;
+pub mod wallet_data;
 pub mod wallet_manager;
 
 use commands::*;

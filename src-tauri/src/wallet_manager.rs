@@ -1,20 +1,12 @@
 use crate::config::{Config, ConfigManager, WalletInfo};
 use crate::errors::WalletError;
+// Import the necessary types from the wallet_data module
+use crate::wallet_data::{WalletData, KeyPair, AddressInfo};
 use base64::Engine;
 use log::{debug, error, info};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use serde::{Deserialize, Serialize};
-
-/// Wallet data structure stored on disk
-#[derive(Debug, Serialize, Deserialize)]
-struct WalletData {
-    private_key: Vec<u8>,
-    created_at: String,
-    // In a real implementation, this would contain more fields
-    // like blockchain addresses, transaction history, etc.
-}
 
 /// Wallet type representing an open wallet
 pub struct Wallet {
@@ -103,7 +95,34 @@ impl WalletManager {
             self.close_wallet();
         }
 
-        // Create a wallet object
+        // Attempt to load the wallet data file
+        let wallet_dir_path = PathBuf::from(&wallet_path);
+        let wallet_data_path = wallet_dir_path.join("wallet.dat");
+        
+        debug!("Loading wallet data from: {}", wallet_data_path.display());
+        
+        // Use tokio block_in_place since we're in a sync function but need to call async
+        let wallet_data_result = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                WalletData::load(&wallet_data_path, password).await
+            })
+        });
+
+        // Check if we succeeded in loading wallet data
+        match wallet_data_result {
+            Ok(wallet_data) => {
+                debug!("Successfully loaded wallet data for: {}", name);
+                // You could store wallet_data in the Wallet struct if desired
+                // For now, we just log some info about it
+                debug!("Wallet balance: {}, addresses: {}", wallet_data.balance, wallet_data.addresses.len());
+            },
+            Err(e) => {
+                // Just log the error but continue - wallet data loading is optional for now
+                error!("Failed to load wallet data, continuing anyway: {}", e);
+            }
+        }
+
+        // Create a wallet object 
         let opened_wallet = Wallet {
             name: name.to_string(),
             path: PathBuf::from(&wallet_path),
@@ -254,6 +273,98 @@ impl WalletManager {
         }
 
         info!("Successfully created wallet: {}", name);
+        Ok(())
+    }
+
+    /// Create a wallet with a seed phrase
+    pub async fn create_wallet_with_seed(&mut self, name: &str, password: &str, seed_phrase: &str, is_secured: bool) -> Result<(), WalletError> {
+        info!("Attempting to create new wallet with seed phrase: {}", name);
+
+        // Check if wallet with this name already exists
+        if self.config.wallets.iter().any(|w| w.name == name) {
+            error!("Wallet already exists: {}", name);
+            return Err(WalletError::AlreadyExists(name.to_string()));
+        }
+
+        // Create wallet directory path
+        let wallet_path = format!("wallets/{}", name);
+        debug!("Creating wallet with path: {}", wallet_path);
+
+        // Create wallet directory if it doesn't exist
+        let wallet_dir_path = PathBuf::from(&wallet_path);
+        if let Err(e) = std::fs::create_dir_all(&wallet_dir_path) {
+            error!("Failed to create wallet directory: {}", e);
+            return Err(WalletError::Generic(format!(
+                "Failed to create wallet directory: {}",
+                e
+            )));
+        }
+
+        // Generate a dummy master public key for now
+        // In a real implementation, this would be derived from the seed phrase
+        let master_public_key = "xpub_dummy_for_development_placeholder";
+
+        // Create new WalletData object
+        let mut wallet_data = WalletData::new(name, master_public_key, is_secured);
+        
+        // Set the seed phrase
+        wallet_data.set_sensitive_data(seed_phrase, "xpriv_dummy_for_development_placeholder");
+
+        // Derive and add a dummy key pair for now
+        // TODO: In a real implementation, derive proper keys from the seed phrase
+        wallet_data.add_key_pair(KeyPair {
+            address: format!("address_{}_0", name),
+            key_type: "p2pkh".to_string(),
+            derivation_path: "m/44'/0'/0'/0/0".to_string(),
+            public_key: "dummy_public_key".to_string(),
+            private_key: if is_secured { Some("dummy_encrypted_private_key".to_string()) } else { Some("dummy_private_key".to_string()) },
+        });
+        
+        // Save the wallet data to disk
+        let wallet_data_path = wallet_dir_path.join("wallet.dat");
+        
+        // Password is only used if the wallet is secured
+        let password_option = if is_secured { Some(password) } else { None };
+        
+        match wallet_data.save(&wallet_data_path, password_option).await {
+            Ok(_) => {
+                debug!("Wallet data saved to disk: {}", wallet_data_path.display());
+            },
+            Err(e) => {
+                error!("Failed to save wallet data: {}", e);
+                return Err(WalletError::Generic(format!(
+                    "Failed to save wallet data: {}",
+                    e
+                )));
+            }
+        }
+        
+        // Register the wallet in the config
+        let wallet_info = WalletInfo {
+            name: name.to_string(),
+            path: wallet_path,
+            secured: is_secured,
+        };
+
+        // Add to in-memory config
+        self.config.wallets.push(wallet_info.clone());
+
+        // Persist to configuration if we have a ConfigManager
+        if let Some(config_manager) = &self.config_manager {
+            match config_manager.add_wallet(wallet_info).await {
+                Ok(_) => {
+                    info!("Wallet configuration persisted to disk: {}", name);
+                }
+                Err(e) => {
+                    error!("Failed to persist wallet configuration: {}", e);
+                    // Continue anyway as the wallet is created on disk and in memory
+                }
+            }
+        } else {
+            debug!("No ConfigManager available, wallet config will not persist across sessions");
+        }
+
+        info!("Successfully created wallet with seed phrase: {}", name);
         Ok(())
     }
 
@@ -526,5 +637,11 @@ impl AsyncWalletManager {
     pub async fn shutdown(&self) -> Result<(), WalletError> {
         let mut manager = self.inner.lock().await;
         manager.shutdown()
+    }
+
+    /// Create a wallet with a seed phrase
+    pub async fn create_wallet_with_seed(&self, name: &str, password: &str, seed_phrase: &str, is_secured: bool) -> Result<(), WalletError> {
+        let mut manager = self.inner.lock().await;
+        manager.create_wallet_with_seed(name, password, seed_phrase, is_secured).await
     }
 }

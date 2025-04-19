@@ -113,7 +113,7 @@ pub async fn create_wallet(
     wallet_name: String,
     password: String,
     use_password: bool,
-    seed_phrase: Option<String>, // Add seed_phrase parameter (optional for now)
+    seed_phrase: Option<String>,
     wallet_manager: State<'_, AsyncWalletManager>,
 ) -> CommandResult<bool> {
     info!("Command: create_wallet with name: {}", wallet_name);
@@ -125,22 +125,24 @@ pub async fn create_wallet(
         String::new()
     };
 
+    // Get the actual seed phrase or generate one if not provided
+    let actual_seed_phrase = if let Some(phrase) = &seed_phrase {
+        debug!("Using provided seed phrase (first word: {}, last word: {})",
+               phrase.split(' ').next().unwrap_or(""),
+               phrase.split(' ').last().unwrap_or(""));
+        phrase.clone()
+    } else {
+        // This should never happen if UI is working correctly
+        error!("No seed phrase provided, this shouldn't happen!");
+        return Err("No seed phrase provided".to_string());
+    };
+
     let mut manager = wallet_manager.get_manager().await;
     
-    // TODO: Modify WalletManager::create_wallet to accept and use the seed phrase
-    // For now, we'll log if a seed phrase was provided
-    if let Some(phrase) = &seed_phrase {
-        debug!("Creating wallet with provided seed phrase (first word: {}, last word: {})", 
-               phrase.split(' ').next().unwrap_or(""), 
-               phrase.split(' ').last().unwrap_or(""));
-    } else {
-        debug!("Creating wallet with a new, randomly generated seed phrase (implementation needed in WalletManager)");
-    }
-
-    // Call the existing create_wallet logic (needs modification in WalletManager later)
-    match manager.create_wallet(&wallet_name, &effective_password) { // Pass seed_phrase here when WalletManager is updated
+    // Call the create_wallet logic with the seed phrase
+    match manager.create_wallet_with_seed(&wallet_name, &effective_password, &actual_seed_phrase, use_password).await {
         Ok(_) => {
-            info!("Successfully created wallet structure for: {}", wallet_name);
+            info!("Successfully created wallet with seed phrase for: {}", wallet_name);
             // Now open the newly created wallet
             match manager.open_wallet(
                 &wallet_name,
