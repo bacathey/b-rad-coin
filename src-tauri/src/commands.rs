@@ -178,7 +178,6 @@ pub async fn update_app_settings(
     auto_backup: Option<bool>,
     notifications_enabled: Option<bool>,
     log_level: Option<String>,
-    show_seed_phrase_dialogs: Option<bool>,
     config_manager_arc: State<'_, Arc<ConfigManager>>, // Change type to State<'_, Arc<ConfigManager>>
 ) -> CommandResult<bool> {
     info!("Command: update_app_settings");
@@ -209,11 +208,6 @@ pub async fn update_app_settings(
         info!("Updating log_level to: {}", log_level);
         config.app_settings.log_level = log_level;
         // TODO: Update actual log level at runtime if needed
-    }
-
-    if let Some(show_dialogs) = show_seed_phrase_dialogs {
-        info!("Updating show_seed_phrase_dialogs to: {}", show_dialogs);
-        config.app_settings.show_seed_phrase_dialogs = show_dialogs;
     }
 
     // Save the updated config using the inner ConfigManager

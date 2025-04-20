@@ -37,7 +37,6 @@ import RestoreIcon from '@mui/icons-material/Restore';
 import SecureWalletDialog from './SecureWalletDialog';
 import SeedPhraseDialog from './SeedPhraseDialog';
 import VerifySeedPhraseDialog from './VerifySeedPhraseDialog';
-import { AppSettings } from '../types/index'; // Assuming you have a type definition for AppSettings
 
 // Interface for tab panel props
 interface TabPanelProps {
@@ -121,8 +120,6 @@ export default function OpenCreateWalletDialog() {
   const [verifySeedDialogOpen, setVerifySeedDialogOpen] = useState(false);
   const [generatedSeedPhrase, setGeneratedSeedPhrase] = useState('');
   const [tempWalletData, setTempWalletData] = useState<{name: string; password: string; usePassword: boolean} | null>(null);
-  const [appSettings, setAppSettings] = useState<AppSettings | null>(null); // State for app settings
-  const [settingsError, setSettingsError] = useState<string | null>(null); // State for settings errors
 
   // Check for duplicate wallet names when wallet name changes
   useEffect(() => {
@@ -143,32 +140,6 @@ export default function OpenCreateWalletDialog() {
     }
     return "";
   }, [isWalletNameDuplicate, newWalletName]);
-
-  // Fetch app settings
-  useEffect(() => {
-    async function fetchAppSettings() {
-      try {
-        setSettingsError(null);
-        const settings = await invoke<AppSettings>('get_app_settings');
-        setAppSettings(settings);
-      } catch (error) {
-        console.error('Failed to fetch app settings:', error);
-        setSettingsError(`Failed to load settings: ${error instanceof Error ? error.message : String(error)}`);
-        // Default to showing dialogs if settings fail to load, or handle as needed
-        setAppSettings({ 
-          theme: 'system', 
-          auto_backup: true, 
-          notifications_enabled: true, 
-          log_level: 'info', 
-          show_seed_phrase_dialogs: true // Default fallback
-        }); 
-      }
-    }
-
-    if (!isWalletOpen) { // Fetch settings when the dialog is relevant
-      fetchAppSettings();
-    }
-  }, [isWalletOpen]);
 
   // Fetch available wallets when the component mounts or when isWalletOpen changes
   useEffect(() => {
@@ -261,42 +232,6 @@ export default function OpenCreateWalletDialog() {
     }
   };
 
-  // Function to create the wallet directly without dialogs
-  const createWalletDirectly = async (name: string, password: string, usePassword: boolean, seedPhrase: string) => {
-    setIsLoading(true);
-    setErrorMessage('');
-    try {
-      const result = await invoke('create_wallet', { 
-        walletName: name, 
-        password: password,
-        usePassword: usePassword,
-        seedPhrase: seedPhrase // Pass the generated seed phrase directly
-      });
-      
-      if (result) {
-        setCurrentWallet({
-          name: name,
-          secured: usePassword
-        });
-        setIsWalletOpen(true);
-        await refreshWalletDetails();
-        // Reset form fields
-        setNewWalletName('');
-        setWalletPassword('');
-        setConfirmPassword('');
-        setUsePasswordProtection(false);
-      } else {
-        setErrorMessage('Failed to create wallet directly');
-      }
-    } catch (error) {
-      console.error('Failed to create wallet directly:', error);
-      setErrorMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Modified handleCreateWallet to check the setting
   const handleCreateWallet = async () => {
     setErrorMessage('');
     
@@ -321,43 +256,29 @@ export default function OpenCreateWalletDialog() {
       }
     }
 
-    if (!appSettings) {
-      setErrorMessage(settingsError || 'App settings not loaded yet. Please wait.');
-      return;
-    }
-    
     setIsLoading(true);
     try {
       const phrase = await invoke<string>('generate_seed_phrase');
       
       if (phrase) {
-        // Check the setting to decide the flow
-        if (appSettings.show_seed_phrase_dialogs) {
-          // Proceed with the dialog flow
-          setTempWalletData({
-            name: newWalletName,
-            password: walletPassword,
-            usePassword: usePasswordProtection
-          });
-          setGeneratedSeedPhrase(phrase);
-          setSeedPhraseDialogOpen(true);
-        } else {
-          // Skip dialogs and create directly
-          await createWalletDirectly(newWalletName, walletPassword, usePasswordProtection, phrase);
-        }
+        // Always proceed with the dialog flow
+        setTempWalletData({
+          name: newWalletName,
+          password: walletPassword,
+          usePassword: usePasswordProtection
+        });
+        setGeneratedSeedPhrase(phrase);
+        setSeedPhraseDialogOpen(true);
       } else {
         setErrorMessage('Failed to generate seed phrase');
+        setIsLoading(false); // Set loading false if phrase generation fails
       }
     } catch (error) {
       console.error('Failed to start wallet creation:', error);
       setErrorMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      // Only set loading false here if NOT going through dialog flow
-      // Loading state for dialog flow is handled within finalizeWalletCreation
-      if (!appSettings?.show_seed_phrase_dialogs) {
-         setIsLoading(false);
-      }
+      setIsLoading(false); // Set loading false on error
     }
+    // Loading state for dialog flow is handled within finalizeWalletCreation
   };
   
   // Function to create the wallet after seed phrase verification (Dialog Flow)
@@ -620,12 +541,6 @@ export default function OpenCreateWalletDialog() {
           position: 'relative',
           overflow: 'hidden' // Consider 'auto' or 'visible' if content gets cut off
         }}>
-          {/* Show settings error if present */}
-          {settingsError && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              {settingsError}
-            </Alert>
-          )}
           {/* Error message for both tabs */}
           {errorMessage && (
             <Alert severity="error" sx={{ mb: 2 }}>
@@ -846,8 +761,7 @@ export default function OpenCreateWalletDialog() {
                   color="primary"
                   // Use correct handler based on mode
                   onClick={isRecoveryMode ? handleRecoverWallet : handleCreateWallet} 
-                  // Disable button if settings haven't loaded yet for create mode
-                  disabled={isLoading || !newWalletName || isWalletNameDuplicate || (usePasswordProtection && (!walletPassword || walletPassword !== confirmPassword)) || (isRecoveryMode && (!recoverySeedPhrase || recoverySeedPhrase.trim() === '')) || (!isRecoveryMode && !appSettings)}
+                  disabled={isLoading || !newWalletName || isWalletNameDuplicate || (usePasswordProtection && (!walletPassword || walletPassword !== confirmPassword)) || (isRecoveryMode && (!recoverySeedPhrase || recoverySeedPhrase.trim() === ''))}
                   startIcon={isLoading && tabValue === 1 ? <CircularProgress size={20} /> : isRecoveryMode ? <RestoreIcon /> : <AddIcon />}
                   sx={{ 
                     minWidth: '160px',
