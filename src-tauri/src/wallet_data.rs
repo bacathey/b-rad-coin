@@ -1,13 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use log::{debug, error, info};
+use log::{error, info}; // Removed debug
 use ring::pbkdf2;
-use ring::aead::{self, Aad, BoundKey, Nonce, UnboundKey, AES_256_GCM};
+use ring::aead::{self, Aad, BoundKey, Nonce, NonceSequence, UnboundKey};
 use ring::rand::{SecureRandom, SystemRandom};
 use std::num::NonZeroU32;
 use std::fs;
 use thiserror::Error;
+
 
 /// Error type for wallet data operations
 #[derive(Error, Debug)]
@@ -179,6 +180,15 @@ const NONCE_LEN: usize = 12;
 const KEY_LEN: usize = 32; // AES-256
 const TAG_LEN: usize = 16; // GCM authentication tag
 
+// Helper struct to provide a single nonce as a sequence
+struct SingleNonceSequence(Option<Nonce>);
+
+impl NonceSequence for SingleNonceSequence {
+    fn advance(&mut self) -> Result<Nonce, ring::error::Unspecified> {
+        self.0.take().ok_or(ring::error::Unspecified)
+    }
+}
+
 impl WalletData {
     /// Create a new wallet with default values
     pub fn new(name: &str, master_public_key: &str, is_encrypted: bool) -> Self {
@@ -307,17 +317,17 @@ impl WalletData {
     /// Encrypt data using password-based AES-256-GCM
     fn encrypt_data(&self, data: &str, password: &str) -> Result<Vec<u8>, WalletDataError> {
         let rand = SystemRandom::new();
-        
+
         // Generate a random salt for PBKDF2
         let mut salt = [0u8; SALT_LEN];
         rand.fill(&mut salt)
             .map_err(|_| WalletDataError::EncryptionError("Failed to generate salt".to_string()))?;
-        
+
         // Generate a random nonce
         let mut nonce_bytes = [0u8; NONCE_LEN];
         rand.fill(&mut nonce_bytes)
             .map_err(|_| WalletDataError::EncryptionError("Failed to generate nonce".to_string()))?;
-        
+
         // Derive encryption key from password using PBKDF2
         let mut key_bytes = [0u8; KEY_LEN];
         pbkdf2::derive(
@@ -327,45 +337,46 @@ impl WalletData {
             password.as_bytes(),
             &mut key_bytes,
         );
-        
+
         // Set up AES-GCM for encryption
         let unbound_key = UnboundKey::new(&aead::AES_256_GCM, &key_bytes)
             .map_err(|_| WalletDataError::EncryptionError("Failed to create encryption key".to_string()))?;
-        
+
         let nonce = Nonce::assume_unique_for_key(nonce_bytes);
-        let mut sealing_key = aead::SealingKey::new(unbound_key, nonce);
-        
+        let nonce_sequence = SingleNonceSequence(Some(nonce));
+        let mut sealing_key = aead::SealingKey::new(unbound_key, nonce_sequence);
+
         // Encrypt the data
         let mut in_out = data.as_bytes().to_vec();
         let tag = sealing_key.seal_in_place_separate_tag(Aad::empty(), &mut in_out)
             .map_err(|_| WalletDataError::EncryptionError("Failed to encrypt data".to_string()))?;
-        
+
         // Construct the final output: salt + nonce + ciphertext + tag
         let mut result = Vec::with_capacity(SALT_LEN + NONCE_LEN + in_out.len() + TAG_LEN);
         result.extend_from_slice(&salt);
         result.extend_from_slice(&nonce_bytes);
         result.extend_from_slice(&in_out);
         result.extend_from_slice(tag.as_ref());
-        
+
         Ok(result)
     }
-    
+
     /// Decrypt data using password-based AES-256-GCM
     fn decrypt_data(encrypted_data: &[u8], password: &str) -> Result<String, WalletDataError> {
         // Check if the data is large enough to contain all components
         if encrypted_data.len() < SALT_LEN + NONCE_LEN + TAG_LEN {
             return Err(WalletDataError::DecryptionError("Encrypted data is too short".to_string()));
         }
-        
+
         // Extract components
         let salt = &encrypted_data[0..SALT_LEN];
         let nonce_bytes = &encrypted_data[SALT_LEN..(SALT_LEN + NONCE_LEN)];
         let ciphertext_with_tag = &encrypted_data[(SALT_LEN + NONCE_LEN)..];
-        
+
         // The tag is at the end of the ciphertext
         let ciphertext_len = ciphertext_with_tag.len() - TAG_LEN;
         let (ciphertext, tag) = ciphertext_with_tag.split_at(ciphertext_len);
-        
+
         // Derive decryption key from password using PBKDF2
         let mut key_bytes = [0u8; KEY_LEN];
         pbkdf2::derive(
@@ -375,30 +386,30 @@ impl WalletData {
             password.as_bytes(),
             &mut key_bytes,
         );
-        
+
         // Set up AES-GCM for decryption
         let unbound_key = UnboundKey::new(&aead::AES_256_GCM, &key_bytes)
             .map_err(|_| WalletDataError::DecryptionError("Failed to create decryption key".to_string()))?;
-        
+
         let mut nonce_array = [0u8; NONCE_LEN];
         nonce_array.copy_from_slice(nonce_bytes);
         let nonce = Nonce::assume_unique_for_key(nonce_array);
-        
-        let mut opening_key = aead::OpeningKey::new(unbound_key, nonce);
-        
+        let nonce_sequence = SingleNonceSequence(Some(nonce));
+        let mut opening_key = aead::OpeningKey::new(unbound_key, nonce_sequence);
+
         // Combine ciphertext and tag for decryption
         let mut ciphertext_and_tag = ciphertext.to_vec();
         ciphertext_and_tag.extend_from_slice(tag);
-        
+
         // Decrypt
         let plaintext = opening_key
             .open_in_place(Aad::empty(), &mut ciphertext_and_tag)
             .map_err(|_| WalletDataError::InvalidPassword)?;
-        
+
         // Convert to string
         let plaintext_str = String::from_utf8(plaintext.to_vec())
             .map_err(|_| WalletDataError::DecryptionError("Invalid UTF-8 in decrypted data".to_string()))?;
-        
+
         Ok(plaintext_str)
     }
     

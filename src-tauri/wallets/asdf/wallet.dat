@@ -1,0 +1,31 @@
+{
+  "name": "asdf",
+  "created_at": 1745157223,
+  "modified_at": 1745157223,
+  "block_height": 0,
+  "seed_phrase": "undo endorse bomb predict calm fence glass puppy sponsor arena scatter strong",
+  "master_private_key": "xpriv_dummy_for_development_placeholder",
+  "master_public_key": "xpub_dummy_for_development_placeholder",
+  "keys": {
+    "address_asdf_0": {
+      "private_key": "dummy_private_key",
+      "public_key": "dummy_public_key",
+      "address": "address_asdf_0",
+      "key_type": "Legacy",
+      "derivation_path": "m/44'/0'/0'/0/0"
+    }
+  },
+  "addresses": [
+    {
+      "address": "address_asdf_0",
+      "key_type": "Legacy",
+      "derivation_path": "m/44'/0'/0'/0/0",
+      "label": null
+    }
+  ],
+  "utxos": [],
+  "transactions": [],
+  "balance": 0,
+  "account_indexes": {},
+  "is_encrypted": false
+}

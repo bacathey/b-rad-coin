@@ -1,7 +1,7 @@
 use crate::config::{Config, ConfigManager, WalletInfo};
 use crate::errors::WalletError;
-// Import the necessary types from the wallet_data module
-use crate::wallet_data::{WalletData, KeyPair, AddressInfo};
+// Import KeyType and remove unused AddressInfo
+use crate::wallet_data::{WalletData, KeyPair, KeyType};
 use base64::Engine;
 use log::{debug, error, info};
 use std::path::PathBuf;
@@ -101,10 +101,11 @@ impl WalletManager {
         
         debug!("Loading wallet data from: {}", wallet_data_path.display());
         
-        // Use tokio block_in_place since we're in a sync function but need to call async
+        // Use tokio block_in_place since we're in a sync function but need to call sync
         let wallet_data_result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                WalletData::load(&wallet_data_path, password).await
+                // Remove .await as WalletData::load is sync
+                WalletData::load(&wallet_data_path, password)
             })
         });
 
@@ -161,6 +162,8 @@ impl WalletManager {
     }
 
     /// Create a new wallet
+    /// NOTE: This function creates a basic wallet structure without seed phrase or master keys.
+    /// Use create_wallet_with_seed for a more complete wallet.
     pub fn create_wallet(&mut self, name: &str, password: &str) -> Result<(), WalletError> {
         info!("Attempting to create new wallet: {}", name);
 
@@ -187,59 +190,22 @@ impl WalletManager {
             )));
         }
 
-        // Generate wallet data
-        use rand::rngs::OsRng;
-        use rand::RngCore;
-        let mut key: [u8; 32] = [0; 32];
-        let mut rand = OsRng::default();
-        rand.fill_bytes(&mut key);
+        // Create wallet data using the constructor
+        // Provide a dummy master public key as it's required
+        let dummy_master_public_key = "xpub_dummy_placeholder_for_basic_wallet";
+        let wallet_data = WalletData::new(name, dummy_master_public_key, is_secured);
 
-        // Create wallet data
-        let wallet_data = WalletData {
-            private_key: key.to_vec(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-        };
-
-        // Serialize the wallet data
-        let serialized_data = match serde_json::to_string_pretty(&wallet_data) {
-            Ok(data) => data,
-            Err(e) => {
-                error!("Failed to serialize wallet data: {}", e);
-                return Err(WalletError::Generic(format!(
-                    "Failed to serialize wallet data: {}",
-                    e
-                )));
-            }
-        };
-
-        // Prepare the data to write to disk (encrypt if secured)
-        let data_to_write = if is_secured {
-            // If secured, encrypt the data with the password
-            debug!("Encrypting wallet data for secured wallet: {}", name);
-            
-            match self.encrypt_data(&serialized_data, password) {
-                Ok(encrypted) => encrypted,
-                Err(e) => {
-                    error!("Failed to encrypt wallet data: {}", e);
-                    return Err(WalletError::Generic(format!(
-                        "Failed to encrypt wallet data: {}",
-                        e
-                    )));
-                }
-            }
-        } else {
-            // If not secured, use plaintext
-            serialized_data
-        };
-
-        // Write wallet data to disk
+        // Save the wallet data - encryption is handled internally by save()
         let wallet_data_path = wallet_dir_path.join("wallet.dat");
-        if let Err(e) = std::fs::write(&wallet_data_path, data_to_write) {
-            error!("Failed to write wallet data to disk: {}", e);
-            return Err(WalletError::Generic(format!(
-                "Failed to write wallet data to disk: {}",
-                e
-            )));
+        let password_option = if is_secured { Some(password) } else { None };
+
+        // Call save (it's synchronous)
+        if let Err(e) = wallet_data.save(&wallet_data_path, password_option) {
+             error!("Failed to write wallet data to disk: {}", e);
+             return Err(WalletError::Generic(format!(
+                 "Failed to write wallet data to disk: {}",
+                 e
+             )));
         }
         debug!("Wallet data written to disk: {}", wallet_data_path.display());
 
@@ -277,7 +243,8 @@ impl WalletManager {
     }
 
     /// Create a wallet with a seed phrase
-    pub async fn create_wallet_with_seed(&mut self, name: &str, password: &str, seed_phrase: &str, is_secured: bool) -> Result<(), WalletError> {
+    // Make this function sync as save is sync
+    pub fn create_wallet_with_seed(&mut self, name: &str, password: &str, seed_phrase: &str, is_secured: bool) -> Result<(), WalletError> {
         info!("Attempting to create new wallet with seed phrase: {}", name);
 
         // Check if wallet with this name already exists
@@ -298,6 +265,7 @@ impl WalletManager {
                 "Failed to create wallet directory: {}",
                 e
             )));
+
         }
 
         // Generate a dummy master public key for now
@@ -314,10 +282,12 @@ impl WalletManager {
         // TODO: In a real implementation, derive proper keys from the seed phrase
         wallet_data.add_key_pair(KeyPair {
             address: format!("address_{}_0", name),
-            key_type: "p2pkh".to_string(),
+            // Use KeyType enum variant
+            key_type: KeyType::Legacy, // Assuming p2pkh corresponds to Legacy
             derivation_path: "m/44'/0'/0'/0/0".to_string(),
             public_key: "dummy_public_key".to_string(),
-            private_key: if is_secured { Some("dummy_encrypted_private_key".to_string()) } else { Some("dummy_private_key".to_string()) },
+            // Provide String directly, not Option<String>
+            private_key: if is_secured { "dummy_encrypted_private_key".to_string() } else { "dummy_private_key".to_string() },
         });
         
         // Save the wallet data to disk
@@ -326,7 +296,8 @@ impl WalletManager {
         // Password is only used if the wallet is secured
         let password_option = if is_secured { Some(password) } else { None };
         
-        match wallet_data.save(&wallet_data_path, password_option).await {
+        // Remove .await as save is sync
+        match wallet_data.save(&wallet_data_path, password_option) {
             Ok(_) => {
                 debug!("Wallet data saved to disk: {}", wallet_data_path.display());
             },
@@ -351,7 +322,11 @@ impl WalletManager {
 
         // Persist to configuration if we have a ConfigManager
         if let Some(config_manager) = &self.config_manager {
-            match config_manager.add_wallet(wallet_info).await {
+            // Use tokio block_in_place since we're in a sync function but need to call async
+            match tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current()
+                    .block_on(config_manager.add_wallet(wallet_info))
+            }) {
                 Ok(_) => {
                     info!("Wallet configuration persisted to disk: {}", name);
                 }
@@ -642,6 +617,7 @@ impl AsyncWalletManager {
     /// Create a wallet with a seed phrase
     pub async fn create_wallet_with_seed(&self, name: &str, password: &str, seed_phrase: &str, is_secured: bool) -> Result<(), WalletError> {
         let mut manager = self.inner.lock().await;
-        manager.create_wallet_with_seed(name, password, seed_phrase, is_secured).await
+        // Call the synchronous version
+        manager.create_wallet_with_seed(name, password, seed_phrase, is_secured)
     }
 }

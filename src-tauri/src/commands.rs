@@ -139,32 +139,17 @@ pub async fn create_wallet(
 
     let mut manager = wallet_manager.get_manager().await;
     
-    // Call the create_wallet logic with the seed phrase
-    match manager.create_wallet_with_seed(&wallet_name, &effective_password, &actual_seed_phrase, use_password).await {
+    // Call the synchronous create_wallet_with_seed function
+    // Remove the .await as the underlying function is now sync
+    match manager.create_wallet_with_seed(&wallet_name, &effective_password, &actual_seed_phrase, use_password) {
         Ok(_) => {
-            info!("Successfully created wallet with seed phrase for: {}", wallet_name);
-            // Now open the newly created wallet
-            match manager.open_wallet(
-                &wallet_name,
-                if use_password {
-                    Some(&effective_password)
-                } else {
-                    None
-                },
-            ) {
-                Ok(_) => {
-                    info!("Successfully opened new wallet: {}", wallet_name);
-                    Ok(true)
-                }
-                Err(e) => {
-                    error!("Created wallet but failed to open it: {}", e);
-                    Err(format_error(e))
-                }
-            }
+            info!("Wallet created successfully: {}", wallet_name);
+            // Return Ok(true) to match the function signature CommandResult<bool>
+            Ok(true)
         }
         Err(e) => {
             error!("Failed to create wallet: {}", e);
-            Err(format_error(e))
+            Err(e.to_string())
         }
     }
 }

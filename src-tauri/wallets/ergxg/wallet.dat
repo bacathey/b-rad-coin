@@ -1,0 +1,31 @@
+{
+  "name": "ergxg",
+  "created_at": 1745156468,
+  "modified_at": 1745156468,
+  "block_height": 0,
+  "seed_phrase": "domain collect episode measure pull ticket search intact welcome donate minimum initial",
+  "master_private_key": "xpriv_dummy_for_development_placeholder",
+  "master_public_key": "xpub_dummy_for_development_placeholder",
+  "keys": {
+    "address_ergxg_0": {
+      "private_key": "dummy_private_key",
+      "public_key": "dummy_public_key",
+      "address": "address_ergxg_0",
+      "key_type": "Legacy",
+      "derivation_path": "m/44'/0'/0'/0/0"
+    }
+  },
+  "addresses": [
+    {
+      "address": "address_ergxg_0",
+      "key_type": "Legacy",
+      "derivation_path": "m/44'/0'/0'/0/0",
+      "label": null
+    }
+  ],
+  "utxos": [],
+  "transactions": [],
+  "balance": 0,
+  "account_indexes": {},
+  "is_encrypted": false
+}
