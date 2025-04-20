@@ -4,7 +4,7 @@ use std::sync::Arc;  // Add this import for Arc
 use tauri::Emitter;
 use tauri::{command, Manager, State};
 
-use crate::config::{AppSettings, ConfigManager};
+use crate::config::{AppSettings, ConfigManager, WalletInfo}; // Ensure WalletInfo is imported if not already
 use crate::security::AsyncSecurityManager;
 use crate::wallet_manager::AsyncWalletManager;
 use rand::seq::SliceRandom;

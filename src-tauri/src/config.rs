@@ -170,6 +170,31 @@ impl ConfigManager {
         self.save_config_to_path(&config, &self.config_path).await
     }
 
+    /// Remove all wallets from the configuration
+    pub async fn remove_all_wallets(&self) -> Result<(), ConfigError> {
+        info!("Removing all wallets from configuration");
+
+        // Clone the config first to avoid holding the mutex guard across an await point
+        let config_clone;
+        {
+            let mut config = self.config.lock().unwrap();
+            // Clear the wallets vector
+            config.wallets.clear();
+            config_clone = config.clone();
+        } // Mutex guard is dropped here
+
+        // Now we can await without holding the mutex guard
+        self.save_config_to_path(&config_clone, &self.config_path)
+            .await?;
+
+        // Update the stored config
+        let mut config = self.config.lock().unwrap();
+        *config = config_clone;
+
+        info!("All wallets removed from configuration successfully");
+        Ok(())
+    }
+
     /// Load the configuration from file
     async fn load_config() -> Result<(Config, PathBuf), ConfigError> {
         let config_path = Self::get_config_path().await?;
