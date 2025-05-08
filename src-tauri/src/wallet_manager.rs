@@ -107,9 +107,7 @@ impl WalletManager {
                 // Remove .await as WalletData::load is sync
                 WalletData::load(&wallet_data_path, password)
             })
-        });
-
-        // Check if we succeeded in loading wallet data
+        });        // Check if we succeeded in loading wallet data
         match wallet_data_result {
             Ok(wallet_data) => {
                 debug!("Successfully loaded wallet data for: {}", name);
@@ -118,8 +116,55 @@ impl WalletManager {
                 debug!("Wallet balance: {}, addresses: {}", wallet_data.balance, wallet_data.addresses.len());
             },
             Err(e) => {
-                // Just log the error but continue - wallet data loading is optional for now
-                error!("Failed to load wallet data, continuing anyway: {}", e);
+                // If it's an IoError and the file doesn't exist, create a new wallet data file
+                if let WalletDataError::IoError(io_err) = &e {
+                    if io_err.kind() == std::io::ErrorKind::NotFound {
+                        info!("Wallet data file not found, creating a new one for: {}", name);
+                        
+                        // Create directory if it doesn't exist
+                        if let Err(dir_err) = std::fs::create_dir_all(&wallet_dir_path) {
+                            error!("Failed to create wallet directory: {}", dir_err);
+                            return Err(WalletError::Generic(format!(
+                                "Failed to create wallet directory: {}", dir_err
+                            )));
+                        }
+                        
+                        // Generate a dummy master public key
+                        let master_public_key = "xpub_dummy_for_development_placeholder";
+                        
+                        // Create new wallet data
+                        let mut wallet_data = WalletData::new(name, master_public_key, wallet_info.secured);
+                        
+                        // Set a default seed phrase
+                        wallet_data.set_sensitive_data("default_seed_phrase", "xpriv_dummy_for_development_placeholder");
+                        
+                        // Add a dummy key pair
+                        wallet_data.add_key_pair(KeyPair {
+                            address: format!("address_{}_0", name),
+                            key_type: KeyType::Legacy,
+                            derivation_path: "m/44'/0'/0'/0/0".to_string(),
+                            public_key: "dummy_public_key".to_string(),
+                            private_key: if wallet_info.secured { "dummy_encrypted_private_key".to_string() } else { "dummy_private_key".to_string() },
+                        });
+                        
+                        // Save the wallet data
+                        let password_option = if wallet_info.secured { password } else { None };
+                        if let Err(save_err) = wallet_data.save(&wallet_data_path, password_option) {
+                            error!("Failed to create initial wallet data file: {}", save_err);
+                            return Err(WalletError::Generic(format!(
+                                "Failed to create initial wallet data file: {}", save_err
+                            )));
+                        }
+                        
+                        info!("Successfully created initial wallet data file for: {}", name);
+                    } else {
+                        // For other IO errors, log and continue
+                        error!("Failed to load wallet data due to IO error: {}", e);
+                    }
+                } else {
+                    // For non-IO errors, log and continue
+                    error!("Failed to load wallet data, continuing anyway: {}", e);
+                }
             }
         }
 
