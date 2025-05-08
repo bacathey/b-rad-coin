@@ -1,7 +1,7 @@
 use crate::config::{Config, ConfigManager, WalletInfo};
 use crate::errors::WalletError;
 // Import KeyType and remove unused AddressInfo
-use crate::wallet_data::{WalletData, KeyPair, KeyType};
+use crate::wallet_data::{WalletData, WalletDataError, KeyPair, KeyType};
 use base64::Engine;
 use log::{debug, error, info};
 use std::path::PathBuf;
@@ -53,9 +53,7 @@ impl WalletManager {
 
     /// Open a wallet with the given name and optional password
     pub fn open_wallet(&mut self, name: &str, password: Option<&str>) -> Result<(), WalletError> {
-        info!("Attempting to open wallet: {}", name);
-
-        // Find the wallet in available wallets
+        info!("Attempting to open wallet: {}", name);        // Find the wallet in available wallets and clone it to avoid borrow checker issues
         let wallet_info = self
             .config
             .wallets
@@ -64,7 +62,8 @@ impl WalletManager {
             .ok_or_else(|| {
                 error!("Wallet not found: {}", name);
                 WalletError::NotFound(name.to_string())
-            })?;
+            })?
+            .clone(); // Clone to avoid borrow checker issues
 
         debug!("Found wallet info for: {}", name);
 
