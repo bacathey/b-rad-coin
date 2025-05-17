@@ -34,6 +34,7 @@ export default function Settings() {
   const [configDirectory, setConfigDirectory] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [developerMode, setDeveloperMode] = useState(false);
+  const [showSeedPhraseDialogs, setShowSeedPhraseDialogs] = useState(true);
 
   // Use our custom form hook for the custom node form
   const nodeForm = useForm(
@@ -67,6 +68,7 @@ export default function Settings() {
         setNotificationsEnabled(settings.notifications_enabled);
         setAutoBackup(settings.auto_backup);
         setDeveloperMode(settings.developer_mode);
+        setShowSeedPhraseDialogs(settings.show_seed_phrase_dialogs);
       })
       .catch(err => {
         console.error(err);
@@ -85,6 +87,21 @@ export default function Settings() {
       setError('Failed to update developer mode setting');
       // Revert UI state if the update failed
       setDeveloperMode(!enabled);
+    }
+  };
+
+  // Function to update seed phrase dialogs setting
+  const handleSeedPhraseDialogsToggle = async (enabled: boolean) => {
+    try {
+      setShowSeedPhraseDialogs(enabled);
+      await invoke('update_app_settings', { 
+        show_seed_phrase_dialogs: enabled
+      });
+    } catch (err) {
+      console.error(err);
+      setError('Failed to update seed phrase dialogs setting');
+      // Revert UI state if the update failed
+      setShowSeedPhraseDialogs(!enabled);
     }
   };
 
@@ -161,8 +178,7 @@ export default function Settings() {
                 }
               />
               <Divider variant="inset" component="li" />
-              
-              <SettingsItem
+                <SettingsItem
                 icon={<CodeIcon color="primary" />}
                 primary="Developer Mode"
                 secondary="Enable advanced debugging tools"
@@ -170,6 +186,20 @@ export default function Settings() {
                   <Switch 
                     checked={developerMode}
                     onChange={(e) => handleDeveloperModeToggle(e.target.checked)}
+                    color="primary"
+                  />
+                }
+              />
+              <Divider variant="inset" component="li" />
+              
+              <SettingsItem
+                icon={<SecurityIcon color="primary" />}
+                primary="Seed Phrase Dialogs"
+                secondary="Show seed phrase verification steps during wallet creation"
+                action={
+                  <Switch 
+                    checked={showSeedPhraseDialogs}
+                    onChange={(e) => handleSeedPhraseDialogsToggle(e.target.checked)}
                     color="primary"
                   />
                 }
@@ -228,21 +258,7 @@ export default function Settings() {
                     color="primary"
                   />
                 }
-              />
-              <Divider variant="inset" component="li" />
-              
-              <SettingsItem
-                icon={<CodeIcon color="primary" />}
-                primary="Developer Mode"
-                secondary="Enable or disable developer features"
-                action={
-                  <Switch 
-                    checked={developerMode}
-                    onChange={(e) => handleDeveloperModeToggle(e.target.checked)}
-                    color="primary"
-                  />
-                }
-              />
+              />              <Divider variant="inset" component="li" />
             </List>
           </StyledCard>
         </Grid>

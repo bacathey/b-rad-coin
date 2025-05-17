@@ -1,4 +1,4 @@
-// filepath: c:\Users\bacat\source\repos\my-tauri-app\src\pages\Transactions.tsx
+// filepath: c:\Users\bacat\source\repos\b-rad-coin\src\pages\Transactions.tsx
 import { 
   Typography, 
   Box, 
@@ -16,8 +16,8 @@ import {
   TableHead,
   TableRow
 } from '@mui/material';
-// Use the Grid2 component with direct import
-import Grid from '@mui/material/Grid2';
+// Use the standard Grid component 
+import { Grid } from '@mui/material';
 import { useState } from 'react';
 import {
   ResponsiveContainer,

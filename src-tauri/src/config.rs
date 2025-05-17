@@ -38,7 +38,11 @@ pub struct AppSettings {
     /// Log level setting
     pub log_level: String,
     /// Developer mode enabled
+    #[serde(rename = "developerMode")]
     pub developer_mode: bool,
+    /// Whether to show seed phrase dialogs during wallet creation
+    #[serde(default = "default_show_seed_phrase_dialogs", rename = "showSeedPhraseDialogs")]
+    pub show_seed_phrase_dialogs: bool,
 }
 
 /// Default implementation for Config
@@ -52,6 +56,11 @@ impl Default for Config {
     }
 }
 
+/// Default value for show_seed_phrase_dialogs
+fn default_show_seed_phrase_dialogs() -> bool {
+    true
+}
+
 /// Default implementation for AppSettings
 impl Default for AppSettings {
     fn default() -> Self {
@@ -61,6 +70,7 @@ impl Default for AppSettings {
             notifications_enabled: true,
             log_level: "info".to_string(),
             developer_mode: false,
+            show_seed_phrase_dialogs: true,
         }
     }
 }

@@ -29,6 +29,7 @@ import {
 import { useWallet } from '../context/WalletContext';
 import { getWalletDetails } from '../lib/wallet'; 
 import { invoke } from '@tauri-apps/api/core';
+import { AppSettings } from '../types/settings';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import AddIcon from '@mui/icons-material/Add';
 import LockIcon from '@mui/icons-material/Lock';
@@ -120,6 +121,23 @@ export default function OpenCreateWalletDialog() {
   const [verifySeedDialogOpen, setVerifySeedDialogOpen] = useState(false);
   const [generatedSeedPhrase, setGeneratedSeedPhrase] = useState('');
   const [tempWalletData, setTempWalletData] = useState<{name: string; password: string; usePassword: boolean} | null>(null);
+  const [showSeedPhraseDialogs, setShowSeedPhraseDialogs] = useState(true);
+
+  // Load showSeedPhraseDialogs setting
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const settings = await invoke<AppSettings>('get_app_settings');
+        setShowSeedPhraseDialogs(settings.show_seed_phrase_dialogs);
+      } catch (error) {
+        console.error('Failed to load app settings:', error);
+        // Default to true if settings can't be loaded
+        setShowSeedPhraseDialogs(true);
+      }
+    }
+    
+    loadSettings();
+  }, []);
 
   // Check for duplicate wallet names when wallet name changes
   useEffect(() => {
@@ -256,19 +274,26 @@ export default function OpenCreateWalletDialog() {
       }
     }
 
-    setIsLoading(true);
-    try {
+    setIsLoading(true);    try {
       const phrase = await invoke<string>('generate_seed_phrase');
       
       if (phrase) {
-        // Always proceed with the dialog flow
+        // Store wallet data
         setTempWalletData({
           name: newWalletName,
           password: walletPassword,
           usePassword: usePasswordProtection
         });
         setGeneratedSeedPhrase(phrase);
-        setSeedPhraseDialogOpen(true);
+        
+        // Check if we should show seed phrase dialogs based on settings
+        if (showSeedPhraseDialogs) {
+          // Show the seed phrase dialog
+          setSeedPhraseDialogOpen(true);
+        } else {
+          // Skip seed phrase dialogs and create wallet directly
+          finalizeWalletCreation();
+        }
       } else {
         setErrorMessage('Failed to generate seed phrase');
         setIsLoading(false); // Set loading false if phrase generation fails

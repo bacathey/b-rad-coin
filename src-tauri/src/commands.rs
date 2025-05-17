@@ -3,7 +3,6 @@ use log::{debug, error, info};
 use std::sync::Arc;  // Add this import for Arc
 use tauri::Emitter;
 use tauri::{command, Manager, State};
-use serde::{Serialize, Deserialize};
 
 use crate::config::{AppSettings, ConfigManager}; // Ensure WalletInfo is imported if not already
 use crate::security::AsyncSecurityManager;
@@ -179,8 +178,8 @@ pub async fn update_app_settings(
     auto_backup: Option<bool>,
     notifications_enabled: Option<bool>,
     log_level: Option<String>,
-    #[serde(rename = "developerMode")]
     developer_mode: Option<bool>,
+    show_seed_phrase_dialogs: Option<bool>,
     config_manager_arc: State<'_, Arc<ConfigManager>>, // Change type to State<'_, Arc<ConfigManager>>
 ) -> CommandResult<bool> {
     info!("Command: update_app_settings");
@@ -200,13 +199,11 @@ pub async fn update_app_settings(
     if let Some(auto_backup) = auto_backup {
         info!("Updating auto_backup to: {}", auto_backup);
         config.app_settings.auto_backup = auto_backup;
-    }
-
-    if let Some(notifications) = notifications_enabled {
+    }    if let Some(notifications) = notifications_enabled {
         info!("Updating notifications_enabled to: {}", notifications);
         config.app_settings.notifications_enabled = notifications;
     }
-
+    
     if let Some(log_level) = log_level {
         info!("Updating log_level to: {}", log_level);
         config.app_settings.log_level = log_level;
@@ -216,6 +213,11 @@ pub async fn update_app_settings(
     if let Some(dev_mode) = developer_mode {
         info!("Updating developer_mode to: {}", dev_mode);
         config.app_settings.developer_mode = dev_mode;
+    }
+    
+    if let Some(seed_dialogs) = show_seed_phrase_dialogs {
+        info!("Updating show_seed_phrase_dialogs to: {}", seed_dialogs);
+        config.app_settings.show_seed_phrase_dialogs = seed_dialogs;
     }
 
     // Save the updated config using the inner ConfigManager

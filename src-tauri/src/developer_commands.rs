@@ -1,7 +1,7 @@
-use crate::errors::AppError;
 use log::{debug, error, info};
 use std::path::PathBuf;
 use std::fs;
+use std::time::SystemTime;
 use tauri::command;
 
 /// Get recent log entries for the developer page
@@ -40,15 +40,16 @@ pub async fn get_recent_logs() -> Result<String, String> {
             return Err(format!("Failed to read log directory: {}", e));
         }
     }
-    
-    // Sort log files by modification time (newest first)
+      // Sort log files by modification time (newest first)
     log_files.sort_by(|a, b| {
         let a_meta = fs::metadata(a).ok();
         let b_meta = fs::metadata(b).ok();
         
         match (a_meta, b_meta) {
             (Some(a_meta), Some(b_meta)) => {
-                b_meta.modified().unwrap_or_default().cmp(&a_meta.modified().unwrap_or_default())
+                let time_a = a_meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+                let time_b = b_meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+                time_b.cmp(&time_a) // newest first
             },
             _ => std::cmp::Ordering::Equal,
         }

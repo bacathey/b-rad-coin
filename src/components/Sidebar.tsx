@@ -16,6 +16,7 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import MiningIcon from '@mui/icons-material/Hardware';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CodeIcon from '@mui/icons-material/Code';
+import InfoIcon from '@mui/icons-material/Info';
 import { useEffect, useState } from 'react';
 import { invoke } from "@tauri-apps/api/core";
 import NetworkStatus from './NetworkStatus';
@@ -232,14 +233,11 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
                 }}
               />
             </ListItemButton>
-          </ListItem>
-        )}
+          </ListItem>        )}
         
-        {
-          <>
-            <ListItem disablePadding>
-              <ListItemButton 
-                selected={location.pathname === '/settings'} 
+        <ListItem disablePadding>
+          <ListItemButton 
+            selected={location.pathname === '/settings'} 
                 onClick={() => {
                   navigate('/settings');
                   if (mobileOpen) handleDrawerToggle();
@@ -286,12 +284,11 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
                 }}
               >
                 <ListItemIcon sx={mode === 'light' ? {
-                  color: location.pathname === '/about' ? '#1a237e' : 'rgba(0, 0, 0, 0.54)',
-                  transition: transitions.color
+                  color: location.pathname === '/about' ? '#1a237e' : 'rgba(0, 0, 0, 0.54)',                  transition: transitions.color
                 } : {
                   transition: transitions.color
                 }}>
-                  <CodeIcon />
+                  <InfoIcon />
                 </ListItemIcon>
                 <ListItemText 
                   primary="About" 
@@ -302,11 +299,8 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
                       transition: `${transitions.color}, ${transitions.fontWeight}`
                     }
                   }}
-                />
-              </ListItemButton>
+                />              </ListItemButton>
             </ListItem>
-          </>
-        )}
       </List>
       
       {/* Push the network status to the bottom with flexbox */}
