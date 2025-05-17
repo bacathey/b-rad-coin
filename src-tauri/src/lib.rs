@@ -13,6 +13,7 @@ static SHUTDOWN_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 // Import modules
 pub mod commands;
 pub mod config;
+pub mod developer_commands;
 pub mod errors;
 pub mod logging;
 pub mod security;
@@ -20,6 +21,7 @@ pub mod wallet_data;
 pub mod wallet_manager;
 
 use commands::*;
+use developer_commands::*;
 use config::ConfigManager;
 use errors::AppResult;
 use security::{AsyncSecurityManager, SecurityManager};
@@ -51,8 +53,7 @@ pub fn run() {
                 // Build and run Tauri application with our components
                 let app = tauri::Builder::default()
                     .plugin(tauri_plugin_updater::Builder::new().build())
-                    .plugin(tauri_plugin_opener::init())
-                    .manage(app_state.wallet_manager)
+                    .plugin(tauri_plugin_opener::init())                    .manage(app_state.wallet_manager)
                     .manage(app_state.security_manager)
                     .manage(app_state.config_manager)
                     .invoke_handler(generate_handler![
@@ -69,8 +70,12 @@ pub fn run() {
                         update_app_settings,
                         get_app_settings,
                         secure_wallet,
-                        shutdown_application,
-                        get_app_version
+                        shutdown_application,                        get_app_version,
+                        greet,
+                        // Developer commands
+                        get_recent_logs,
+                        echo_command,
+                        get_config_directory
                     ])
                     .setup(|_app| {
                         info!("Setting up application");

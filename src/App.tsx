@@ -25,6 +25,7 @@ import Transactions from "./pages/Transactions";
 import SendReceive from "./pages/SendReceive";
 import Advanced from "./pages/Advanced";
 import Settings from "./pages/Settings";
+import Developer from "./pages/Developer";
 
 // Import WalletProvider
 import { WalletProvider, useWallet } from "./context/WalletContext";
@@ -325,11 +326,11 @@ function AppContent({ mode, toggleColorMode, mobileOpen, handleDrawerToggle, gre
             }
           }}
         >
-          <Routes location={location}>
-            <Route path="/" element={<Account greetMsg={greetMsg} name={name} setName={setName} greet={greet} />} />
+          <Routes location={location}>            <Route path="/" element={<Account greetMsg={greetMsg} name={name} setName={setName} greet={greet} />} />
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/send-receive" element={<SendReceive />} />
             <Route path="/advanced" element={<Advanced />} />
+            <Route path="/developer" element={<Developer />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </Container>

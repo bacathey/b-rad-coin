@@ -1,0 +1,3 @@
+# Ignore wallet files to prevent app restarts when wallet files are created or modified
+wallets/
+wallets/**/*

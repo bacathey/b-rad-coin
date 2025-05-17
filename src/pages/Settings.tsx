@@ -12,6 +12,7 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import BackupIcon from '@mui/icons-material/Backup';
 import PrivacyTipIcon from '@mui/icons-material/PrivacyTip';
 import FolderIcon from '@mui/icons-material/Folder';
+import CodeIcon from '@mui/icons-material/Code';
 import { useState, useEffect } from 'react';
 import { invoke } from "@tauri-apps/api/core";
 import { StyledCard } from '../components/ui/StyledCard';
@@ -20,6 +21,7 @@ import { PageContainer } from '../components/ui/PageContainer';
 import { FormField } from '../components/ui/FormField';
 import { useThemeMode } from '../hooks/useThemeMode';
 import { useForm } from '../hooks/useForm';
+import { AppSettings } from '../types/settings';
 
 export default function Settings() {
   const { getTextFieldStyle } = useThemeMode();
@@ -31,6 +33,7 @@ export default function Settings() {
   const [language] = useState('English');
   const [configDirectory, setConfigDirectory] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [developerMode, setDeveloperMode] = useState(false);
 
   // Use our custom form hook for the custom node form
   const nodeForm = useForm(
@@ -50,14 +53,40 @@ export default function Settings() {
   );
 
   useEffect(() => {
-    // Fetch config directory when component mounts
+    // Fetch config directory and app settings when component mounts
     invoke('get_config_directory')
       .then((dir) => setConfigDirectory(dir as string))
       .catch(err => {
         console.error(err);
         setError('Failed to load configuration directory');
       });
+
+    // Fetch app settings including developer mode
+    invoke<AppSettings>('get_app_settings')
+      .then((settings) => {
+        setNotificationsEnabled(settings.notifications_enabled);
+        setAutoBackup(settings.auto_backup);
+        setDeveloperMode(settings.developer_mode);
+      })
+      .catch(err => {
+        console.error(err);
+        setError('Failed to load application settings');
+      });
   }, []);
+  // Function to update developer mode
+  const handleDeveloperModeToggle = async (enabled: boolean) => {
+    try {
+      setDeveloperMode(enabled);
+      await invoke('update_app_settings', { 
+        developer_mode: enabled
+      });
+    } catch (err) {
+      console.error(err);
+      setError('Failed to update developer mode setting');
+      // Revert UI state if the update failed
+      setDeveloperMode(!enabled);
+    }
+  };
 
   return (
     <PageContainer 
@@ -119,8 +148,7 @@ export default function Settings() {
         </Grid>
         
         {/* Advanced Settings */}
-        <Grid item xs={12} md={6}>
-          <StyledCard title="Advanced Settings" fullHeight>
+        <Grid item xs={12} md={6}>          <StyledCard title="Advanced Settings" fullHeight>
             <List>
               <SettingsItem
                 icon={<SecurityIcon color="primary" />}
@@ -130,6 +158,20 @@ export default function Settings() {
                   <Button color="primary" variant="outlined" size="small">
                     Manage
                   </Button>
+                }
+              />
+              <Divider variant="inset" component="li" />
+              
+              <SettingsItem
+                icon={<CodeIcon color="primary" />}
+                primary="Developer Mode"
+                secondary="Enable advanced debugging tools"
+                action={
+                  <Switch 
+                    checked={developerMode}
+                    onChange={(e) => handleDeveloperModeToggle(e.target.checked)}
+                    color="primary"
+                  />
                 }
               />
               <Divider variant="inset" component="li" />
@@ -183,6 +225,20 @@ export default function Settings() {
                   <Switch 
                     checked={anonymousData}
                     onChange={(e) => setAnonymousData(e.target.checked)}
+                    color="primary"
+                  />
+                }
+              />
+              <Divider variant="inset" component="li" />
+              
+              <SettingsItem
+                icon={<CodeIcon color="primary" />}
+                primary="Developer Mode"
+                secondary="Enable or disable developer features"
+                action={
+                  <Switch 
+                    checked={developerMode}
+                    onChange={(e) => handleDeveloperModeToggle(e.target.checked)}
                     color="primary"
                   />
                 }

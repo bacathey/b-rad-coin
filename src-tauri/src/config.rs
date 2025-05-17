@@ -37,6 +37,8 @@ pub struct AppSettings {
     pub notifications_enabled: bool,
     /// Log level setting
     pub log_level: String,
+    /// Developer mode enabled
+    pub developer_mode: bool,
 }
 
 /// Default implementation for Config
@@ -58,6 +60,7 @@ impl Default for AppSettings {
             auto_backup: true,
             notifications_enabled: true,
             log_level: "info".to_string(),
+            developer_mode: false,
         }
     }
 }

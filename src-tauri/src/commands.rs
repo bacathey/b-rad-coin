@@ -3,6 +3,7 @@ use log::{debug, error, info};
 use std::sync::Arc;  // Add this import for Arc
 use tauri::Emitter;
 use tauri::{command, Manager, State};
+use serde::{Serialize, Deserialize};
 
 use crate::config::{AppSettings, ConfigManager}; // Ensure WalletInfo is imported if not already
 use crate::security::AsyncSecurityManager;
@@ -178,6 +179,8 @@ pub async fn update_app_settings(
     auto_backup: Option<bool>,
     notifications_enabled: Option<bool>,
     log_level: Option<String>,
+    #[serde(rename = "developerMode")]
+    developer_mode: Option<bool>,
     config_manager_arc: State<'_, Arc<ConfigManager>>, // Change type to State<'_, Arc<ConfigManager>>
 ) -> CommandResult<bool> {
     info!("Command: update_app_settings");
@@ -208,6 +211,11 @@ pub async fn update_app_settings(
         info!("Updating log_level to: {}", log_level);
         config.app_settings.log_level = log_level;
         // TODO: Update actual log level at runtime if needed
+    }
+    
+    if let Some(dev_mode) = developer_mode {
+        info!("Updating developer_mode to: {}", dev_mode);
+        config.app_settings.developer_mode = dev_mode;
     }
 
     // Save the updated config using the inner ConfigManager
@@ -465,4 +473,11 @@ pub async fn generate_seed_phrase() -> CommandResult<String> {
     
     debug!("Generated seed phrase (first word: {}, last word: {})", words.first().unwrap_or(&""), words.last().unwrap_or(&"")); // Avoid logging the full phrase
     Ok(phrase)
+}
+
+/// Simple greeting command for demo purposes
+#[command]
+pub fn greet(name: String) -> String {
+    info!("Command: greet - {}", name);
+    format!("Hello, {}! You've been greeted from Rust!", name)
 }
