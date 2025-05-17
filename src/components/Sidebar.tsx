@@ -17,11 +17,9 @@ import MiningIcon from '@mui/icons-material/Hardware';
 import SettingsIcon from '@mui/icons-material/Settings';
 import CodeIcon from '@mui/icons-material/Code';
 import InfoIcon from '@mui/icons-material/Info';
-import { useEffect, useState } from 'react';
-import { invoke } from "@tauri-apps/api/core";
 import NetworkStatus from './NetworkStatus';
 import { transitions } from '../styles/themeConstants';
-import { AppSettings } from '../types/settings';
+import { useAppSettings } from '../context/AppSettingsContext';
 
 interface SidebarProps {
   mode: 'light' | 'dark';
@@ -32,18 +30,10 @@ interface SidebarProps {
 export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const [developerMode, setDeveloperMode] = useState(false);
+  const { appSettings } = useAppSettings();
   
-  useEffect(() => {
-    // Load developer mode setting when component mounts
-    invoke<AppSettings>('get_app_settings')
-      .then((settings) => {
-        setDeveloperMode(settings.developer_mode);
-      })
-      .catch(err => {
-        console.error('Failed to load app settings:', err);
-      });
-  }, []);
+  // Use the developer_mode value from the context
+  const developerMode = appSettings?.developer_mode || false;
 
   return (
     <Box sx={{ 

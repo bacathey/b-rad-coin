@@ -15,16 +15,17 @@ import FolderIcon from '@mui/icons-material/Folder';
 import CodeIcon from '@mui/icons-material/Code';
 import { useState, useEffect } from 'react';
 import { invoke } from "@tauri-apps/api/core";
+import { useAppSettings } from '../context/AppSettingsContext';
 import { StyledCard } from '../components/ui/StyledCard';
 import { SettingsItem } from '../components/ui/SettingsItem';
 import { PageContainer } from '../components/ui/PageContainer';
 import { FormField } from '../components/ui/FormField';
 import { useThemeMode } from '../hooks/useThemeMode';
 import { useForm } from '../hooks/useForm';
-import { AppSettings } from '../types/settings';
 
 export default function Settings() {
   const { getTextFieldStyle } = useThemeMode();
+  const { appSettings, updateDeveloperMode, updateSeedPhraseDialogs } = useAppSettings();
   
   // State for the various settings
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -33,8 +34,8 @@ export default function Settings() {
   const [language] = useState('English');
   const [configDirectory, setConfigDirectory] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const [developerMode, setDeveloperMode] = useState(false);
-  const [showSeedPhraseDialogs, setShowSeedPhraseDialogs] = useState(true);
+  const [developerMode, setDeveloperMode] = useState(appSettings?.developer_mode || false);
+  const [showSeedPhraseDialogs, setShowSeedPhraseDialogs] = useState<boolean>(appSettings?.show_seed_phrase_dialogs || true);
 
   // Use our custom form hook for the custom node form
   const nodeForm = useForm(
@@ -52,9 +53,8 @@ export default function Settings() {
       // In a real app, we would connect to the node here
     }
   );
-
   useEffect(() => {
-    // Fetch config directory and app settings when component mounts
+    // Fetch config directory 
     invoke('get_config_directory')
       .then((dir) => setConfigDirectory(dir as string))
       .catch(err => {
@@ -62,26 +62,21 @@ export default function Settings() {
         setError('Failed to load configuration directory');
       });
 
-    // Fetch app settings including developer mode
-    invoke<AppSettings>('get_app_settings')
-      .then((settings) => {
-        setNotificationsEnabled(settings.notifications_enabled);
-        setAutoBackup(settings.auto_backup);
-        setDeveloperMode(settings.developer_mode);
-        setShowSeedPhraseDialogs(settings.show_seed_phrase_dialogs);
-      })
-      .catch(err => {
-        console.error(err);
-        setError('Failed to load application settings');
-      });
-  }, []);
-  // Function to update developer mode
+    // Set local state from app settings context when it's available
+    if (appSettings) {
+      setNotificationsEnabled(appSettings.notifications_enabled);
+      setAutoBackup(appSettings.auto_backup);
+      setDeveloperMode(appSettings.developer_mode);
+      setShowSeedPhraseDialogs(appSettings.show_seed_phrase_dialogs);
+    }
+  }, [appSettings]);  // Function to update developer mode
   const handleDeveloperModeToggle = async (enabled: boolean) => {
     try {
       setDeveloperMode(enabled);
-      await invoke('update_app_settings', { 
-        developer_mode: enabled
-      });
+      console.log('Toggling developer mode to:', enabled);
+      
+      // Use the context function which will handle the Tauri invocation
+      await updateDeveloperMode(enabled);
     } catch (err) {
       console.error(err);
       setError('Failed to update developer mode setting');
@@ -94,9 +89,7 @@ export default function Settings() {
   const handleSeedPhraseDialogsToggle = async (enabled: boolean) => {
     try {
       setShowSeedPhraseDialogs(enabled);
-      await invoke('update_app_settings', { 
-        show_seed_phrase_dialogs: enabled
-      });
+      await updateSeedPhraseDialogs(enabled);
     } catch (err) {
       console.error(err);
       setError('Failed to update seed phrase dialogs setting');
@@ -163,9 +156,8 @@ export default function Settings() {
             </List>
           </StyledCard>
         </Grid>
-        
-        {/* Advanced Settings */}
-        <Grid item xs={12} md={6}>          <StyledCard title="Advanced Settings" fullHeight>
+          {/* Application Settings */}
+        <Grid item xs={12} md={6}>          <StyledCard title="Application Settings" fullHeight>
             <List>
               <SettingsItem
                 icon={<SecurityIcon color="primary" />}

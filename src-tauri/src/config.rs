@@ -128,6 +128,7 @@ impl ConfigManager {
         path: &PathBuf,
     ) -> Result<(), ConfigError> {
         debug!("Serializing configuration to JSON");
+        info!("About to save developer_mode value: {}", config.app_settings.developer_mode);
         let config_json = match serde_json::to_string_pretty(config) {
             Ok(json) => json,
             Err(e) => {

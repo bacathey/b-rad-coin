@@ -209,10 +209,11 @@ pub async fn update_app_settings(
         config.app_settings.log_level = log_level;
         // TODO: Update actual log level at runtime if needed
     }
-    
-    if let Some(dev_mode) = developer_mode {
+      if let Some(dev_mode) = developer_mode {
         info!("Updating developer_mode to: {}", dev_mode);
+        info!("Previous developer_mode value: {}", config.app_settings.developer_mode);
         config.app_settings.developer_mode = dev_mode;
+        info!("New developer_mode value in memory: {}", config.app_settings.developer_mode);
     }
     
     if let Some(seed_dialogs) = show_seed_phrase_dialogs {
@@ -240,11 +241,11 @@ pub async fn update_app_settings(
 #[command]
 pub async fn get_app_settings(
     config_manager_arc: State<'_, Arc<ConfigManager>>, // Change type to State<'_, Arc<ConfigManager>>
-) -> CommandResult<AppSettings> {
-    debug!("Command: get_app_settings");
+) -> CommandResult<AppSettings> {    debug!("Command: get_app_settings");
 
     // Access the inner ConfigManager through the Arc
     let config = config_manager_arc.inner().get_config();
+    info!("Current developer_mode value: {}", config.app_settings.developer_mode);
     Ok(config.app_settings.clone())
 }
 
