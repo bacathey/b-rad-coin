@@ -44,46 +44,14 @@ export default function Developer() {
       setLoading(false);
     }
   };
-
   return (
     <PageContainer title="Developer Tools" error={error}>
       <Typography variant="subtitle1" color="text.secondary" gutterBottom>
         These tools are intended for development and debugging purposes only.
       </Typography>
-      
-      <Grid container spacing={3} sx={{ width: '100%', mt: 1 }}>
-        {/* Log Viewer */}
-        <Grid item xs={12} md={6}>
-          <StyledCard title="Application Logs">
-            <Button 
-              variant="contained" 
-              onClick={handleViewLogs} 
-              disabled={loading}
-              sx={{ mb: 2 }}
-            >
-              View Recent Logs
-            </Button>
-            {logOutput && (
-              <Box 
-                sx={{ 
-                  maxHeight: '400px', 
-                  overflowY: 'auto', 
-                  p: 2, 
-                  bgcolor: 'background.default',
-                  borderRadius: 1,
-                  fontFamily: 'monospace',
-                  fontSize: '0.8rem',
-                  whiteSpace: 'pre-wrap'
-                }}
-              >
-                {logOutput}
-              </Box>
-            )}
-          </StyledCard>
-        </Grid>
-        
-        {/* Custom Command */}
-        <Grid item xs={12} md={6}>
+        <Grid container spacing={3} sx={{ width: '100%', mt: 1 }}>
+        {/* Development Tools First */}
+        <Grid item xs={12}>
           <StyledCard title="Development Tools">
             <Typography variant="body2" sx={{ mb: 2 }}>
               Execute developer commands for testing and debugging purposes.
@@ -110,8 +78,8 @@ export default function Developer() {
             {result && (
               <Box 
                 sx={{ 
-                  mt: 2, 
-                  p: 2, 
+                  mt: 2,
+                  p: 2,
                   bgcolor: 'background.default',
                   borderRadius: 1,
                   fontFamily: 'monospace',
@@ -120,6 +88,36 @@ export default function Developer() {
                 }}
               >
                 {result}
+              </Box>
+            )}
+          </StyledCard>
+        </Grid>
+        
+        {/* Log Viewer Below */}
+        <Grid item xs={12}>
+          <StyledCard title="Application Logs">
+            <Button 
+              variant="contained" 
+              onClick={handleViewLogs} 
+              disabled={loading}
+              sx={{ mb: 2 }}
+            >
+              View Recent Logs
+            </Button>
+            {logOutput && (
+              <Box 
+                sx={{ 
+                  height: '500px', /* Increased height for better visibility */
+                  overflowY: 'auto', 
+                  p: 2, 
+                  bgcolor: 'background.default',
+                  borderRadius: 1,
+                  fontFamily: 'monospace',
+                  fontSize: '0.8rem',
+                  whiteSpace: 'pre-wrap'
+                }}
+              >
+                {logOutput}
               </Box>
             )}
           </StyledCard>

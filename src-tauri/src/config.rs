@@ -101,22 +101,35 @@ impl ConfigManager {
     /// Update application settings
     pub async fn update_app_settings(&self, settings: AppSettings) -> Result<(), ConfigError> {
         info!("Updating application settings");
+        info!("Developer mode being set to: {}", settings.developer_mode);
 
         // Clone the config first to avoid holding the mutex guard across an await point
         let config_clone;
         {
             let mut config = self.config.lock().unwrap();
+            // Log before update
+            info!("Developer mode value before update: {}", config.app_settings.developer_mode);
+            
+            // Update the settings
             config.app_settings = settings;
+            
+            // Log after update in memory
+            info!("Developer mode value after update in memory: {}", config.app_settings.developer_mode);
+            
             config_clone = config.clone();
         } // Mutex guard is dropped here
 
         // Now we can await without holding the mutex guard
+        info!("Saving config to disk with developer_mode: {}", config_clone.app_settings.developer_mode);
         self.save_config_to_path(&config_clone, &self.config_path)
             .await?;
+        info!("Config saved to disk successfully");
 
         // Update the stored config
-        let mut config = self.config.lock().unwrap();
-        *config = config_clone;
+        {
+            let mut config = self.config.lock().unwrap();
+            *config = config_clone.clone();
+            info!("In-memory config updated, developer_mode is now: {}", config.app_settings.developer_mode);        }
 
         Ok(())
     }
@@ -152,6 +165,7 @@ impl ConfigManager {
             }
         };
 
+        // Write the config data to the file
         if let Err(e) = file.write_all(config_json.as_bytes()).await {
             error!("Failed to write configuration to file: {}", e);
             return Err(ConfigError::SaveError(format!(
@@ -159,8 +173,17 @@ impl ConfigManager {
                 e
             )));
         }
-
-        info!("Configuration saved successfully");
+        
+        // Flush to ensure data is written to disk
+        if let Err(e) = file.flush().await {
+            error!("Failed to flush configuration file: {}", e);
+            return Err(ConfigError::SaveError(format!(
+                "Failed to flush configuration file: {}",
+                e
+            )));
+        }
+        
+        info!("Config file written and flushed successfully");
         Ok(())
     }
 

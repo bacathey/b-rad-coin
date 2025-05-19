@@ -31,25 +31,35 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       console.error('Failed to load app settings:', err);
       return null;
     }
-  };
+  }; 
+
   // Update developer mode setting
   const updateDeveloperMode = async (enabled: boolean) => {
     try {
       console.log('Setting developer mode to:', enabled);
-      // Log the exact structure being sent to the backend
-      console.log('Payload:', { developer_mode: enabled });
       
-      // Add a delay to make sure logs appear in sequence
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      await invoke('update_app_settings', { 
+      // First, update the backend without refreshing
+      const result = await invoke<boolean>('update_app_settings', { 
         developer_mode: enabled 
       });
       
-      const updatedSettings = await refreshSettings();
-      console.log('Developer mode after refresh:', updatedSettings?.developer_mode);
+      if (result) {
+        console.log('Developer mode updated successfully in backend');
+        
+        // On success, update local state directly instead of refreshing
+        // This avoids potential infinite loops by preventing multiple refreshes
+        setAppSettings(prev => {
+          if (!prev) return null;
+          return {...prev, developer_mode: enabled};
+        });
+      } else {
+        console.error('Failed to update developer mode in backend');
+        throw new Error('Failed to update developer mode');
+      }
     } catch (err) {
       console.error('Failed to update developer mode setting:', err);
+      // On error, refresh to get the actual state from backend
+      await refreshSettings();
       throw err;
     }
   };

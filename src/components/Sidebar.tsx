@@ -27,13 +27,11 @@ interface SidebarProps {
   handleDrawerToggle: () => void;
 }
 
-export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: SidebarProps) {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { appSettings } = useAppSettings();
-  
-  // Use the developer_mode value from the context
-  const developerMode = appSettings?.developer_mode || false;
+export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: SidebarProps) {  const location = useLocation();
+  const navigate = useNavigate();  const { appSettings } = useAppSettings();
+    // We don't need to actively refresh settings here anymore
+  // The AppSettingsContext already refreshes on initial render
+  // And any changes to settings will be reflected via the context
 
   return (
     <Box sx={{ 
@@ -189,7 +187,8 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
           </ListItemButton>
         </ListItem>
         
-        {developerMode && (
+        {/* Render the Developer menu item when developer mode is enabled */}
+        {appSettings && appSettings.developer_mode && (
           <ListItem disablePadding>
             <ListItemButton 
               selected={location.pathname === '/developer'} 

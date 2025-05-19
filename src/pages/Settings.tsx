@@ -1,3 +1,4 @@
+import React from 'react';
 import { 
   Switch,
   Divider,
@@ -69,19 +70,39 @@ export default function Settings() {
       setDeveloperMode(appSettings.developer_mode);
       setShowSeedPhraseDialogs(appSettings.show_seed_phrase_dialogs);
     }
-  }, [appSettings]);  // Function to update developer mode
+  }, [appSettings]);  
+    // Use a ref to track toggle operations in progress
+  const developerModeToggleInProgress = React.useRef(false);
+  
   const handleDeveloperModeToggle = async (enabled: boolean) => {
+    // Prevent multiple simultaneous toggle operations
+    if (developerModeToggleInProgress.current) {
+      console.log('Developer mode toggle already in progress, ignoring');
+      return;
+    }
+
     try {
-      setDeveloperMode(enabled);
+      developerModeToggleInProgress.current = true;
       console.log('Toggling developer mode to:', enabled);
+      
+      // Set local state immediately for responsive UI feedback
+      setDeveloperMode(enabled);
       
       // Use the context function which will handle the Tauri invocation
       await updateDeveloperMode(enabled);
+      
+      console.log('Developer mode toggle successful');
     } catch (err) {
       console.error(err);
       setError('Failed to update developer mode setting');
-      // Revert UI state if the update failed
-      setDeveloperMode(!enabled);
+      
+      // Get the current state from context to ensure UI is in sync with backend
+      if (appSettings) {
+        setDeveloperMode(appSettings.developer_mode);
+      }
+    } finally {
+      // Always clear the in-progress flag
+      developerModeToggleInProgress.current = false;
     }
   };
 
@@ -174,11 +195,12 @@ export default function Settings() {
                 icon={<CodeIcon color="primary" />}
                 primary="Developer Mode"
                 secondary="Enable advanced debugging tools"
-                action={
-                  <Switch 
+                action={                <Switch 
                     checked={developerMode}
                     onChange={(e) => handleDeveloperModeToggle(e.target.checked)}
                     color="primary"
+                    // Disable the switch during update to prevent rapid toggling
+                    disabled={appSettings === null || developerModeToggleInProgress.current}
                   />
                 }
               />
