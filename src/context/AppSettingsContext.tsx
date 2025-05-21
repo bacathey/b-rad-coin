@@ -61,10 +61,18 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       await refreshSettings();
       throw err;
     }
-  };  // Update skip seed phrase dialogs setting
+  };  
+  
+  // Update skip seed phrase dialogs setting
   const updateSkipSeedPhraseDialogs = async (skipDialogs: boolean) => {
     try {
       console.log('Updating skip seed phrase dialogs setting to:', skipDialogs);
+      
+      // Check if developer mode is enabled
+      if (!appSettings?.developer_mode) {
+        console.error('Cannot update skip seed phrase dialogs: Developer mode is not enabled');
+        throw new Error('Developer mode must be enabled to skip seed phrase dialogs');
+      }
       
       // Use camelCase in JavaScript (will be converted to snake_case in Rust)
       const result = await invoke<boolean>('update_app_settings', {

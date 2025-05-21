@@ -5,7 +5,8 @@ import {
   List,
   TextField,
   Button,
-  Grid
+  Grid,
+  Tooltip
 } from '@mui/material';
 import SecurityIcon from '@mui/icons-material/Security';
 import LanguageIcon from '@mui/icons-material/Language';
@@ -14,6 +15,7 @@ import BackupIcon from '@mui/icons-material/Backup';
 import PrivacyTipIcon from '@mui/icons-material/PrivacyTip';
 import FolderIcon from '@mui/icons-material/Folder';
 import CodeIcon from '@mui/icons-material/Code';
+import SkipNextIcon from '@mui/icons-material/SkipNext';
 import { useState, useEffect } from 'react';
 import { invoke } from "@tauri-apps/api/core";
 import { useAppSettings } from '../context/AppSettingsContext';
@@ -25,7 +27,8 @@ import { useThemeMode } from '../hooks/useThemeMode';
 import { useForm } from '../hooks/useForm';
 
 export default function Settings() {
-  const { getTextFieldStyle } = useThemeMode();  const { appSettings, updateDeveloperMode } = useAppSettings();
+  const { getTextFieldStyle } = useThemeMode();  
+  const { appSettings, updateDeveloperMode, updateSkipSeedPhraseDialogs } = useAppSettings();
   
   // State for the various settings
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -35,6 +38,7 @@ export default function Settings() {
   const [configDirectory, setConfigDirectory] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [developerMode, setDeveloperMode] = useState(appSettings?.developer_mode || false);
+  const [skipSeedPhraseDialogs, setSkipSeedPhraseDialogs] = useState(appSettings?.skip_seed_phrase_dialogs || false);
 
   // Use our custom form hook for the custom node form
   const nodeForm = useForm(
@@ -59,15 +63,19 @@ export default function Settings() {
       .catch(err => {
         console.error(err);
         setError('Failed to load configuration directory');
-      });    // Set local state from app settings context when it's available
+      });    
+    
+    // Set local state from app settings context when it's available
     if (appSettings) {
       setNotificationsEnabled(appSettings.notifications_enabled);
       setAutoBackup(appSettings.auto_backup);
       setDeveloperMode(appSettings.developer_mode);
+      setSkipSeedPhraseDialogs(appSettings.skip_seed_phrase_dialogs);
     }
   }, [appSettings]);  
     // Use a ref to track toggle operations in progress
   const developerModeToggleInProgress = React.useRef(false);
+  const skipSeedPhraseToggleInProgress = React.useRef(false);
   
   const handleDeveloperModeToggle = async (enabled: boolean) => {
     // Prevent multiple simultaneous toggle operations
@@ -86,6 +94,13 @@ export default function Settings() {
       // Use the context function which will handle the Tauri invocation
       await updateDeveloperMode(enabled);
       
+      // If developer mode is being disabled, also disable skip seed phrase dialogs
+      if (!enabled && skipSeedPhraseDialogs) {
+        console.log('Developer mode disabled, also disabling skip seed phrase dialogs');
+        setSkipSeedPhraseDialogs(false);
+        await updateSkipSeedPhraseDialogs(false);
+      }
+      
       console.log('Developer mode toggle successful');
     } catch (err) {
       console.error(err);
@@ -101,6 +116,37 @@ export default function Settings() {
     }
   };
 
+  const handleSkipSeedPhraseDialogsToggle = async (enabled: boolean) => {
+    // Prevent multiple simultaneous toggle operations
+    if (skipSeedPhraseToggleInProgress.current) {
+      console.log('Skip seed phrase dialogs toggle already in progress, ignoring');
+      return;
+    }
+
+    try {
+      skipSeedPhraseToggleInProgress.current = true;
+      console.log('Toggling skip seed phrase dialogs to:', enabled);
+      
+      // Set local state immediately for responsive UI feedback
+      setSkipSeedPhraseDialogs(enabled);
+      
+      // Use the context function which will handle the Tauri invocation
+      await updateSkipSeedPhraseDialogs(enabled);
+      
+      console.log('Skip seed phrase dialogs toggle successful');
+    } catch (err) {
+      console.error('Failed to update skip seed phrase dialogs setting:', err);
+      setError('Failed to update skip seed phrase dialogs setting. Developer mode must be enabled.');
+      
+      // Get the current state from context to ensure UI is in sync with backend
+      if (appSettings) {
+        setSkipSeedPhraseDialogs(appSettings.skip_seed_phrase_dialogs);
+      }
+    } finally {
+      // Always clear the in-progress flag
+      skipSeedPhraseToggleInProgress.current = false;
+    }
+  };
 
   return (
     <PageContainer 
@@ -190,6 +236,27 @@ export default function Settings() {
               <Divider variant="inset" component="li" />
               
               <SettingsItem
+                icon={<SkipNextIcon color={developerMode ? "primary" : "disabled"} />}
+                primary="Skip Seed Phrase Dialogs"
+                secondary={developerMode 
+                  ? "Skip seed phrase dialogs during wallet creation (Developer Mode only)" 
+                  : "Enable Developer Mode first to use this setting"}
+                action={
+                  <Tooltip title={!developerMode ? "Enable Developer Mode first" : ""}>
+                    <span> {/* Wrap in span so tooltip works even when disabled */}
+                      <Switch 
+                        checked={skipSeedPhraseDialogs}
+                        onChange={(e) => handleSkipSeedPhraseDialogsToggle(e.target.checked)}
+                        color="primary"
+                        disabled={!developerMode || appSettings === null || skipSeedPhraseToggleInProgress.current}
+                      />
+                    </span>
+                  </Tooltip>
+                }
+              />
+              <Divider variant="inset" component="li" />
+              
+              <SettingsItem
                 icon={<PrivacyTipIcon color="primary" />}
                 primary="Custom Node"
                 secondary="Connect to your own Bitcoin node"
@@ -241,7 +308,8 @@ export default function Settings() {
                     color="primary"
                   />
                 }
-              />              <Divider variant="inset" component="li" />
+              />              
+              <Divider variant="inset" component="li" />
             </List>
           </StyledCard>
         </Grid>

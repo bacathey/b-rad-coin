@@ -116,6 +116,7 @@ pub async fn create_wallet(
     use_password: bool,
     seed_phrase: Option<String>,
     wallet_manager: State<'_, AsyncWalletManager>,
+    config_manager_arc: State<'_, Arc<ConfigManager>>,
 ) -> CommandResult<bool> {
     info!("Command: create_wallet with name: {}", wallet_name);
 
@@ -133,19 +134,29 @@ pub async fn create_wallet(
                phrase.split(' ').last().unwrap_or(""));
         phrase.clone()
     } else {
-        // TODO : If Developer Mode is enabled generate a new seed phrase, else return an error
-        error!("No seed phrase provided, this shouldn't happen!");
-        return Err("No seed phrase provided".to_string());
+        // Check if developer mode is enabled
+        let config = config_manager_arc.inner().get_config();
+        let dev_mode_enabled = config.app_settings.developer_mode;
+        
+        if dev_mode_enabled {
+            // In developer mode, generate a placeholder seed phrase
+            info!("Developer mode enabled. Generating placeholder seed phrase for wallet: {}", wallet_name);
+            // Generate a deterministic placeholder seed phrase
+            let placeholder = format!("test word wallet {} developer mode enabled skip verify testing phrase", wallet_name);
+            placeholder
+        } else {
+            // Not in developer mode, seed phrase is required
+            error!("No seed phrase provided and developer mode is disabled");
+            return Err("Seed phrase is required for wallet creation. Developer mode must be enabled to skip seed phrase.".to_string());
+        }
     };
 
     let mut manager = wallet_manager.get_manager().await;
     
     // Call the synchronous create_wallet_with_seed function
-    // Remove the .await as the underlying function is now sync
     match manager.create_wallet_with_seed(&wallet_name, &effective_password, &actual_seed_phrase, use_password) {
         Ok(_) => {
             info!("Wallet created successfully: {}", wallet_name);
-            // Return Ok(true) to match the function signature CommandResult<bool>
             Ok(true)
         }
         Err(e) => {
@@ -200,7 +211,9 @@ pub async fn update_app_settings(
     if let Some(auto_backup) = auto_backup {
         info!("Updating auto_backup to: {}", auto_backup);
         config.app_settings.auto_backup = auto_backup;
-    }    if let Some(notifications) = notifications_enabled {
+    }    
+    
+    if let Some(notifications) = notifications_enabled {
         info!("Updating notifications_enabled to: {}", notifications);
         config.app_settings.notifications_enabled = notifications;
     }
@@ -210,11 +223,25 @@ pub async fn update_app_settings(
         config.app_settings.log_level = log_level;
         // TODO: Update actual log level at runtime if needed
     }
-      if let Some(dev_mode) = developer_mode {
+    
+    if let Some(dev_mode) = developer_mode {
         info!("Updating developer_mode to: {}", dev_mode);
         config.app_settings.developer_mode = dev_mode;
+        
+        // If developer mode is being turned off, also turn off skip_seed_phrase_dialogs
+        if !dev_mode && config.app_settings.skip_seed_phrase_dialogs {
+            info!("Developer mode disabled, disabling skip_seed_phrase_dialogs");
+            config.app_settings.skip_seed_phrase_dialogs = false;
+        }
     }
-      if let Some(skip_dialogs) = skip_seed_phrase_dialogs {
+    
+    if let Some(skip_dialogs) = skip_seed_phrase_dialogs {
+        // Only allow skip_seed_phrase_dialogs to be enabled if developer_mode is enabled
+        if skip_dialogs && !config.app_settings.developer_mode {
+            error!("Cannot enable skip_seed_phrase_dialogs when developer_mode is disabled");
+            return Err("Developer mode must be enabled to skip seed phrase dialogs".to_string());
+        }
+        
         info!("Updating skip_seed_phrase_dialogs to: {}", skip_dialogs);
         config.app_settings.skip_seed_phrase_dialogs = skip_dialogs;
     }

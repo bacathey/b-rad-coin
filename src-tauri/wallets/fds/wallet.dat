@@ -1,0 +1,31 @@
+{
+  "name": "fds",
+  "created_at": 1747863100,
+  "modified_at": 1747863100,
+  "block_height": 0,
+  "seed_phrase": "test word wallet fds developer mode enabled skip verify testing phrase",
+  "master_private_key": "xpriv_dummy_for_development_placeholder",
+  "master_public_key": "xpub_dummy_for_development_placeholder",
+  "keys": {
+    "address_fds_0": {
+      "private_key": "dummy_private_key",
+      "public_key": "dummy_public_key",
+      "address": "address_fds_0",
+      "key_type": "Legacy",
+      "derivation_path": "m/44'/0'/0'/0/0"
+    }
+  },
+  "addresses": [
+    {
+      "address": "address_fds_0",
+      "key_type": "Legacy",
+      "derivation_path": "m/44'/0'/0'/0/0",
+      "label": null
+    }
+  ],
+  "utxos": [],
+  "transactions": [],
+  "balance": 0,
+  "account_indexes": {},
+  "is_encrypted": false
+}

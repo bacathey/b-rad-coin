@@ -122,16 +122,34 @@ export default function OpenCreateWalletDialog() {
   const [generatedSeedPhrase, setGeneratedSeedPhrase] = useState('');
   const [tempWalletData, setTempWalletData] = useState<{name: string; password: string; usePassword: boolean} | null>(null);
   const [showSeedPhraseDialogs, setShowSeedPhraseDialogs] = useState(true);
+  const [isDeveloperMode, setIsDeveloperMode] = useState(false);
 
-  // Load showSeedPhraseDialogs setting
+  // Load app settings
   useEffect(() => {
     async function loadSettings() {
-      try {        const settings = await invoke<AppSettings>('get_app_settings');
-        setShowSeedPhraseDialogs(!settings.skip_seed_phrase_dialogs);
+      try {
+        const settings = await invoke<AppSettings>('get_app_settings');
+        
+        // Store both settings separately
+        setIsDeveloperMode(settings.developer_mode);
+        
+        // Only allow skipping seed phrase dialogs if developer mode is enabled
+        if (settings.developer_mode && settings.skip_seed_phrase_dialogs) {
+          setShowSeedPhraseDialogs(false); // Skip dialogs only if both conditions are true
+        } else {
+          setShowSeedPhraseDialogs(true); // Always show dialogs in non-dev mode
+        }
+        
+        console.log('App settings loaded:', { 
+          developerMode: settings.developer_mode, 
+          skipSeedDialogs: settings.skip_seed_phrase_dialogs,
+          willShowDialogs: !settings.developer_mode || !settings.skip_seed_phrase_dialogs
+        });
       } catch (error) {
         console.error('Failed to load app settings:', error);
-        // Default to true if settings can't be loaded (skip = false)
+        // Default to showing seed phrase dialogs if settings can't be loaded
         setShowSeedPhraseDialogs(true);
+        setIsDeveloperMode(false);
       }
     }
     
@@ -249,6 +267,52 @@ export default function OpenCreateWalletDialog() {
     }
   };
 
+  // New function to create wallet directly without relying on state updates
+  const createWalletDirectly = async (walletData: {name: string; password: string; usePassword: boolean}) => {
+    setErrorMessage('');
+    
+    try {
+      console.log('Creating wallet directly:', walletData.name);
+      
+      // In developer mode with skip enabled, we don't need a seed phrase
+      // The backend will generate a placeholder
+      const result = await invoke('create_wallet', { 
+        walletName: walletData.name, 
+        password: walletData.password,
+        usePassword: walletData.usePassword,
+        seedPhrase: undefined // Backend will handle this in dev mode
+      });
+      
+      if (result) {
+        console.log('Wallet created successfully:', walletData.name);
+        setCurrentWallet({
+          name: walletData.name,
+          secured: walletData.usePassword
+        });
+        setIsWalletOpen(true);
+        await refreshWalletDetails();
+        
+        // Clear form data
+        setNewWalletName('');
+        setWalletPassword('');
+        setConfirmPassword('');
+        setUsePasswordProtection(false);
+      } else {
+        console.error('Wallet creation returned false');
+        setErrorMessage('Failed to create wallet');
+      }
+    } catch (error) {
+      console.error('Failed to create wallet directly:', error);
+      if (error instanceof Error) {
+        setErrorMessage(`Error: ${error.message}`);
+      } else {
+        setErrorMessage('Unknown error occurred during wallet creation');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleCreateWallet = async () => {
     setErrorMessage('');
     
@@ -273,53 +337,74 @@ export default function OpenCreateWalletDialog() {
       }
     }
 
-    setIsLoading(true);    try {
-      const phrase = await invoke<string>('generate_seed_phrase');
+    setIsLoading(true);
+    
+    try {
+      // Create the wallet data object that we'll use
+      const walletData = {
+        name: newWalletName,
+        password: walletPassword,
+        usePassword: usePasswordProtection
+      };
       
-      if (phrase) {
-        // Store wallet data
-        setTempWalletData({
-          name: newWalletName,
-          password: walletPassword,
-          usePassword: usePasswordProtection
-        });
-        setGeneratedSeedPhrase(phrase);
+      // Generate seed phrase for normal flow
+      if (showSeedPhraseDialogs) {
+        // For the normal flow, we set the tempWalletData and show dialogs
+        setTempWalletData(walletData);
         
-        // Check if we should show seed phrase dialogs based on settings
-        if (showSeedPhraseDialogs) {
-          // Show the seed phrase dialog
+        const phrase = await invoke<string>('generate_seed_phrase');
+        if (phrase) {
+          setGeneratedSeedPhrase(phrase);
           setSeedPhraseDialogOpen(true);
         } else {
-          // Skip seed phrase dialogs and create wallet directly
-          finalizeWalletCreation();
+          setErrorMessage('Failed to generate seed phrase');
+          setIsLoading(false);
         }
       } else {
-        setErrorMessage('Failed to generate seed phrase');
-        setIsLoading(false); // Set loading false if phrase generation fails
+        // Skip seed phrase generation and dialog flow in developer mode with skip option
+        console.log('Developer mode with skip dialogs enabled, creating wallet directly');
+        console.log(`Developer mode: ${isDeveloperMode}, Skip dialogs: ${!showSeedPhraseDialogs}`);
+        
+        // For skip mode, we need to create the wallet immediately
+        // We don't use state updates since they're asynchronous
+        // Instead, pass the data directly to the function
+        await createWalletDirectly(walletData);
       }
     } catch (error) {
       console.error('Failed to start wallet creation:', error);
-      setErrorMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setIsLoading(false); // Set loading false on error
+      if (error instanceof Error) {
+        setErrorMessage(`Error: ${error.message}`);
+      } else {
+        setErrorMessage('Unknown error occurred during wallet creation');
+      }
+      setIsLoading(false);
     }
-    // Loading state for dialog flow is handled within finalizeWalletCreation
   };
-  
   // Function to create the wallet after seed phrase verification (Dialog Flow)
   const finalizeWalletCreation = async () => {
-    if (!tempWalletData) return;
+    if (!tempWalletData) {
+      console.error('No temporary wallet data available for regular flow');
+      setErrorMessage('Wallet creation failed: No wallet data available');
+      setIsLoading(false);
+      return;
+    }
     
-    setIsLoading(true); // Set loading true for the final step
+    setIsLoading(true);
     setErrorMessage('');
+    
     try {
+      console.log('Creating wallet after seed phrase verification:', tempWalletData.name);
+      
+      // For regular flow, we always use the seed phrase from the verification process
       const result = await invoke('create_wallet', { 
         walletName: tempWalletData.name, 
         password: tempWalletData.password,
         usePassword: tempWalletData.usePassword,
-        seedPhrase: generatedSeedPhrase // Use the phrase stored in state
+        seedPhrase: generatedSeedPhrase
       });
       
       if (result) {
+        console.log('Wallet created successfully:', tempWalletData.name);
         setCurrentWallet({
           name: tempWalletData.name,
           secured: tempWalletData.usePassword
@@ -327,6 +412,7 @@ export default function OpenCreateWalletDialog() {
         setIsWalletOpen(true);
         await refreshWalletDetails();
         
+        // Clear all wallet creation data
         setTempWalletData(null);
         setGeneratedSeedPhrase('');
         setNewWalletName('');
@@ -334,11 +420,16 @@ export default function OpenCreateWalletDialog() {
         setConfirmPassword('');
         setUsePasswordProtection(false);
       } else {
+        console.error('Wallet creation returned false');
         setErrorMessage('Failed to create wallet after verification');
       }
     } catch (error) {
       console.error('Failed to finalize wallet creation:', error);
-      setErrorMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      if (error instanceof Error) {
+        setErrorMessage(`Error: ${error.message}`);
+      } else {
+        setErrorMessage('Unknown error occurred during wallet creation');
+      }
       setTempWalletData(null); 
       setGeneratedSeedPhrase('');
     } finally {
