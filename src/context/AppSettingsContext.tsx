@@ -62,22 +62,26 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       await refreshSettings();
       throw err;
     }
-  };
-  // Update seed phrase dialogs setting
+  };  // Update seed phrase dialogs setting
   const updateSeedPhraseDialogs = async (enabled: boolean) => {
     try {
       console.log('Updating seed phrase dialogs setting to:', enabled);
       
-      // First, update the backend
-      const result = await invoke<boolean>('update_app_settings', { 
-        show_seed_phrase_dialogs: enabled 
+      // Explicitly call the Tauri command with the specific parameter
+      const result = await invoke<boolean>('update_app_settings', {
+        show_seed_phrase_dialogs: enabled,
+        developer_mode: undefined,  // Send undefined for fields we're not updating
+        theme: undefined,
+        auto_backup: undefined,
+        notifications_enabled: undefined,
+        log_level: undefined
       });
       
       if (result) {
         console.log('Seed phrase dialogs setting updated successfully in backend');
         
         // On success, update local state directly instead of refreshing
-        // This avoids potential race conditions or delays
+        // This ensures UI stays in sync with backend state
         setAppSettings(prev => {
           if (!prev) return null;
           return {...prev, show_seed_phrase_dialogs: enabled};
