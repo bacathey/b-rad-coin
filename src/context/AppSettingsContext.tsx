@@ -86,8 +86,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       
       if (result) {
         console.log('Skip seed phrase dialogs setting updated successfully in backend');
-        
-        // On success, update local state directly instead of refreshing
+          // On success, update local state directly instead of refreshing
         // This ensures UI stays in sync with backend state
         setAppSettings(prev => {
           if (!prev) return null;
