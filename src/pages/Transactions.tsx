@@ -100,11 +100,27 @@ export default function Transactions() {
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setChartTab(newValue);
   };  return (
-    <Box sx={{ p: 3, mt: 2 }}>
-      <Typography variant="h4" component="h1" gutterBottom sx={{ 
-        color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : '#1a237e',
-        textShadow: isDarkMode ? '0 2px 10px rgba(0,0,0,0.3)' : 'none',        fontWeight: 600
-      }}>
+    <Box 
+      sx={{ 
+        width: '100%',
+        maxWidth: '100%',
+        pt: 3,
+        px: { xs: 2, sm: 3 },
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center'
+      }}
+    >
+      <Typography 
+        variant="h4" 
+        component="h1" 
+        gutterBottom
+        sx={{
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : '#1a237e',
+          textShadow: isDarkMode ? '0 2px 10px rgba(0,0,0,0.3)' : 'none',
+          fontWeight: 600
+        }}
+      >
         Transactions
       </Typography>
       
