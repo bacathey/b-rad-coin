@@ -25,8 +25,7 @@ import { useThemeMode } from '../hooks/useThemeMode';
 import { useForm } from '../hooks/useForm';
 
 export default function Settings() {
-  const { getTextFieldStyle } = useThemeMode();
-  const { appSettings, updateDeveloperMode, updateSeedPhraseDialogs } = useAppSettings();
+  const { getTextFieldStyle } = useThemeMode();  const { appSettings, updateDeveloperMode } = useAppSettings();
   
   // State for the various settings
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -36,7 +35,6 @@ export default function Settings() {
   const [configDirectory, setConfigDirectory] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [developerMode, setDeveloperMode] = useState(appSettings?.developer_mode || false);
-  const [showSeedPhraseDialogs, setShowSeedPhraseDialogs] = useState<boolean>(appSettings?.show_seed_phrase_dialogs || true);
 
   // Use our custom form hook for the custom node form
   const nodeForm = useForm(
@@ -61,14 +59,11 @@ export default function Settings() {
       .catch(err => {
         console.error(err);
         setError('Failed to load configuration directory');
-      });
-
-    // Set local state from app settings context when it's available
+      });    // Set local state from app settings context when it's available
     if (appSettings) {
       setNotificationsEnabled(appSettings.notifications_enabled);
       setAutoBackup(appSettings.auto_backup);
       setDeveloperMode(appSettings.developer_mode);
-      setShowSeedPhraseDialogs(appSettings.show_seed_phrase_dialogs);
     }
   }, [appSettings]);  
     // Use a ref to track toggle operations in progress
@@ -106,18 +101,6 @@ export default function Settings() {
     }
   };
 
-  // Function to update seed phrase dialogs setting
-  const handleSeedPhraseDialogsToggle = async (enabled: boolean) => {
-    try {
-      setShowSeedPhraseDialogs(enabled);
-      await updateSeedPhraseDialogs(enabled);
-    } catch (err) {
-      console.error(err);
-      setError('Failed to update seed phrase dialogs setting');
-      // Revert UI state if the update failed
-      setShowSeedPhraseDialogs(!enabled);
-    }
-  };
 
   return (
     <PageContainer 
@@ -201,20 +184,6 @@ export default function Settings() {
                     color="primary"
                     // Disable the switch during update to prevent rapid toggling
                     disabled={appSettings === null || developerModeToggleInProgress.current}
-                  />
-                }
-              />
-              <Divider variant="inset" component="li" />
-              
-              <SettingsItem
-                icon={<SecurityIcon color="primary" />}
-                primary="Seed Phrase Dialogs"
-                secondary="Show seed phrase verification steps during wallet creation"
-                action={
-                  <Switch 
-                    checked={showSeedPhraseDialogs}
-                    onChange={(e) => handleSeedPhraseDialogsToggle(e.target.checked)}
-                    color="primary"
                   />
                 }
               />

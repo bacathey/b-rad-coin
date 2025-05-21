@@ -1,15 +1,27 @@
-import { Grid, Typography, Button, Box, TextField } from '@mui/material';
-import { useState } from 'react';
+import { Grid, Typography, Button, Box, TextField, Switch, List, Divider } from '@mui/material';
+import { useState, useEffect } from 'react';
 import { invoke } from "@tauri-apps/api/core";
 import { PageContainer } from '../components/ui/PageContainer';
 import { StyledCard } from '../components/ui/StyledCard';
+import { SettingsItem } from '../components/ui/SettingsItem';
+import SecurityIcon from '@mui/icons-material/Security';
+import { useAppSettings } from '../context/AppSettingsContext';
 
 export default function Developer() {
+  const { appSettings, updateSeedPhraseDialogs } = useAppSettings();
   const [logOutput, setLogOutput] = useState<string>('');
   const [customCommand, setCustomCommand] = useState<string>('');
   const [result, setResult] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSeedPhraseDialogs, setShowSeedPhraseDialogs] = useState<boolean>(appSettings?.show_seed_phrase_dialogs || true);
+
+  // Effect to sync with app settings
+  useEffect(() => {
+    if (appSettings) {
+      setShowSeedPhraseDialogs(appSettings.show_seed_phrase_dialogs);
+    }
+  }, [appSettings]);
 
   const handleRunCommand = async () => {
     if (!customCommand.trim()) return;
@@ -29,7 +41,6 @@ export default function Developer() {
       setLoading(false);
     }
   };
-
   const handleViewLogs = async () => {
     setLoading(true);
     setError(null);
@@ -44,13 +55,45 @@ export default function Developer() {
       setLoading(false);
     }
   };
-  return (
+  
+  // Function to update seed phrase dialogs setting
+  const handleSeedPhraseDialogsToggle = async (enabled: boolean) => {
+    try {
+      setShowSeedPhraseDialogs(enabled);
+      await updateSeedPhraseDialogs(enabled);
+    } catch (err) {
+      console.error(err);
+      setError('Failed to update seed phrase dialogs setting');
+      // Revert UI state if the update failed
+      setShowSeedPhraseDialogs(!enabled);
+    }
+  };  return (
     <PageContainer title="Developer Tools" error={error}>
       <Typography variant="subtitle1" color="text.secondary" gutterBottom>
         These tools are intended for development and debugging purposes only.
       </Typography>
         <Grid container spacing={3} sx={{ width: '100%', mt: 1 }}>
-        {/* Development Tools First */}
+        {/* Developer Settings First */}
+        <Grid item xs={12}>
+          <StyledCard title="Developer Settings">
+            <List>
+              <SettingsItem
+                icon={<SecurityIcon color="primary" />}
+                primary="Seed Phrase Dialogs"
+                secondary="Show seed phrase verification steps during wallet creation"
+                action={
+                  <Switch 
+                    checked={showSeedPhraseDialogs}
+                    onChange={(e) => handleSeedPhraseDialogsToggle(e.target.checked)}
+                    color="primary"
+                  />
+                }
+              />
+              <Divider variant="inset" component="li" />
+            </List>
+          </StyledCard>
+        </Grid>
+        {/* Development Tools */}
         <Grid item xs={12}>
           <StyledCard title="Development Tools">
             <Typography variant="body2" sx={{ mb: 2 }}>

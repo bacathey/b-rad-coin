@@ -193,18 +193,19 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
               onClick={() => {
                 navigate('/developer');
                 if (mobileOpen) handleDrawerToggle();
-              }}
-              sx={mode === 'light' && location.pathname === '/developer' ? {
-                borderLeft: '4px solid #1a237e',
+              }}              sx={mode === 'light' && location.pathname === '/developer' ? {
+                borderLeft: '4px solid #5c6bc0', /* Changed from #1a237e to #5c6bc0 (lighter indigo) */
+                backgroundColor: 'rgba(92, 107, 192, 0.08)', /* Light indigo background */
                 transition: transitions.all
               } : {
+                backgroundColor: mode === 'dark' ? 'rgba(144, 202, 249, 0.08)' : 'rgba(92, 107, 192, 0.04)', 
                 transition: transitions.all
               }}
-            >
-              <ListItemIcon sx={mode === 'light' ? {
-                color: location.pathname === '/developer' ? '#1a237e' : 'rgba(0, 0, 0, 0.54)',
+            >              <ListItemIcon sx={mode === 'light' ? {
+                color: location.pathname === '/developer' ? '#5c6bc0' : 'rgba(0, 0, 0, 0.6)',
                 transition: transitions.color
               } : {
+                color: location.pathname === '/developer' ? '#90caf9' : undefined,
                 transition: transitions.color
               }}>
                 <CodeIcon />
