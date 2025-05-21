@@ -8,12 +8,12 @@ import SecurityIcon from '@mui/icons-material/Security';
 import { useAppSettings } from '../context/AppSettingsContext';
 
 export default function Developer() {
-  const { appSettings, updateSeedPhraseDialogs } = useAppSettings();
+  const { appSettings, updateSkipSeedPhraseDialogs } = useAppSettings();
   const [logOutput, setLogOutput] = useState<string>('');
   const [customCommand, setCustomCommand] = useState<string>('');
   const [result, setResult] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);  const [showSeedPhraseDialogs, setShowSeedPhraseDialogs] = useState<boolean>(appSettings?.show_seed_phrase_dialogs || true);
+  const [error, setError] = useState<string | null>(null);  const [skipSeedPhraseDialogs, setSkipSeedPhraseDialogs] = useState<boolean>(appSettings?.skip_seed_phrase_dialogs || false);
   
   // Add a ref to track if a toggle operation is in progress
   const toggleInProgressRef = useRef<boolean>(false);
@@ -21,7 +21,7 @@ export default function Developer() {
   // Effect to sync with app settings
   useEffect(() => {
     if (appSettings) {
-      setShowSeedPhraseDialogs(appSettings.show_seed_phrase_dialogs);
+      setSkipSeedPhraseDialogs(appSettings.skip_seed_phrase_dialogs);
     }
   }, [appSettings]);
 
@@ -56,8 +56,8 @@ export default function Developer() {
     } finally {
       setLoading(false);
     }
-  };  // Function to update seed phrase dialogs setting
-  const handleSeedPhraseDialogsToggle = async (enabled: boolean) => {
+  };  // Function to update skip seed phrase dialogs setting
+  const handleSeedPhraseDialogsToggle = async (skipDialogs: boolean) => {
     // Prevent multiple simultaneous toggle operations
     if (toggleInProgressRef.current) {
       console.log('Toggle already in progress, ignoring this request');
@@ -66,28 +66,28 @@ export default function Developer() {
     
     try {
       toggleInProgressRef.current = true;
-      console.log('Setting seed phrase dialogs to:', enabled);
+      console.log('Setting skip seed phrase dialogs to:', skipDialogs);
       setLoading(true); // Show loading state
       setError(null); // Clear any previous errors
       
       // Update local state for immediate UI feedback
-      setShowSeedPhraseDialogs(enabled);
+      setSkipSeedPhraseDialogs(skipDialogs);
       
       // Call the context function to update the backend setting and persist to disk
-      await updateSeedPhraseDialogs(enabled);
+      await updateSkipSeedPhraseDialogs(skipDialogs);
       
       // Verify the setting was updated by checking the appSettings context
-      if (appSettings && appSettings.show_seed_phrase_dialogs !== enabled) {
+      if (appSettings && appSettings.skip_seed_phrase_dialogs !== skipDialogs) {
         console.warn('Settings context does not reflect change, may not have persisted correctly');
       } else {
-        console.log('Seed phrase dialogs setting updated successfully and persisted');
+        console.log('Skip seed phrase dialogs setting updated successfully and persisted');
       }
     } catch (err) {
-      console.error('Failed to update seed phrase dialogs setting:', err);
-      setError('Failed to update seed phrase dialogs setting. Changes will not persist across app restarts.');
+      console.error('Failed to update skip seed phrase dialogs setting:', err);
+      setError('Failed to update skip seed phrase dialogs setting. Changes will not persist across app restarts.');
       
       // Revert UI state if the update failed
-      setShowSeedPhraseDialogs(!enabled);
+      setSkipSeedPhraseDialogs(!skipDialogs);
     } finally {
       setLoading(false); // Hide loading state
       toggleInProgressRef.current = false;
@@ -103,12 +103,11 @@ export default function Developer() {
           <StyledCard title="Developer Settings">
             <List>              <SettingsItem
                 icon={<SecurityIcon color="primary" />}
-                primary="Seed Phrase Dialogs"
-                secondary="Show seed phrase verification steps during wallet creation"
+                primary="Skip Seed Phrase Dialogs"
+                secondary="Skip seed phrase verification steps during wallet creation"
                 action={
-                  <Switch 
-                    checked={showSeedPhraseDialogs}
-                    onChange={(e) => handleSeedPhraseDialogsToggle(e.target.checked)}
+                  <Switch                    checked={skipSeedPhraseDialogs} // Now directly using skip variable
+                    onChange={(e) => handleSeedPhraseDialogsToggle(e.target.checked)} // Directly pass the value
                     color="primary"
                     disabled={loading} // Disable during loading
                   />

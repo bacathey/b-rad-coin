@@ -6,7 +6,7 @@ import { AppSettings } from '../types/settings';
 interface AppSettingsContextType {
   appSettings: AppSettings | null;
   updateDeveloperMode: (enabled: boolean) => Promise<void>;
-  updateSeedPhraseDialogs: (enabled: boolean) => Promise<void>;
+  updateSkipSeedPhraseDialogs: (skip: boolean) => Promise<void>;
   refreshSettings: () => Promise<AppSettings | null>;
 }
 
@@ -14,7 +14,7 @@ interface AppSettingsContextType {
 const AppSettingsContext = createContext<AppSettingsContextType>({
   appSettings: null,
   updateDeveloperMode: async () => {},
-  updateSeedPhraseDialogs: async () => {},
+  updateSkipSeedPhraseDialogs: async () => {},
   refreshSettings: async () => null
 });
 
@@ -62,14 +62,14 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       await refreshSettings();
       throw err;
     }
-  };  // Update seed phrase dialogs setting
-  const updateSeedPhraseDialogs = async (enabled: boolean) => {
+  };  // Update skip seed phrase dialogs setting
+  const updateSkipSeedPhraseDialogs = async (skipDialogs: boolean) => {
     try {
-      console.log('Updating seed phrase dialogs setting to:', enabled);
+      console.log('Updating skip seed phrase dialogs setting to:', skipDialogs);
       
-      // Explicitly call the Tauri command with the specific parameter
+      // Explicitly call the Tauri command with the new parameter name
       const result = await invoke<boolean>('update_app_settings', {
-        show_seed_phrase_dialogs: enabled,
+        skip_seed_phrase_dialogs: skipDialogs,
         developer_mode: undefined,  // Send undefined for fields we're not updating
         theme: undefined,
         auto_backup: undefined,
@@ -78,20 +78,20 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       });
       
       if (result) {
-        console.log('Seed phrase dialogs setting updated successfully in backend');
+        console.log('Skip seed phrase dialogs setting updated successfully in backend');
         
         // On success, update local state directly instead of refreshing
         // This ensures UI stays in sync with backend state
         setAppSettings(prev => {
           if (!prev) return null;
-          return {...prev, show_seed_phrase_dialogs: enabled};
+          return {...prev, skip_seed_phrase_dialogs: skipDialogs};
         });
       } else {
-        console.error('Failed to update seed phrase dialogs setting in backend');
-        throw new Error('Failed to update seed phrase dialogs setting');
+        console.error('Failed to update skip seed phrase dialogs setting in backend');
+        throw new Error('Failed to update skip seed phrase dialogs setting');
       }
     } catch (err) {
-      console.error('Failed to update seed phrase dialogs setting:', err);
+      console.error('Failed to update skip seed phrase dialogs setting:', err);
       // On error, refresh to get the actual state from backend
       await refreshSettings();
       throw err;
@@ -102,12 +102,11 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     refreshSettings();
   }, []);
-
   return (
     <AppSettingsContext.Provider value={{
       appSettings,
       updateDeveloperMode,
-      updateSeedPhraseDialogs,
+      updateSkipSeedPhraseDialogs,
       refreshSettings
     }}>
       {children}

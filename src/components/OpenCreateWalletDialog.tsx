@@ -126,12 +126,11 @@ export default function OpenCreateWalletDialog() {
   // Load showSeedPhraseDialogs setting
   useEffect(() => {
     async function loadSettings() {
-      try {
-        const settings = await invoke<AppSettings>('get_app_settings');
-        setShowSeedPhraseDialogs(settings.show_seed_phrase_dialogs);
+      try {        const settings = await invoke<AppSettings>('get_app_settings');
+        setShowSeedPhraseDialogs(!settings.skip_seed_phrase_dialogs);
       } catch (error) {
         console.error('Failed to load app settings:', error);
-        // Default to true if settings can't be loaded
+        // Default to true if settings can't be loaded (skip = false)
         setShowSeedPhraseDialogs(true);
       }
     }

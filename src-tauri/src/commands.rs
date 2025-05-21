@@ -177,9 +177,8 @@ pub async fn update_app_settings(
     theme: Option<String>,
     auto_backup: Option<bool>,
     notifications_enabled: Option<bool>,
-    log_level: Option<String>,
-    developer_mode: Option<bool>,
-    show_seed_phrase_dialogs: Option<bool>,
+    log_level: Option<String>,    developer_mode: Option<bool>,
+    skip_seed_phrase_dialogs: Option<bool>,
     config_manager_arc: State<'_, Arc<ConfigManager>>, // Change type to State<'_, Arc<ConfigManager>>
 ) -> CommandResult<bool> {
     info!("Command: update_app_settings");
@@ -215,10 +214,9 @@ pub async fn update_app_settings(
         config.app_settings.developer_mode = dev_mode;
         info!("New developer_mode value in memory: {}", config.app_settings.developer_mode);
     }
-    
-    if let Some(seed_dialogs) = show_seed_phrase_dialogs {
-        info!("Updating show_seed_phrase_dialogs to: {}", seed_dialogs);
-        config.app_settings.show_seed_phrase_dialogs = seed_dialogs;
+      if let Some(skip_dialogs) = skip_seed_phrase_dialogs {
+        info!("Updating skip_seed_phrase_dialogs to: {}", skip_dialogs);
+        config.app_settings.skip_seed_phrase_dialogs = skip_dialogs;
     }
 
     // Save the updated config using the inner ConfigManager
