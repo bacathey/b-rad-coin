@@ -212,9 +212,7 @@ pub async fn update_app_settings(
     }
       if let Some(dev_mode) = developer_mode {
         info!("Updating developer_mode to: {}", dev_mode);
-        info!("Previous developer_mode value: {}", config.app_settings.developer_mode);
         config.app_settings.developer_mode = dev_mode;
-        info!("New developer_mode value in memory: {}", config.app_settings.developer_mode);
     }
       if let Some(skip_dialogs) = skip_seed_phrase_dialogs {
         info!("Updating skip_seed_phrase_dialogs to: {}", skip_dialogs);

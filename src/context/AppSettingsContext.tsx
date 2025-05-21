@@ -38,16 +38,16 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     try {
       console.log('Setting developer mode to:', enabled);
       
-      // First, update the backend without refreshing
-      const result = await invoke<boolean>('update_app_settings', { 
-        developer_mode: enabled 
-      });
+      // Use "developerMode" camelCase in JS (will be converted to snake_case on the Rust side)
+      const payload = { developerMode: enabled };
+      
+      // Update backend
+      const result = await invoke<boolean>('update_app_settings', payload);
       
       if (result) {
-        console.log('Developer mode updated successfully in backend');
+        console.log('Developer mode updated successfully');
         
-        // On success, update local state directly instead of refreshing
-        // This avoids potential infinite loops by preventing multiple refreshes
+        // On success, update local state directly
         setAppSettings(prev => {
           if (!prev) return null;
           return {...prev, developer_mode: enabled};
@@ -58,7 +58,6 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       console.error('Failed to update developer mode setting:', err);
-      // On error, refresh to get the actual state from backend
       await refreshSettings();
       throw err;
     }
@@ -67,9 +66,9 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     try {
       console.log('Updating skip seed phrase dialogs setting to:', skipDialogs);
       
-      // Explicitly call the Tauri command with the new parameter name
+      // Use camelCase in JavaScript (will be converted to snake_case in Rust)
       const result = await invoke<boolean>('update_app_settings', {
-        skip_seed_phrase_dialogs: skipDialogs,
+        skipSeedPhraseDialogs: skipDialogs, // camelCase here
         developer_mode: undefined,  // Send undefined for fields we're not updating
         theme: undefined,
         auto_backup: undefined,
