@@ -55,19 +55,26 @@ export default function Developer() {
       setLoading(false);
     }
   };
-  
-  // Function to update seed phrase dialogs setting
+    // Function to update seed phrase dialogs setting
   const handleSeedPhraseDialogsToggle = async (enabled: boolean) => {
     try {
+      console.log('Setting seed phrase dialogs to:', enabled);
+      
+      // Update local state for immediate UI feedback
       setShowSeedPhraseDialogs(enabled);
+      
+      // Call the context function to update the backend setting
       await updateSeedPhraseDialogs(enabled);
+      
+      console.log('Seed phrase dialogs setting updated successfully');
     } catch (err) {
-      console.error(err);
+      console.error('Failed to update seed phrase dialogs setting:', err);
       setError('Failed to update seed phrase dialogs setting');
+      
       // Revert UI state if the update failed
       setShowSeedPhraseDialogs(!enabled);
     }
-  };  return (
+  };return (
     <PageContainer title="Developer Tools" error={error}>
       <Typography variant="subtitle1" color="text.secondary" gutterBottom>
         These tools are intended for development and debugging purposes only.

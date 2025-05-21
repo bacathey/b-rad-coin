@@ -63,16 +63,33 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       throw err;
     }
   };
-
   // Update seed phrase dialogs setting
   const updateSeedPhraseDialogs = async (enabled: boolean) => {
     try {
-      await invoke('update_app_settings', { 
-        show_seed_phrase_dialogs: enabled
+      console.log('Updating seed phrase dialogs setting to:', enabled);
+      
+      // First, update the backend
+      const result = await invoke<boolean>('update_app_settings', { 
+        show_seed_phrase_dialogs: enabled 
       });
-      await refreshSettings();
+      
+      if (result) {
+        console.log('Seed phrase dialogs setting updated successfully in backend');
+        
+        // On success, update local state directly instead of refreshing
+        // This avoids potential race conditions or delays
+        setAppSettings(prev => {
+          if (!prev) return null;
+          return {...prev, show_seed_phrase_dialogs: enabled};
+        });
+      } else {
+        console.error('Failed to update seed phrase dialogs setting in backend');
+        throw new Error('Failed to update seed phrase dialogs setting');
+      }
     } catch (err) {
       console.error('Failed to update seed phrase dialogs setting:', err);
+      // On error, refresh to get the actual state from backend
+      await refreshSettings();
       throw err;
     }
   };
