@@ -1,9 +1,9 @@
 {
   "name": "fsdfds",
-  "created_at": 1746745551,
-  "modified_at": 1746745551,
+  "created_at": 1747867306,
+  "modified_at": 1747867306,
   "block_height": 0,
-  "seed_phrase": "nominee bachelor short want beach street voice vague fan palace ancient wonder",
+  "seed_phrase": "default_seed_phrase",
   "master_private_key": "xpriv_dummy_for_development_placeholder",
   "master_public_key": "xpub_dummy_for_development_placeholder",
   "keys": {

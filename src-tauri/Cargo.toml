@@ -55,6 +55,9 @@ once_cell = "1.21.3"
 dirs = "6.0.0"
 ring = "0.17.14"
 
+# File system utilities
+opener = "0.6.1"
+
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
 # DO NOT REMOVE!!

@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
 // Define the wallet type
@@ -24,6 +25,10 @@ interface WalletContextType {
   isWalletSecured: boolean;
   availableWallets: WalletDetails[];
   refreshWalletDetails: () => Promise<void>;
+  getCurrentWalletPath: () => Promise<string | null>;
+  openWalletFolder: (path: string) => Promise<boolean>;
+  closeWallet: () => Promise<boolean>;
+  deleteWallet: (walletName: string) => Promise<boolean>;
 }
 
 // Create the context with default values
@@ -34,7 +39,11 @@ const WalletContext = createContext<WalletContextType>({
   setCurrentWallet: () => {},
   isWalletSecured: false,
   availableWallets: [],
-  refreshWalletDetails: async () => {}
+  refreshWalletDetails: async () => {},
+  getCurrentWalletPath: async () => null,
+  openWalletFolder: async () => false,
+  closeWallet: async () => false,
+  deleteWallet: async () => false
 });
 
 // Create a provider component
@@ -128,18 +137,81 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
     checkWalletStatus();
   }, []);
-
-  const value = {
-    isWalletOpen,
-    setIsWalletOpen,
-    currentWallet,
-    setCurrentWallet,
-    isWalletSecured,
-    availableWallets,
-    refreshWalletDetails
+  // Function to get the path of the current wallet
+  const getCurrentWalletPath = async (): Promise<string | null> => {
+    try {
+      const path = await invoke<string | null>('get_current_wallet_path');
+      return path;
+    } catch (error) {
+      console.error('Failed to get current wallet path:', error);
+      // Re-throw the error so the caller can handle it appropriately
+      throw new Error(`Failed to get current wallet path: ${error instanceof Error ? error.message : String(error)}`);
+    }
   };
-
-  return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
+  // Function to open a folder in the system's file explorer
+  const openWalletFolder = async (path: string): Promise<boolean> => {
+    try {
+      const result = await invoke<boolean>('open_folder_in_explorer', { path });
+      return result;
+    } catch (error) {
+      console.error('Failed to open folder:', error);
+      return false;
+    }
+  };
+  
+  // Function to close the current wallet
+  const closeWallet = async (): Promise<boolean> => {
+    try {
+      const result = await invoke<boolean>('close_wallet');
+      if (result) {
+        setIsWalletOpen(false);
+        setCurrentWallet(null);
+        setIsWalletSecured(false);
+      }
+      return result;
+    } catch (error) {
+      console.error('Failed to close wallet:', error);
+      return false;
+    }
+  };
+  
+  // Function to delete a wallet
+  const deleteWallet = async (walletName: string): Promise<boolean> => {
+    try {
+      const result = await invoke<boolean>('delete_wallet', { walletName });
+      if (result) {
+        // If the deleted wallet was the current one, reset state
+        if (currentWallet?.name === walletName) {
+          setIsWalletOpen(false);
+          setCurrentWallet(null);
+          setIsWalletSecured(false);
+        }
+        // Refresh the list of available wallets
+        await refreshWalletDetails();
+      }
+      return result;
+    } catch (error) {
+      console.error(`Failed to delete wallet ${walletName}:`, error);
+      throw new Error(`Failed to delete wallet: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+  return (
+    <WalletContext.Provider value={{
+      isWalletOpen,
+      setIsWalletOpen,
+      currentWallet,
+      setCurrentWallet,
+      isWalletSecured,
+      availableWallets,
+      refreshWalletDetails,
+      getCurrentWalletPath,
+      openWalletFolder,
+      closeWallet,
+      deleteWallet
+    }}>
+      {children}
+    </WalletContext.Provider>
+  );
 }
 
 // Custom hook to use the wallet context

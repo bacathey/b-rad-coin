@@ -406,4 +406,21 @@ impl ConfigManager {
         info!("Wallet security status updated successfully");
         Ok(())
     }
+
+    /// Update the entire configuration
+    pub async fn update_config(&self, updated_config: Config) -> Result<(), ConfigError> {
+        info!("Updating entire configuration");
+
+        // Save the config to the path
+        self.save_config_to_path(&updated_config, &self.config_path).await?;
+
+        // Update the stored config
+        {
+            let mut config = self.config.lock().unwrap();
+            *config = updated_config.clone();
+        }
+
+        info!("Configuration updated successfully");
+        Ok(())
+    }
 }

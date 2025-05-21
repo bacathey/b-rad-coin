@@ -55,8 +55,7 @@ pub fn run() {
                     .plugin(tauri_plugin_updater::Builder::new().build())
                     .plugin(tauri_plugin_opener::init())                    .manage(app_state.wallet_manager)
                     .manage(app_state.security_manager)
-                    .manage(app_state.config_manager)
-                    .invoke_handler(generate_handler![
+                    .manage(app_state.config_manager)                    .invoke_handler(generate_handler![
                         check_wallet_status,
                         close_wallet,
                         get_available_wallets,
@@ -64,7 +63,10 @@ pub fn run() {
                         is_current_wallet_secured,
                         open_wallet,
                         create_wallet,
-                        generate_seed_phrase, // Add the new command here
+                        generate_seed_phrase,
+                        get_current_wallet_path,
+                        open_folder_in_explorer,
+                        delete_wallet, // Add the new command here
                         recover_wallet,
                         get_current_wallet_name,
                         update_app_settings,

@@ -78,6 +78,7 @@ pub enum WalletError {
     AccessDenied(String),
     AlreadyExists(String),
     InvalidOperation(String),
+    ConfigError(String),
     Generic(String),
 }
 
@@ -88,6 +89,7 @@ impl fmt::Display for WalletError {
             WalletError::AccessDenied(name) => write!(f, "Access denied to wallet '{}'", name),
             WalletError::AlreadyExists(name) => write!(f, "Wallet '{}' already exists", name),
             WalletError::InvalidOperation(msg) => write!(f, "Invalid wallet operation: {}", msg),
+            WalletError::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
             WalletError::Generic(msg) => write!(f, "{}", msg),
         }
     }

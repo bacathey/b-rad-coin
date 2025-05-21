@@ -626,6 +626,49 @@ impl WalletManager {
             ))),
         }
     }
+
+    /// Remove a wallet from configuration
+    pub async fn remove_wallet_from_config(&self, wallet_name: &str) -> Result<(), WalletError> {
+        if let Some(config_manager) = &self.config_manager {
+            info!("Removing wallet '{}' from configuration", wallet_name);
+            
+            // Clone config first to avoid mutex deadlock
+            let config_clone = config_manager.get_config();
+            
+            // Check if the wallet exists
+            let wallet_exists = config_clone.wallets.iter().any(|w| w.name == wallet_name);
+            if !wallet_exists {
+                error!("Wallet '{}' not found in configuration", wallet_name);
+                return Err(WalletError::Generic(format!(
+                    "Wallet '{}' not found", wallet_name
+                )));
+            }            // Create updated config with filtered wallets
+            let mut updated_config = config_clone.clone();
+            
+            // Filter out the wallet to be removed
+            updated_config.wallets = updated_config.wallets
+                .into_iter()
+                .filter(|w| w.name != wallet_name)
+                .collect();
+            
+            // Update the config file
+            match config_manager.update_config(updated_config).await {
+                Ok(_) => {
+                    info!("Wallet '{}' removed from configuration", wallet_name);
+                    Ok(())
+                },
+                Err(e) => {
+                    error!("Failed to update configuration: {}", e);
+                    Err(WalletError::ConfigError(format!(
+                        "Failed to update configuration: {}", e
+                    )))
+                }
+            }
+        } else {
+            error!("No config manager available");
+            Err(WalletError::Generic("No config manager available".to_string()))
+        }
+    }
 }
 
 /// Async wrapper for WalletManager to be used with Tauri state

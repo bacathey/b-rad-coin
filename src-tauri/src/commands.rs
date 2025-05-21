@@ -1,5 +1,5 @@
 use crate::logging;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use std::sync::Arc;  // Add this import for Arc
 use tauri::Emitter;
 use tauri::{command, Manager, State};
@@ -181,6 +181,47 @@ pub async fn get_current_wallet_name(
         .map(|wallet| wallet.name.clone());
 
     Ok(result)
+}
+
+/// Command to get the path of the currently open wallet
+#[command]
+pub async fn get_current_wallet_path(
+    wallet_manager: State<'_, AsyncWalletManager>,
+) -> CommandResult<Option<String>> {
+    debug!("Command: get_current_wallet_path");
+    
+    let manager = wallet_manager.get_manager().await;
+    
+    // Get the current wallet name
+    let current_wallet_name = match manager.get_current_wallet() {
+        Some(wallet) => wallet.name.clone(),
+        None => {
+            info!("No wallet is currently open");
+            return Ok(None);
+        }
+    };
+    
+    // Find the wallet info to get the path
+    let wallet_info = manager.find_wallet_by_name(&current_wallet_name);
+    
+    match wallet_info {
+        Some(info) => {
+            debug!("Found path for wallet '{}': {}", current_wallet_name, info.path);
+            
+            // Verify that the path actually exists
+            let path = std::path::Path::new(&info.path);
+            if !path.exists() {
+                warn!("Wallet path does not exist: {}", info.path);
+                // Still return the path - the frontend will handle the case where opening fails
+            }
+            
+            Ok(Some(info.path.clone()))
+        },
+        None => {
+            error!("Failed to find path for current wallet: {}", current_wallet_name);
+            Err(format!("Could not find path information for wallet '{}'", current_wallet_name))
+        }
+    }
 }
 
 /// Command to update application settings
@@ -501,6 +542,98 @@ pub async fn generate_seed_phrase() -> CommandResult<String> {
     
     debug!("Generated seed phrase (first word: {}, last word: {})", words.first().unwrap_or(&""), words.last().unwrap_or(&"")); // Avoid logging the full phrase
     Ok(phrase)
+}
+
+/// Command to open a folder in the system's file explorer
+#[command]
+pub async fn open_folder_in_explorer(path: String) -> CommandResult<bool> {
+    info!("Command: open_folder_in_explorer with path: {}", path);
+    
+    // Use the system's default file explorer to open the folder
+    let path_buf = std::path::PathBuf::from(&path);
+    
+    // Check if the path exists
+    if !path_buf.exists() {
+        error!("Path does not exist: {}", path);
+        return Err(format!("The wallet folder at '{}' does not exist. It may have been moved, deleted, or is on a disconnected drive.", path));
+    }
+    
+    // Additionally check if it's a directory
+    if !path_buf.is_dir() {
+        error!("Path is not a directory: {}", path);
+        return Err(format!("The location '{}' is not a valid folder.", path));
+    }
+    
+    // Try to open the folder using the opener crate
+    match opener::open(&path_buf) {
+        Ok(_) => {
+            info!("Successfully opened folder: {}", path);
+            Ok(true)
+        },
+        Err(e) => {
+            error!("Failed to open folder: {}", e);
+            Err(format!("Failed to open folder '{}': {}", path, e))
+        }
+    }
+}
+
+/// Command to delete a wallet by name
+#[command]
+pub async fn delete_wallet(
+    wallet_name: String,
+    wallet_manager: State<'_, AsyncWalletManager>,
+    config_manager_arc: State<'_, Arc<ConfigManager>>,
+) -> CommandResult<bool> {
+    info!("Command: delete_wallet for wallet: {}", wallet_name);
+    
+    // Get the current wallet name to check if we're trying to delete an open wallet
+    let manager = wallet_manager.get_manager().await;
+    let current_wallet_name = manager.get_current_wallet().map(|w| w.name.clone());
+    
+    // If the wallet to delete is currently open, return an error
+    if let Some(name) = current_wallet_name {
+        if name == wallet_name {
+            error!("Cannot delete the currently open wallet: {}", wallet_name);
+            return Err("Cannot delete the currently open wallet. Please close it first.".to_string());
+        }
+    }
+    
+    // Get wallet directory path from config
+    let config = config_manager_arc.inner().get_config();
+    let wallet_info = config.wallets.iter().find(|w| w.name == wallet_name);
+    
+    let wallet_path = match wallet_info {
+        Some(info) => info.path.clone(),
+        None => {
+            error!("Wallet '{}' not found in configuration", wallet_name);
+            return Err(format!("Wallet '{}' not found", wallet_name));
+        }
+    };    // 1. Remove wallet from configuration
+    let manager = wallet_manager.get_manager().await;
+    if let Err(e) = manager.remove_wallet_from_config(&wallet_name).await {
+        error!("Failed to remove wallet from configuration: {}", e);
+        return Err(format!("Failed to remove wallet from configuration: {}", e));
+    }
+    
+    // 2. Delete wallet directory
+    let path = std::path::PathBuf::from(&wallet_path);
+    if path.exists() {
+        match tokio::fs::remove_dir_all(&path).await {
+            Ok(_) => {
+                info!("Deleted wallet directory at {}", wallet_path);
+            },
+            Err(e) => {
+                error!("Failed to delete wallet directory: {}", e);
+                return Err(format!("Failed to delete wallet files: {}", e));
+            }
+        }
+    } else {
+        // Just log this, but don't fail if the directory is already gone
+        info!("Wallet directory doesn't exist at {}, skipping deletion", wallet_path);
+    }
+    
+    info!("Wallet '{}' successfully deleted", wallet_name);
+    Ok(true)
 }
 
 /// Simple greeting command for demo purposes

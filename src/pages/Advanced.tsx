@@ -6,8 +6,27 @@ import {
   useTheme, 
   Paper, 
   Grid, 
-  Button 
+  Button,
+  CircularProgress,
+  Tooltip,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  TextField,
+  Alert,
+  Snackbar
 } from '@mui/material';
+import { useState, useEffect } from 'react';
+import { useWallet } from '../context/WalletContext';
+import FolderIcon from '@mui/icons-material/Folder';
+import LockIcon from '@mui/icons-material/Lock';
+import LockOpenIcon from '@mui/icons-material/LockOpen';
+import DeleteIcon from '@mui/icons-material/Delete';
+import SecurityIcon from '@mui/icons-material/Security';
+import SecureWalletDialog from '../components/SecureWalletDialog';
 
 export default function Advanced() {
   const theme = useTheme();
@@ -51,8 +70,7 @@ export default function Advanced() {
       </Typography>
       
       {/* Container with fixed maximum width and full width */}
-      <Box sx={{ width: '100%', maxWidth: 1200, mx: 'auto' }}>
-        {/* Wallet Recovery - Moved from Settings */}
+      <Box sx={{ width: '100%', maxWidth: 1200, mx: 'auto' }}>        {/* Wallet File Location Card */}
         <Grid item xs={12} sx={{ mb: 3 }}>
           <Paper sx={{ 
             p: 3, 
@@ -67,24 +85,7 @@ export default function Advanced() {
               border: '1px solid rgba(0, 0, 0, 0.08)'
             }) 
           }}>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} sm={8}>
-                <Typography variant="h6" gutterBottom fontWeight={600}>
-                  Wallet Recovery
-                </Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
-                  Make sure to back up your wallet recovery phrase. Your recovery phrase is the only way to restore your wallet if you lose access to this device.
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={4} sx={{ display: 'flex', justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>
-                <Button variant="contained" color="primary">
-                  Backup Wallet
-                </Button>
-                <Button variant="outlined" color="primary" sx={{ ml: 1 }}>
-                  View Phrase
-                </Button>
-              </Grid>
-            </Grid>
+            <WalletLocationSection />
           </Paper>
         </Grid>
         
@@ -103,5 +104,286 @@ export default function Advanced() {
         </Box>
       </Box>
     </Box>
+  );
+}
+
+// Wallet file component
+function WalletLocationSection() {
+  const { 
+    currentWallet, 
+    isWalletOpen, 
+    isWalletSecured, 
+    getCurrentWalletPath, 
+    openWalletFolder,
+    deleteWallet,
+    refreshWalletDetails 
+  } = useWallet();
+  
+  const [walletPath, setWalletPath] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showErrorAlert, setShowErrorAlert] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [confirmWalletName, setConfirmWalletName] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [secureDialogOpen, setSecureDialogOpen] = useState(false);
+  
+  useEffect(() => {
+    if (isWalletOpen && currentWallet) {
+      fetchWalletPath();
+    } else {
+      setWalletPath(null);
+    }
+  }, [isWalletOpen, currentWallet]);
+  
+  const fetchWalletPath = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const path = await getCurrentWalletPath();
+      setWalletPath(path);
+    } catch (error) {
+      console.error('Failed to get wallet path:', error);
+      setError('Failed to get wallet path. Please check if the wallet still exists.');
+      setShowErrorAlert(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleOpenFolder = async () => {
+    if (!walletPath) return;
+    
+    try {
+      const result = await openWalletFolder(walletPath);
+      if (!result) {
+        setError('Failed to open wallet folder. The folder may no longer exist at the specified location.');
+        setShowErrorAlert(true);
+      }
+    } catch (error) {
+      console.error('Error opening wallet folder:', error);
+      setError(`Error opening wallet folder: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setShowErrorAlert(true);
+    }
+  };
+  
+  const handleOpenDeleteDialog = () => {
+    setDeleteDialogOpen(true);
+    setConfirmWalletName("");
+    setDeleteError(null);
+  };
+
+  const handleCloseDeleteDialog = () => {
+    setDeleteDialogOpen(false);
+    setDeleteError(null);
+  };
+
+  const handleDeleteWallet = async () => {
+    if (!currentWallet) return;
+    
+    // Check if the wallet name matches
+    if (confirmWalletName !== currentWallet.name) {
+      setDeleteError("The wallet name doesn't match. Please type the exact name.");
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await deleteWallet(currentWallet.name);
+      setDeleteDialogOpen(false);
+    } catch (error) {
+      console.error('Error deleting wallet:', error);
+      setDeleteError(`Failed to delete wallet: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+  
+  const handleCloseErrorAlert = () => {
+    setShowErrorAlert(false);
+  };
+
+  const handleOpenSecureDialog = () => {
+    setSecureDialogOpen(true);
+  };
+  
+  const handleCloseSecureDialog = () => {
+    setSecureDialogOpen(false);
+  };
+  
+  const handleSuccessfulSecurity = async () => {
+    // Refresh wallet details to update the security status
+    await refreshWalletDetails();
+  };
+  
+  if (!isWalletOpen || !currentWallet) {
+    return (
+      <Grid container spacing={2} alignItems="center">
+        <Grid item xs={12}>
+          <Typography variant="h6" gutterBottom fontWeight={600}>
+            Wallet File
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            No wallet is currently open. Open a wallet to view its location.
+          </Typography>
+        </Grid>
+      </Grid>
+    );
+  }
+  
+  return (
+    <>
+      <Grid container spacing={2} alignItems="center">
+        <Grid item xs={12} md={8}>
+          <Typography variant="h6" gutterBottom fontWeight={600}>
+            Wallet File
+          </Typography>
+          
+          {isLoading ? (
+            <CircularProgress size={20} sx={{ mt: 1, mb: 1 }} />
+          ) : (
+            <>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Typography variant="body2" fontWeight={500}>
+                  Current Wallet:
+                </Typography>
+                <Typography variant="body2" sx={{ ml: 1 }}>
+                  {currentWallet.name}
+                </Typography>
+                <Chip
+                  icon={isWalletSecured ? <LockIcon /> : <LockOpenIcon />}
+                  label={isWalletSecured ? "Password Protected" : "No Password"}
+                  size="small"
+                  color={isWalletSecured ? "warning" : "success"}
+                  variant="outlined"
+                  sx={{ ml: 2 }}
+                />
+              </Box>
+              
+              <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
+                <strong>Path:</strong> {walletPath || "Path not available"}
+              </Typography>
+            </>
+          )}
+          
+          {error && (
+            <Alert 
+              severity="error" 
+              sx={{ mt: 2, maxWidth: "100%" }}
+              onClose={() => setError(null)}
+            >
+              {error}
+            </Alert>
+          )}
+        </Grid>
+        <Grid item xs={12} md={4} sx={{ 
+          display: 'flex', 
+          gap: 2,
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: { xs: 'flex-start', md: 'flex-end' }
+        }}>
+          <Tooltip title="Delete this wallet">
+            <Button 
+              variant="outlined" 
+              color="error" 
+              startIcon={<DeleteIcon />} 
+              onClick={handleOpenDeleteDialog}
+              disabled={isLoading}
+            >
+              Delete Wallet
+            </Button>
+          </Tooltip>
+          <Tooltip title="Open folder in file explorer">
+            <Button 
+              variant="contained" 
+              color="primary" 
+              startIcon={<FolderIcon />} 
+              onClick={handleOpenFolder}
+              disabled={!walletPath || isLoading}
+            >
+              Open Folder
+            </Button>
+          </Tooltip>          {!isWalletSecured && (
+            <Tooltip title="Secure this wallet with a password">
+              <Button 
+                variant="outlined" 
+                color="warning" 
+                startIcon={<SecurityIcon />}
+                onClick={handleOpenSecureDialog}
+                disabled={isLoading}
+              >
+                Secure Wallet
+              </Button>
+            </Tooltip>
+          )}
+        </Grid>
+      </Grid>
+      
+      {/* Delete Wallet Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={handleCloseDeleteDialog}
+        aria-labelledby="delete-wallet-dialog-title"
+      >
+        <DialogTitle id="delete-wallet-dialog-title">
+          Delete Wallet
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Are you sure you want to delete the wallet "{currentWallet?.name}"? This action cannot be undone.
+          </DialogContentText>
+          <DialogContentText sx={{ mb: 2, fontWeight: 'bold', color: 'error.main' }}>
+            To confirm, please type the wallet name.
+          </DialogContentText>
+          {deleteError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Wallet Name"
+            fullWidth
+            variant="outlined"
+            value={confirmWalletName}
+            onChange={(e) => setConfirmWalletName(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteDialog}>Cancel</Button>
+          <Button 
+            onClick={handleDeleteWallet} 
+            color="error"
+            disabled={!confirmWalletName || isDeleting}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete Permanently'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      <Snackbar 
+        open={showErrorAlert} 
+        autoHideDuration={6000} 
+        onClose={handleCloseErrorAlert}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseErrorAlert} 
+          severity="error"
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {error}
+        </Alert>
+      </Snackbar>      {/* Secure Wallet Dialog */}
+      <SecureWalletDialog 
+        open={secureDialogOpen}
+        onClose={handleCloseSecureDialog}
+        walletName={currentWallet?.name || ""}
+        onSuccess={handleSuccessfulSecurity}
+      />
+    </>
   );
 }
