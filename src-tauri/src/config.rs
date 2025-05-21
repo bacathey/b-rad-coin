@@ -38,9 +38,8 @@ pub struct AppSettings {
     /// Log level setting
     pub log_level: String,
     /// Developer mode enabled
-    #[serde(rename = "developerMode")]
     pub developer_mode: bool,    /// Whether to skip seed phrase dialogs during wallet creation
-    #[serde(default = "default_skip_seed_phrase_dialogs", rename = "skipSeedPhraseDialogs")]
+    #[serde(default = "default_skip_seed_phrase_dialogs")]
     pub skip_seed_phrase_dialogs: bool,
 }
 

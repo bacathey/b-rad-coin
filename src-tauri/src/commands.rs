@@ -18,6 +18,14 @@ fn format_error<E: std::fmt::Display>(e: E) -> String {
     format!("{}", e)
 }
 
+/// Wallet details for the frontend
+#[derive(serde::Serialize)]
+pub struct WalletDetails {
+    name: String,
+    secured: bool,
+}
+
+
 /// Command to check if a wallet is currently open
 #[command]
 pub async fn check_wallet_status(
@@ -66,13 +74,6 @@ pub async fn get_available_wallets(
         .collect();
 
     Ok(wallets)
-}
-
-/// Wallet details for the frontend
-#[derive(serde::Serialize)]
-pub struct WalletDetails {
-    name: String,
-    secured: bool,
 }
 
 /// Command to get detailed information about all wallets
@@ -132,7 +133,7 @@ pub async fn create_wallet(
                phrase.split(' ').last().unwrap_or(""));
         phrase.clone()
     } else {
-        // This should never happen if UI is working correctly
+        // TODO : If Developer Mode is enabled generate a new seed phrase, else return an error
         error!("No seed phrase provided, this shouldn't happen!");
         return Err("No seed phrase provided".to_string());
     };
@@ -177,9 +178,10 @@ pub async fn update_app_settings(
     theme: Option<String>,
     auto_backup: Option<bool>,
     notifications_enabled: Option<bool>,
-    log_level: Option<String>,    developer_mode: Option<bool>,
+    log_level: Option<String>,
+    developer_mode: Option<bool>,
     skip_seed_phrase_dialogs: Option<bool>,
-    config_manager_arc: State<'_, Arc<ConfigManager>>, // Change type to State<'_, Arc<ConfigManager>>
+    config_manager_arc: State<'_, Arc<ConfigManager>>,
 ) -> CommandResult<bool> {
     info!("Command: update_app_settings");
 
