@@ -203,6 +203,46 @@ impl WalletManager {
             debug!("No wallet is currently open");
         }
         self.current_wallet.as_ref()
+    }    /// Get the base directory for wallets
+    pub fn get_wallets_dir(&self) -> PathBuf {
+        // Determine the wallets directory based on the platform
+        // First try to get it from the app configuration
+        if let Some(config_manager) = &self.config_manager {
+            // Try to get the instance config dir first (synchronous method)
+            if let Ok(config_dir) = config_manager.get_config_dir_path() {
+                // Go up one level from config directory and join with "wallets"
+                let wallets_dir = config_dir.parent()
+                    .unwrap_or(&config_dir) // Fallback to config_dir if parent doesn't exist
+                    .join("wallets");
+                
+                debug!("Using wallets directory from config: {}", wallets_dir.display());
+                return wallets_dir;
+            }
+            
+            // Fall back to the static async method if needed
+            if let Ok(config_dir) = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    ConfigManager::get_config_dir().await
+                })
+            }) {
+                // Go up one level from config directory and join with "wallets"
+                let wallets_dir = config_dir.parent()
+                    .unwrap_or(&config_dir) // Fallback to config_dir if parent doesn't exist
+                    .join("wallets");
+                
+                debug!("Using wallets directory from static config: {}", wallets_dir.display());
+                return wallets_dir;
+            }
+        }
+        
+        // Fallback to a default directory
+        let default_dir = dirs::data_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("com.b-rad-coin.app")
+            .join("wallets");
+        
+        debug!("Using default wallets directory: {}", default_dir.display());
+        default_dir
     }
 
     /// Create a new wallet

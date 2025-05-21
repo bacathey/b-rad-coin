@@ -636,6 +636,31 @@ pub async fn delete_wallet(
     Ok(true)
 }
 
+/// Command to get a fully qualified wallet path
+#[command]
+pub async fn get_fully_qualified_wallet_path(
+    relative_path: String,
+    wallet_manager: State<'_, AsyncWalletManager>,
+) -> CommandResult<String> {
+    debug!("Command: get_fully_qualified_wallet_path for path '{}'", relative_path);
+    
+    let manager = wallet_manager.get_manager().await;
+    
+    // Get the base wallets directory
+    let wallets_dir = manager.get_wallets_dir();
+    debug!("Base wallets directory: {}", wallets_dir.display());
+    
+    // Join the relative path with the base directory
+    let full_path = wallets_dir.join(relative_path);
+    debug!("Fully qualified path: {}", full_path.display());
+    
+    // Convert to string for return
+    match full_path.to_str() {
+        Some(path_str) => Ok(path_str.to_string()),
+        None => Err("Failed to convert path to string".to_string())
+    }
+}
+
 /// Simple greeting command for demo purposes
 #[command]
 pub fn greet(name: String) -> String {

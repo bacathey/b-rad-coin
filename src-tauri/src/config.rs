@@ -363,6 +363,21 @@ impl ConfigManager {
         let config_path = config_dir.join("app_config.json"); // Changed filename
         debug!("Configuration file path: {}", config_path.display());
         Ok(config_path)
+    }    /// Get the directory where this config instance's file is stored
+    pub fn get_config_dir_path(&self) -> Result<PathBuf, ConfigError> {
+        let config_path = self.config_path.clone();
+        
+        // Get the parent directory of the config file
+        match config_path.parent() {
+            Some(dir) => {
+                debug!("Config directory: {}", dir.display());
+                Ok(dir.to_path_buf())
+            },
+            None => {
+                error!("Failed to determine config directory from path: {}", config_path.display());
+                Err(ConfigError::Generic("Failed to determine config directory".to_string()))
+            }
+        }
     }
 
     /// Update wallet security status

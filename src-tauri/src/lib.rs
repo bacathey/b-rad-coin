@@ -65,8 +65,9 @@ pub fn run() {
                         create_wallet,
                         generate_seed_phrase,
                         get_current_wallet_path,
+                        get_fully_qualified_wallet_path,
                         open_folder_in_explorer,
-                        delete_wallet, // Add the new command here
+                        delete_wallet,
                         recover_wallet,
                         get_current_wallet_name,
                         update_app_settings,

@@ -21,6 +21,7 @@ import {
 } from '@mui/material';
 import { useState, useEffect } from 'react';
 import { useWallet } from '../context/WalletContext';
+import { invoke } from '@tauri-apps/api/core';
 import FolderIcon from '@mui/icons-material/Folder';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
@@ -136,13 +137,37 @@ function WalletLocationSection() {
       setWalletPath(null);
     }
   }, [isWalletOpen, currentWallet]);
-  
-  const fetchWalletPath = async () => {
+    const fetchWalletPath = async () => {
     setIsLoading(true);
     setError(null);
     try {
+      // Get the path from the backend
       const path = await getCurrentWalletPath();
-      setWalletPath(path);
+      
+      if (path) {
+        // Ensure we have a fully qualified path
+        // If the path doesn't start with a drive letter (C:\ etc.) or network path (\\)
+        // we'll consider it a relative path and convert it
+        if (!/^([a-zA-Z]:\\|\\\\)/.test(path)) {
+          console.log(`Converting relative path "${path}" to fully qualified path`);
+          
+          try {            // Use invoke to get the app's data directory from the backend
+            // and combine it with the relative path
+            const fullPath = await invoke<string>('get_fully_qualified_wallet_path', { relative_path: path });
+            console.log(`Fully qualified path: ${fullPath}`);
+            setWalletPath(fullPath);
+          } catch (conversionError) {
+            console.error('Failed to convert to fully qualified path:', conversionError);
+            // Fall back to the original path if conversion fails
+            setWalletPath(path);
+          }
+        } else {
+          // Path is already fully qualified
+          setWalletPath(path);
+        }
+      } else {
+        setWalletPath(null);
+      }
     } catch (error) {
       console.error('Failed to get wallet path:', error);
       setError('Failed to get wallet path. Please check if the wallet still exists.');
