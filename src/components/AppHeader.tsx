@@ -133,23 +133,30 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
                 )}
               </>
             ) : 'B-Rad Coin'}
-          </Typography>
-          
-          {/* Version number from Tauri backend */}
-          <Typography 
-            variant="caption" 
-            sx={{ 
-              mr: 2, 
-              opacity: 0.8,
-              fontSize: '0.75rem',
-              fontWeight: 500,
-              display: 'flex',
-              alignItems: 'center',
-              transition: transitions.all
-            }}
-          >
-            v{appVersion}
-          </Typography>
+          </Typography>          {/* Version number from Tauri backend - clickable link to About page */}
+          <Tooltip title="About B-Rad Coin">
+            <Typography 
+              variant="caption" 
+              component="div"
+              onClick={() => navigate('/about')}
+              sx={{ 
+                mr: 2, 
+                opacity: 0.8,
+                fontSize: '0.75rem',
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                transition: transitions.all,
+                cursor: 'pointer',
+                '&:hover': {
+                  opacity: 1,
+                  textDecoration: 'underline'
+                }
+              }}
+            >
+              v{appVersion}
+            </Typography>
+          </Tooltip>
           
           <Tooltip title={mode === 'dark' ? "Light mode" : "Dark mode"}>
             <IconButton 

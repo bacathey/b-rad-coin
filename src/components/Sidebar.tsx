@@ -14,9 +14,7 @@ import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import MiningIcon from '@mui/icons-material/Hardware';
-import SettingsIcon from '@mui/icons-material/Settings';
 import CodeIcon from '@mui/icons-material/Code';
-import InfoIcon from '@mui/icons-material/Info';
 import NetworkStatus from './NetworkStatus';
 import { transitions } from '../styles/themeConstants';
 import { useAppSettings } from '../context/AppSettingsContext';
@@ -223,73 +221,6 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
               />
             </ListItemButton>
           </ListItem>        )}
-        
-        <ListItem disablePadding>
-          <ListItemButton 
-            selected={location.pathname === '/settings'} 
-                onClick={() => {
-                  navigate('/settings');
-                  if (mobileOpen) handleDrawerToggle();
-                }}
-                sx={mode === 'light' && location.pathname === '/settings' ? {
-                  borderLeft: '4px solid #1a237e',
-                  transition: transitions.all
-                } : {
-                  transition: transitions.all
-                }}
-              >
-                <ListItemIcon sx={mode === 'light' ? {
-                  color: location.pathname === '/settings' ? '#1a237e' : 'rgba(0, 0, 0, 0.54)',
-                  transition: transitions.color
-                } : {
-                  transition: transitions.color
-                }}>
-                  <SettingsIcon />
-                </ListItemIcon>
-                <ListItemText 
-                  primary="Settings" 
-                  primaryTypographyProps={{
-                    sx: {
-                      color: mode === 'light' && location.pathname === '/settings' ? '#1a237e' : undefined,
-                      fontWeight: location.pathname === '/settings' ? 500 : 400,
-                      transition: `${transitions.color}, ${transitions.fontWeight}`
-                    }
-                  }}
-                />
-              </ListItemButton>
-            </ListItem>
-            <ListItem disablePadding>
-              <ListItemButton 
-                selected={location.pathname === '/about'} 
-                onClick={() => {
-                  navigate('/about');
-                  if (mobileOpen) handleDrawerToggle();
-                }}
-                sx={mode === 'light' && location.pathname === '/about' ? {
-                  borderLeft: '4px solid #1a237e',
-                  transition: transitions.all
-                } : {
-                  transition: transitions.all
-                }}
-              >
-                <ListItemIcon sx={mode === 'light' ? {
-                  color: location.pathname === '/about' ? '#1a237e' : 'rgba(0, 0, 0, 0.54)',                  transition: transitions.color
-                } : {
-                  transition: transitions.color
-                }}>
-                  <InfoIcon />
-                </ListItemIcon>
-                <ListItemText 
-                  primary="About" 
-                  primaryTypographyProps={{
-                    sx: {
-                      color: mode === 'light' && location.pathname === '/about' ? '#1a237e' : undefined,
-                      fontWeight: location.pathname === '/about' ? 500 : 400,
-                      transition: `${transitions.color}, ${transitions.fontWeight}`
-                    }
-                  }}
-                />              </ListItemButton>
-            </ListItem>
       </List>
       
       {/* Push the network status to the bottom with flexbox */}
