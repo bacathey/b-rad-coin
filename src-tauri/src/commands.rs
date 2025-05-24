@@ -780,58 +780,74 @@ pub async fn open_folder_with_shell_command(path: String) -> CommandResult<bool>
 #[command]
 pub async fn delete_wallet(
     wallet_name: String,
-    wallet_manager: State<'_, AsyncWalletManager>,
+    wallet_manager_state: State<'_, AsyncWalletManager>, // Changed param name for clarity in thought process, will use original if needed
     config_manager_arc: State<'_, Arc<ConfigManager>>,
 ) -> CommandResult<bool> {
     info!("Command: delete_wallet for wallet: {}", wallet_name);
-    
-    // Get the current wallet name to check if we're trying to delete an open wallet
-    let manager = wallet_manager.get_manager().await;
-    let current_wallet_name = manager.get_current_wallet().map(|w| w.name.clone());
-    
-    // If the wallet to delete is currently open, return an error
-    if let Some(name) = current_wallet_name {
-        if name == wallet_name {
-            error!("Cannot delete the currently open wallet: {}", wallet_name);
-            return Err("Cannot delete the currently open wallet. Please close it first.".to_string());
+
+    // --- Step 1: Close the wallet if it's the one being deleted and is open ---
+    { // Scope for first WalletManager lock
+        let mut manager = wallet_manager_state.get_manager().await;
+        if manager.get_current_wallet().map_or(false, |w| w.name == wallet_name) {
+            info!("Wallet '{}' is currently open. Closing it before deletion.", wallet_name);
+            manager.close_wallet(); // Assumes WalletManager::close_wallet() returns ()
+            info!("Successfully closed wallet '{}'.", wallet_name);
         }
+        // WalletManager lock (manager) is released here
     }
-    
-    // Get wallet directory path from config
-    let config = config_manager_arc.inner().get_config();
-    let wallet_info = config.wallets.iter().find(|w| w.name == wallet_name);
-    
-    let wallet_path = match wallet_info {
-        Some(info) => info.path.clone(),
-        None => {
-            error!("Wallet '{}' not found in configuration", wallet_name);
-            return Err(format!("Wallet '{}' not found", wallet_name));
+
+    // --- Step 2: Get the relative path of the wallet from configuration ---
+    let relative_wallet_path = { // Scope for ConfigManager access
+        let config_access = config_manager_arc.inner();
+        let current_config = config_access.get_config(); // Assumes get_config() returns &Config or similar
+        match current_config.wallets.iter().find(|w| w.name == wallet_name) {
+            Some(info) => info.path.clone(), // This is String, assumed relative path
+            None => {
+                error!("Wallet '{}' not found in configuration.", wallet_name);
+                return Err(format!("Wallet '{}' not found in configuration", wallet_name));
+            }
         }
-    };    // 1. Remove wallet from configuration
-    let manager = wallet_manager.get_manager().await;
-    if let Err(e) = manager.remove_wallet_from_config(&wallet_name).await {
-        error!("Failed to remove wallet from configuration: {}", e);
-        return Err(format!("Failed to remove wallet from configuration: {}", e));
-    }
+    };
+
+    // --- Step 3: Get WalletManager's base directory for wallets to construct full path ---
+    let full_wallet_path_to_delete = { // Scope for another WalletManager lock (read-only part)
+        let manager = wallet_manager_state.get_manager().await;
+        let wallets_base_dir = manager.get_wallets_dir(); // Returns PathBuf
+        wallets_base_dir.join(&relative_wallet_path) // Join to get full PathBuf
+        // WalletManager lock (manager) is released here
+    };
     
-    // 2. Delete wallet directory
-    let path = std::path::PathBuf::from(&wallet_path);
-    if path.exists() {
-        match tokio::fs::remove_dir_all(&path).await {
+    // --- Step 4: Remove wallet entry from configuration using WalletManager's method ---
+    // This was the original location of this logic in the old delete_wallet.
+    { // Scope for WalletManager lock (modifying config part)
+        let mut manager = wallet_manager_state.get_manager().await;
+        if let Err(e) = manager.remove_wallet_from_config(&wallet_name).await {
+            error!("Failed to remove wallet '{}' from config: {}", wallet_name, e);
+            // If this fails, we haven't deleted files yet, which is safer.
+            return Err(format!("Failed to remove wallet from config: {}", e));
+        }
+        // WalletManager lock (manager) is released here
+    }
+
+    // --- Step 5: Delete the wallet directory from filesystem ---
+    if full_wallet_path_to_delete.exists() {
+        match tokio::fs::remove_dir_all(&full_wallet_path_to_delete).await {
             Ok(_) => {
-                info!("Deleted wallet directory at {}", wallet_path);
+                info!("Deleted wallet directory at {}", full_wallet_path_to_delete.display());
             },
             Err(e) => {
-                error!("Failed to delete wallet directory: {}", e);
-                return Err(format!("Failed to delete wallet files: {}", e));
+                error!("Failed to delete wallet directory {}: {}", full_wallet_path_to_delete.display(), e);
+                // CRITICAL: Wallet is removed from config, but files still exist.
+                // This is an inconsistent state. This error should be handled carefully by the user.
+                return Err(format!("Wallet config removed, but failed to delete wallet files: {}. Manual cleanup may be required at {}", e, full_wallet_path_to_delete.display()));
             }
         }
     } else {
-        // Just log this, but don't fail if the directory is already gone
-        info!("Wallet directory doesn't exist at {}, skipping deletion", wallet_path);
+        // If directory doesn't exist, but config removal was successful, log as warning.
+        warn!("Wallet directory {} does not exist, skipping deletion. Wallet was already removed from config.", full_wallet_path_to_delete.display());
     }
     
-    info!("Wallet '{}' successfully deleted", wallet_name);
+    info!("Successfully deleted wallet '{}'", wallet_name);
     Ok(true)
 }
 

@@ -414,29 +414,7 @@ function WalletLocationSection() {  const {
             >
               Delete Wallet
             </Button>
-          </Tooltip>          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Tooltip title="Open folder in file explorer">
-              <Button 
-                variant="contained" 
-                color="primary" 
-                startIcon={<FolderIcon />} 
-                onClick={handleOpenFolder}
-                disabled={!walletPath || isLoading}
-              >
-                Open Folder
-              </Button>
-            </Tooltip>
-            <Tooltip title="Test folder open with fixed path">
-              <Button
-                variant="outlined"
-                color="secondary"
-                size="small"
-                onClick={testOpenFolder}
-              >
-                Test Open
-              </Button>
-            </Tooltip>
-          </Box>{!isWalletSecured && (
+          </Tooltip>          {!isWalletSecured && (
             <Tooltip title="Secure this wallet with a password">
               <Button 
                 variant="outlined" 
