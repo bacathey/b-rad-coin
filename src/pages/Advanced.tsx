@@ -21,7 +21,6 @@ import {
 } from '@mui/material';
 import { useState, useEffect } from 'react';
 import { useWallet } from '../context/WalletContext';
-import { invoke } from '@tauri-apps/api/core';
 import FolderIcon from '@mui/icons-material/Folder';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
@@ -109,18 +108,19 @@ export default function Advanced() {
 }
 
 // Wallet file component
-function WalletLocationSection() {
-  const { 
+function WalletLocationSection() {  const { 
     currentWallet, 
     isWalletOpen, 
     isWalletSecured, 
     getCurrentWalletPath, 
     openWalletFolder,
+    openWalletFolderWithShell,
     deleteWallet,
     refreshWalletDetails 
   } = useWallet();
   
   const [walletPath, setWalletPath] = useState<string | null>(null);
+  const [displayPath, setDisplayPath] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showErrorAlert, setShowErrorAlert] = useState(false);
@@ -135,38 +135,42 @@ function WalletLocationSection() {
       fetchWalletPath();
     } else {
       setWalletPath(null);
+      setDisplayPath(null);
     }
   }, [isWalletOpen, currentWallet]);
-    const fetchWalletPath = async () => {
+  const fetchWalletPath = async () => {
     setIsLoading(true);
     setError(null);
     try {
       // Get the path from the backend
       const path = await getCurrentWalletPath();
       
+      // Log the received path with detailed info
+      console.log(`Retrieved wallet path: "${path}"`);
       if (path) {
-        // Ensure we have a fully qualified path
-        // If the path doesn't start with a drive letter (C:\ etc.) or network path (\\)
-        // we'll consider it a relative path and convert it
-        if (!/^([a-zA-Z]:\\|\\\\)/.test(path)) {
-          console.log(`Converting relative path "${path}" to fully qualified path`);
-          
-          try {            // Use invoke to get the app's data directory from the backend
-            // and combine it with the relative path
-            const fullPath = await invoke<string>('get_fully_qualified_wallet_path', { relative_path: path });
-            console.log(`Fully qualified path: ${fullPath}`);
-            setWalletPath(fullPath);
-          } catch (conversionError) {
-            console.error('Failed to convert to fully qualified path:', conversionError);
-            // Fall back to the original path if conversion fails
-            setWalletPath(path);
-          }
-        } else {
-          // Path is already fully qualified
-          setWalletPath(path);
+        console.log(`Path type: ${typeof path}`);
+        console.log(`Path length: ${path.length}`);
+        console.log('Path characters:');
+        for (let i = 0; i < path.length; i++) {
+          const char = path.charAt(i);
+          const code = path.charCodeAt(i);
+          console.log(`  Position ${i}: "${char}" (char code: ${code})`);
         }
+      }
+      
+      if (path) {
+        // Store the original path for operations (opening folder)
+        setWalletPath(path);
+        
+        // Create a normalized path for display, ensuring Windows-style backslashes
+        const normalizedPath = path.replace(/\//g, '\\');
+        setDisplayPath(normalizedPath);
+        
+        console.log(`Original path: ${path}`);
+        console.log(`Display path: ${normalizedPath}`);
       } else {
         setWalletPath(null);
+        setDisplayPath(null);
       }
     } catch (error) {
       console.error('Failed to get wallet path:', error);
@@ -176,20 +180,114 @@ function WalletLocationSection() {
       setIsLoading(false);
     }
   };
-  
+    // Compare paths and handle folder opening more directly
   const handleOpenFolder = async () => {
-    if (!walletPath) return;
+    if (!walletPath) {
+      console.error('Cannot open folder: walletPath is null or undefined');
+      return;
+    }
     
     try {
-      const result = await openWalletFolder(walletPath);
+      // Log the path being used
+      console.log(`Opening wallet folder with path: "${walletPath}"`);
+      console.log(`Path type: ${typeof walletPath}`);
+      console.log(`Path length: ${walletPath.length}`);
+      
+      // If the path has unusual characters, log them
+      if (walletPath.includes('\u0000') || 
+          walletPath.includes('\r') || 
+          walletPath.includes('\n') ||
+          walletPath.includes('\t')) {
+        console.warn('Path contains special characters that may cause issues');
+        console.log('Path with visible special chars:', 
+                    walletPath.replace(/\u0000/g, '\\0')
+                             .replace(/\r/g, '\\r')
+                             .replace(/\n/g, '\\n')
+                             .replace(/\t/g, '\\t'));
+      }
+      
+      // Try extracting the wallet name from the path to use as a fallback
+      const pathParts = walletPath.split(/[\/\\]/);
+      let walletName = currentWallet?.name;
+      
+      // Try to find the wallet name in the path parts if not available from currentWallet
+      if (!walletName) {
+        for (const part of pathParts) {
+          if (part && part.length > 0 && !part.includes('.')) {
+            walletName = part;
+            break;
+          }
+        }
+      }
+      
+      console.log(`Extracted wallet name: ${walletName}`);
+      
+      // Try opening with the opener library first
+      console.log('Attempting to open folder with opener library...');
+      let result = await openWalletFolder(walletPath);
+      console.log(`openWalletFolder result: ${result}`);
+      
+      // If that fails, try with the shell command fallback
       if (!result) {
-        setError('Failed to open wallet folder. The folder may no longer exist at the specified location.');
+        console.log('Opener library failed, trying with shell command fallback...');
+        result = await openWalletFolderWithShell(walletPath);
+        console.log(`openWalletFolderWithShell result: ${result}`);
+      }
+      
+      // If that still fails and we have a wallet name, try a different path construction
+      if (!result && walletName) {
+        const fallbackPath = `C:\\Users\\bacat\\source\\repos\\b-rad-coin\\src-tauri\\wallets\\${walletName}`;
+        console.log(`Both methods failed. Trying again with fallback path: ${fallbackPath}`);
+        
+        // Try both methods with the fallback path
+        result = await openWalletFolder(fallbackPath);
+        if (!result) {
+          result = await openWalletFolderWithShell(fallbackPath);
+        }
+      }
+      
+      if (!result) {
+        const errorMessage = 'Failed to open wallet folder. The folder may no longer exist at the specified location.';
+        console.error(errorMessage);
+        setError(errorMessage);
         setShowErrorAlert(true);
+      } else {
+        console.log('Successfully opened folder');
       }
     } catch (error) {
       console.error('Error opening wallet folder:', error);
       setError(`Error opening wallet folder: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setShowErrorAlert(true);
+    }
+  };
+    // Debug function to test folder opening with a fixed path
+  const testOpenFolder = async () => {
+    try {
+      // Use a known-good path to test
+      const testPath = "C:\\Users\\bacat\\source\\repos\\b-rad-coin\\src-tauri\\wallets";
+      console.log(`Testing folder opening with fixed path: "${testPath}"`);
+      
+      // Try opener library first
+      console.log("Testing opener library method...");
+      let result = await openWalletFolder(testPath);
+      console.log(`Test openWalletFolder result: ${result}`);
+      
+      if (!result) {
+        // Try shell command fallback
+        console.log("Opening with opener library failed, testing shell command fallback...");
+        result = await openWalletFolderWithShell(testPath);
+        console.log(`Test openWalletFolderWithShell result: ${result}`);
+      }
+      
+      if (!result) {
+        console.error('Test failed: Could not open test folder with either method');
+        setError('Failed to open test folder. This may indicate a system-level issue.');
+        setShowErrorAlert(true);
+      } else {
+        console.log('Test succeeded: Opened test folder');
+      }
+    } catch (error) {
+      console.error('Error in test folder open:', error);
     }
   };
   
@@ -284,10 +382,8 @@ function WalletLocationSection() {
                   variant="outlined"
                   sx={{ ml: 2 }}
                 />
-              </Box>
-              
-              <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
-                <strong>Path:</strong> {walletPath || "Path not available"}
+              </Box>                <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
+                <strong>Path:</strong> {displayPath || "Path not available"}
               </Typography>
             </>
           )}
@@ -318,18 +414,29 @@ function WalletLocationSection() {
             >
               Delete Wallet
             </Button>
-          </Tooltip>
-          <Tooltip title="Open folder in file explorer">
-            <Button 
-              variant="contained" 
-              color="primary" 
-              startIcon={<FolderIcon />} 
-              onClick={handleOpenFolder}
-              disabled={!walletPath || isLoading}
-            >
-              Open Folder
-            </Button>
-          </Tooltip>          {!isWalletSecured && (
+          </Tooltip>          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Tooltip title="Open folder in file explorer">
+              <Button 
+                variant="contained" 
+                color="primary" 
+                startIcon={<FolderIcon />} 
+                onClick={handleOpenFolder}
+                disabled={!walletPath || isLoading}
+              >
+                Open Folder
+              </Button>
+            </Tooltip>
+            <Tooltip title="Test folder open with fixed path">
+              <Button
+                variant="outlined"
+                color="secondary"
+                size="small"
+                onClick={testOpenFolder}
+              >
+                Test Open
+              </Button>
+            </Tooltip>
+          </Box>{!isWalletSecured && (
             <Tooltip title="Secure this wallet with a password">
               <Button 
                 variant="outlined" 

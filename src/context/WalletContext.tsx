@@ -25,8 +25,8 @@ interface WalletContextType {
   isWalletSecured: boolean;
   availableWallets: WalletDetails[];
   refreshWalletDetails: () => Promise<void>;
-  getCurrentWalletPath: () => Promise<string | null>;
-  openWalletFolder: (path: string) => Promise<boolean>;
+  getCurrentWalletPath: () => Promise<string | null>;  openWalletFolder: (path: string) => Promise<boolean>;
+  openWalletFolderWithShell: (path: string) => Promise<boolean>;
   closeWallet: () => Promise<boolean>;
   deleteWallet: (walletName: string) => Promise<boolean>;
 }
@@ -38,10 +38,10 @@ const WalletContext = createContext<WalletContextType>({
   currentWallet: null,
   setCurrentWallet: () => {},
   isWalletSecured: false,
-  availableWallets: [],
-  refreshWalletDetails: async () => {},
+  availableWallets: [],  refreshWalletDetails: async () => {},
   getCurrentWalletPath: async () => null,
   openWalletFolder: async () => false,
+  openWalletFolderWithShell: async () => false,
   closeWallet: async () => false,
   deleteWallet: async () => false
 });
@@ -150,11 +150,35 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   };
   // Function to open a folder in the system's file explorer
   const openWalletFolder = async (path: string): Promise<boolean> => {
+    if (!path || path.trim() === '') {
+      console.error('Cannot open folder: path is empty');
+      return false;
+    }
+    
     try {
+      console.log(`WalletContext: Opening folder at path: "${path}"`);
       const result = await invoke<boolean>('open_folder_in_explorer', { path });
+      console.log(`WalletContext: open_folder_in_explorer result: ${result}`);
       return result;
     } catch (error) {
-      console.error('Failed to open folder:', error);
+      console.error('WalletContext: Failed to open folder:', error);
+      return false;
+    }
+  };
+  // Function to open a folder using shell commands as a fallback
+  const openWalletFolderWithShell = async (path: string): Promise<boolean> => {
+    if (!path || path.trim() === '') {
+      console.error('Cannot open folder with shell: path is empty');
+      return false;
+    }
+    
+    try {
+      console.log(`WalletContext: Opening folder with shell command at path: "${path}"`);
+      const result = await invoke<boolean>('open_folder_with_shell_command', { path });
+      console.log(`WalletContext: open_folder_with_shell_command result: ${result}`);
+      return result;
+    } catch (error) {
+      console.error('WalletContext: Failed to open folder with shell:', error);
       return false;
     }
   };
@@ -202,10 +226,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       currentWallet,
       setCurrentWallet,
       isWalletSecured,
-      availableWallets,
-      refreshWalletDetails,
+      availableWallets,      refreshWalletDetails,
       getCurrentWalletPath,
       openWalletFolder,
+      openWalletFolderWithShell,
       closeWallet,
       deleteWallet
     }}>

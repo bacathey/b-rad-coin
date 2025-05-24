@@ -208,14 +208,77 @@ pub async fn get_current_wallet_path(
         Some(info) => {
             debug!("Found path for wallet '{}': {}", current_wallet_name, info.path);
             
-            // Verify that the path actually exists
-            let path = std::path::Path::new(&info.path);
-            if !path.exists() {
-                warn!("Wallet path does not exist: {}", info.path);
-                // Still return the path - the frontend will handle the case where opening fails
+            // Get the base wallets directory
+            let wallets_dir = manager.get_wallets_dir();
+            debug!("Base wallets directory: {}", wallets_dir.display());
+            
+            // Check if the path is relative or absolute
+            let path_str = &info.path;
+            let path = std::path::Path::new(path_str);
+            debug!("Wallet path from config: {}", path.display());
+            debug!("Is absolute path: {}", path.is_absolute());
+            
+            let wallet_dir = if path.is_absolute() {
+                // If the path is already absolute, use it directly
+                path.to_path_buf()
+            } else {
+                // Otherwise, join it with the wallets directory
+                wallets_dir.join(path_str)
+            };
+            
+            debug!("Constructed wallet directory path: {}", wallet_dir.display());
+            
+            // Verify the path
+            let exists = wallet_dir.exists();
+            let is_dir = if exists { wallet_dir.is_dir() } else { false };
+            
+            debug!("Wallet path exists: {}, Is directory: {}", exists, is_dir);
+            
+            if !exists {
+                warn!("Wallet directory does not exist: {}", wallet_dir.display());
+            } else if !is_dir {
+                warn!("Wallet path is not a directory: {}", wallet_dir.display());
             }
             
-            Ok(Some(info.path.clone()))
+            // Try to canonicalize the path
+            let canonical_result = wallet_dir.canonicalize();
+            
+            match canonical_result {
+                Ok(canonical_path) => {
+                    debug!("Canonical wallet path: {}", canonical_path.display());
+                    
+                    // Convert to string with platform-specific separators
+                    match canonical_path.to_str() {
+                        Some(path_str) => {
+                            let final_path = path_str.to_string();
+                            debug!("Returning wallet path: {}", final_path);
+                            Ok(Some(final_path))
+                        },
+                        None => {
+                            warn!("Could not convert canonical path to string");
+                            // Fall back to non-canonical path
+                            match wallet_dir.to_str() {
+                                Some(dir_str) => Ok(Some(dir_str.to_string())),
+                                None => {
+                                    warn!("Could not convert path to string, using original path");
+                                    Ok(Some(info.path.clone()))
+                                }
+                            }
+                        }
+                    }
+                },
+                Err(e) => {
+                    warn!("Could not canonicalize path: {}", e);
+                    // Fall back to non-canonical path
+                    match wallet_dir.to_str() {
+                        Some(dir_str) => Ok(Some(dir_str.to_string())),
+                        None => {
+                            warn!("Could not convert path to string, using original path");
+                            Ok(Some(info.path.clone()))
+                        }
+                    }
+                }
+            }
         },
         None => {
             error!("Failed to find path for current wallet: {}", current_wallet_name);
@@ -549,31 +612,167 @@ pub async fn generate_seed_phrase() -> CommandResult<String> {
 pub async fn open_folder_in_explorer(path: String) -> CommandResult<bool> {
     info!("Command: open_folder_in_explorer with path: {}", path);
     
-    // Use the system's default file explorer to open the folder
+    // Create a PathBuf from the path string
+    let path_buf = std::path::PathBuf::from(&path);
+    info!("Converted path to PathBuf: {}", path_buf.display());
+    
+    // Check if the path exists
+    let exists = path_buf.exists();
+    info!("Path exists check: {}", exists);
+    
+    if !exists {
+        error!("Path does not exist: {}", path);
+        return Err(format!("The path '{}' does not exist.", path));
+    }
+    
+    // Log file or directory status
+    let is_file = path_buf.is_file();
+    let is_dir = path_buf.is_dir();
+    info!("Path is file: {}, Path is directory: {}", is_file, is_dir);
+    
+    // Determine if this is a file or directory
+    let target_path = if is_file {
+        // If it's a file, we want to open its parent directory
+        match path_buf.parent() {
+            Some(parent) => {
+                info!("Path is a file, opening parent directory: {}", parent.display());
+                parent.to_path_buf()
+            },
+            None => {
+                error!("Could not determine parent directory for: {}", path);
+                return Err("Could not determine the directory to open.".to_string());
+            }
+        }
+    } else {
+        // It's a directory, use it directly
+        info!("Path is a directory, using directly");
+        path_buf
+    };
+    
+    // Try to get canonical path
+    info!("About to open path: {}", target_path.display());
+    let canonical_result = target_path.canonicalize();
+    
+    if let Ok(canonical_path) = &canonical_result {
+        info!("Canonical path: {}", canonical_path.display());
+    } else if let Err(e) = &canonical_result {
+        warn!("Failed to canonicalize path: {}", e);
+    }
+    
+    // Use the canonical path if available, otherwise use the target path
+    let final_path = canonical_result.unwrap_or_else(|_| target_path);
+    
+    // Open the directory with the system file explorer
+    info!("Using opener to open path: {}", final_path.display());
+    match opener::open(&final_path) {
+        Ok(_) => {
+            info!("Successfully opened directory: {}", final_path.display());
+            Ok(true)
+        },
+        Err(e) => {
+            error!("Failed to open directory: {}", e);
+            Err(format!("Failed to open directory: {}", e))
+        }
+    }
+}
+
+/// Command to open a folder using platform-specific shell commands
+/// This is a fallback method if the opener crate fails
+#[command]
+pub async fn open_folder_with_shell_command(path: String) -> CommandResult<bool> {
+    info!("Command: open_folder_with_shell_command with path: {}", path);
+    
+    // Create a PathBuf from the path string
     let path_buf = std::path::PathBuf::from(&path);
     
     // Check if the path exists
     if !path_buf.exists() {
         error!("Path does not exist: {}", path);
-        return Err(format!("The wallet folder at '{}' does not exist. It may have been moved, deleted, or is on a disconnected drive.", path));
+        return Err(format!("The path '{}' does not exist.", path));
     }
     
-    // Additionally check if it's a directory
-    if !path_buf.is_dir() {
-        error!("Path is not a directory: {}", path);
-        return Err(format!("The location '{}' is not a valid folder.", path));
-    }
-    
-    // Try to open the folder using the opener crate
-    match opener::open(&path_buf) {
-        Ok(_) => {
-            info!("Successfully opened folder: {}", path);
-            Ok(true)
-        },
-        Err(e) => {
-            error!("Failed to open folder: {}", e);
-            Err(format!("Failed to open folder '{}': {}", path, e))
+    // Determine if this is a file or directory
+    let target_path = if path_buf.is_file() {
+        // If it's a file, we want to open its parent directory
+        match path_buf.parent() {
+            Some(parent) => {
+                info!("Path is a file, opening parent directory: {}", parent.display());
+                parent.to_path_buf()
+            },
+            None => {
+                error!("Could not determine parent directory for: {}", path);
+                return Err("Could not determine the directory to open.".to_string());
+            }
         }
+    } else {
+        // It's a directory, use it directly
+        path_buf
+    };
+    
+    // Log the final path we're trying to open
+    info!("Attempting to open directory with shell command: {}", target_path.display());
+    
+    // Use platform-specific commands to open the folder
+    let result = if cfg!(target_os = "windows") {
+        // On Windows, use explorer.exe
+        let path_str = match target_path.to_str() {
+            Some(s) => s.to_string(),
+            None => {
+                error!("Failed to convert path to string");
+                return Err("Failed to convert path to string".to_string());
+            }
+        };
+        
+        // Use explorer.exe to open the folder
+        match std::process::Command::new("explorer")
+            .arg(&path_str)
+            .spawn() {
+                Ok(_) => {
+                    info!("Successfully opened Windows Explorer with path: {}", path_str);
+                    true
+                },
+                Err(e) => {
+                    error!("Failed to open Windows Explorer: {}", e);
+                    false
+                }
+            }
+    } else if cfg!(target_os = "macos") {
+        // On macOS, use open command
+        match std::process::Command::new("open")
+            .arg(target_path)
+            .spawn() {
+                Ok(_) => {
+                    info!("Successfully opened macOS Finder with path");
+                    true
+                },
+                Err(e) => {
+                    error!("Failed to open macOS Finder: {}", e);
+                    false
+                }
+            }
+    } else if cfg!(target_os = "linux") {
+        // On Linux, try xdg-open
+        match std::process::Command::new("xdg-open")
+            .arg(target_path)
+            .spawn() {
+                Ok(_) => {
+                    info!("Successfully opened Linux file browser with path");
+                    true
+                },
+                Err(e) => {
+                    error!("Failed to open Linux file browser: {}", e);
+                    false
+                }
+            }
+    } else {
+        error!("Unsupported operating system for shell command folder opening");
+        false
+    };
+    
+    if result {
+        Ok(true)
+    } else {
+        Err("Failed to open folder with shell command".to_string())
     }
 }
 

@@ -1,4 +1,4 @@
-import { Grid, Typography, Button, Box, TextField, Switch, List, Divider } from '@mui/material';
+import { Grid, Typography, Button, Box, TextField, Switch, List, Divider, Paper, Chip } from '@mui/material';
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from "@tauri-apps/api/core";
 import { PageContainer } from '../components/ui/PageContainer';
@@ -6,9 +6,14 @@ import { StyledCard } from '../components/ui/StyledCard';
 import { SettingsItem } from '../components/ui/SettingsItem';
 import SecurityIcon from '@mui/icons-material/Security';
 import { useAppSettings } from '../context/AppSettingsContext';
+import { useWallet } from '../context/WalletContext';
+import FolderIcon from '@mui/icons-material/Folder';
+import LockIcon from '@mui/icons-material/Lock';
+import LockOpenIcon from '@mui/icons-material/LockOpen';
 
 export default function Developer() {
   const { appSettings, updateSkipSeedPhraseDialogs } = useAppSettings();
+  const { wallet } = useWallet();
   const [logOutput, setLogOutput] = useState<string>('');
   const [customCommand, setCustomCommand] = useState<string>('');
   const [result, setResult] = useState<string>('');
@@ -92,7 +97,9 @@ export default function Developer() {
       setLoading(false); // Hide loading state
       toggleInProgressRef.current = false;
     }
-  };return (
+  };
+
+  return (
     <PageContainer title="Developer Tools" error={error}>
       <Typography variant="subtitle1" color="text.secondary" gutterBottom>
         These tools are intended for development and debugging purposes only.
@@ -187,6 +194,25 @@ export default function Developer() {
                 {logOutput}
               </Box>
             )}
+          </StyledCard>
+        </Grid>
+
+        {/* Wallet File Details */}
+        <Grid item xs={12}>
+          <StyledCard title="Wallet File Details">
+            <Paper elevation={0} sx={{ p: 2, display: 'flex', alignItems: 'center' }}>
+              {wallet?.isEncrypted ? (
+                <LockIcon color="primary" sx={{ mr: 1 }} />
+              ) : (
+                <LockOpenIcon color="primary" sx={{ mr: 1 }} />
+              )}
+              <Typography variant="body1">
+                Wallet File: <Chip label={wallet?.fileName} size="small" sx={{ ml: 1 }} />
+              </Typography>
+            </Paper>
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              Full Path: {wallet?.fullPath}
+            </Typography>
           </StyledCard>
         </Grid>
       </Grid>
