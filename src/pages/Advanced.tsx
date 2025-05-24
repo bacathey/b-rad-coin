@@ -17,7 +17,8 @@ import {
   DialogActions,
   TextField,
   Alert,
-  Snackbar
+  Snackbar,
+  Fade // Add Fade import
 } from '@mui/material';
 import { useState, useEffect } from 'react';
 import { useWallet } from '../context/WalletContext';
@@ -129,6 +130,8 @@ function WalletLocationSection() {  const {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [secureDialogOpen, setSecureDialogOpen] = useState(false);
+  const theme = useTheme(); // Add this line to get the theme object
+  const isDarkMode = theme.palette.mode === 'dark'; // Add this line
   
   useEffect(() => {
     if (isWalletOpen && currentWallet) {
@@ -435,38 +438,68 @@ function WalletLocationSection() {  const {
         open={deleteDialogOpen}
         onClose={handleCloseDeleteDialog}
         aria-labelledby="delete-wallet-dialog-title"
+        TransitionComponent={Fade} // Added TransitionComponent
+        TransitionProps={{ timeout: 500 }} // Added TransitionProps
+        PaperProps={{
+          sx: {
+            background: isDarkMode 
+              ? 'linear-gradient(145deg, #0a1929 0%, #132f4c 100%)' 
+              : 'linear-gradient(145deg, #ffffff 0%, #f5f7fa 100%)',
+            borderRadius: '12px',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+            border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.08)',
+            minWidth: { xs: '90%', sm: '500px' }, // Ensure a decent minimum width
+          }
+        }}
       >
-        <DialogTitle id="delete-wallet-dialog-title">
-          Delete Wallet
+        <DialogTitle id="delete-wallet-dialog-title" sx={{ pb: 1, display: 'flex', alignItems: 'center' }}>
+          <DeleteIcon color="error" sx={{ mr: 1 }} />
+          <Typography variant="h6" component="div" fontWeight={600}>
+            Delete Wallet
+          </Typography>
         </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
-            Are you sure you want to delete the wallet "{currentWallet?.name}"? This action cannot be undone.
+            Are you sure you want to permanently delete the wallet "<strong>{currentWallet?.name}</strong>"? 
+            This action cannot be undone and will remove all associated data.
           </DialogContentText>
           <DialogContentText sx={{ mb: 2, fontWeight: 'bold', color: 'error.main' }}>
-            To confirm, please type the wallet name.
+            To confirm, please type the full wallet name below:
           </DialogContentText>
           {deleteError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
+            <Alert severity="error" sx={{ mb: 2 }} variant="filled">
               {deleteError}
             </Alert>
           )}
           <TextField
             autoFocus
             margin="dense"
-            label="Wallet Name"
+            id="confirm-wallet-name-delete"
+            label={`Type "${currentWallet?.name || ''}" to confirm`}
             fullWidth
             variant="outlined"
             value={confirmWalletName}
             onChange={(e) => setConfirmWalletName(e.target.value)}
+            error={!!deleteError && confirmWalletName !== currentWallet?.name} // Highlight if error and name doesn't match
+            sx={{
+              mb: 2,
+              '& .MuiOutlinedInput-root': {
+                '&.Mui-focused fieldset': {
+                  borderColor: 'error.main',
+                },
+              },
+            }}
           />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDeleteDialog}>Cancel</Button>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseDeleteDialog} variant="outlined" sx={{ mr: 1 }}>Cancel</Button>
           <Button 
             onClick={handleDeleteWallet} 
             color="error"
-            disabled={!confirmWalletName || isDeleting}
+            variant="contained"
+            disabled={confirmWalletName !== currentWallet?.name || isDeleting}
+            startIcon={isDeleting ? <CircularProgress size={20} color="inherit" /> : null}
+            sx={{ minWidth: '180px' }}
           >
             {isDeleting ? 'Deleting...' : 'Delete Permanently'}
           </Button>
