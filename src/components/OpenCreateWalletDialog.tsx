@@ -776,10 +776,9 @@ export default function OpenCreateWalletDialog() {
                         return (
                           <MenuItem key={wallet.name} value={wallet.name}>
                             <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                              <ListItemIcon sx={{ minWidth: 36 }}>
-                                {wallet.secured ? 
-                                  <LockIcon color="warning" fontSize="small" /> : 
-                                  <LockOpenIcon color="success" fontSize="small" />
+                              <ListItemIcon sx={{ minWidth: 36 }}>                                {wallet.secured ? 
+                                  <LockIcon color="success" fontSize="small" /> : 
+                                  <LockOpenIcon color="warning" fontSize="small" />
                                 }
                               </ListItemIcon>
                               {wallet.name}
@@ -900,10 +899,9 @@ export default function OpenCreateWalletDialog() {
                 />
               )}
               label={(
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  {usePasswordProtection ? 
-                    <LockIcon color="warning" fontSize="small" sx={{ mr: 1 }} /> : 
-                    <LockOpenIcon color="success" fontSize="small" sx={{ mr: 1 }} />
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>                  {usePasswordProtection ? 
+                    <LockIcon color="success" fontSize="small" sx={{ mr: 1 }} /> : 
+                    <LockOpenIcon color="warning" fontSize="small" sx={{ mr: 1 }} />
                   }
                   <Typography>
                     Password protect this wallet

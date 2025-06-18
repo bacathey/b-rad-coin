@@ -124,10 +124,10 @@ function WalletLocationSection() {  const {
   const [showErrorAlert, setShowErrorAlert] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [confirmWalletName, setConfirmWalletName] = useState("");
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);  const [secureDialogOpen, setSecureDialogOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);  const [isDeleting, setIsDeleting] = useState(false);  const [secureDialogOpen, setSecureDialogOpen] = useState(false);
   const [privateKey, setPrivateKey] = useState('');
   const [privateKeyLoading, setPrivateKeyLoading] = useState(false);
+  const [showCopySuccess, setShowCopySuccess] = useState(false);
   const theme = useTheme(); // Add this line to get the theme object
   const isDarkMode = theme.palette.mode === 'dark'; // Add this line
     useEffect(() => {
@@ -243,8 +243,7 @@ function WalletLocationSection() {  const {
     } finally {
       setPrivateKeyLoading(false);
     }
-  };
-  const handleClosePrivateKeyDisplay = () => {
+  };  const handleClosePrivateKeyDisplay = () => {
     setPrivateKey('');
   };
   
@@ -281,12 +280,11 @@ function WalletLocationSection() {  const {
                 </Typography>
                 <Typography variant="body2" sx={{ ml: 1 }}>
                   {currentWallet.name}
-                </Typography>
-                <Chip
+                </Typography>                <Chip
                   icon={isWalletSecured ? <LockIcon /> : <LockOpenIcon />}
                   label={isWalletSecured ? "Password Protected" : "No Password"}
                   size="small"
-                  color={isWalletSecured ? "warning" : "success"}
+                  color={isWalletSecured ? "success" : "warning"}
                   variant="outlined"
                   sx={{ ml: 2 }}
                 />
@@ -476,22 +474,33 @@ function WalletLocationSection() {  const {
           >
             {privateKey}
           </Box>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button 
-            onClick={() => {
-              navigator.clipboard.writeText(privateKey);
-              // You could add a toast notification here
-            }}
-            variant="outlined"
-            sx={{ mr: 1 }}
-          >
-            Copy to Clipboard
-          </Button>
-          <Button onClick={handleClosePrivateKeyDisplay} variant="contained" color="primary">
-            Close
-          </Button>
-        </DialogActions>
+        </DialogContent>        <DialogActions sx={{ px: 3, pb: 2 }}>          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+            <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>              <Button 
+                onClick={() => {
+                  navigator.clipboard.writeText(privateKey);
+                  setShowCopySuccess(true);
+                  // Auto-hide after 1.5 seconds (faster)
+                  setTimeout(() => setShowCopySuccess(false), 1500);
+                }}
+                variant="outlined"
+                color={showCopySuccess ? "success" : "primary"}
+                sx={{ 
+                  minWidth: '160px', // Fixed width to prevent resizing
+                  borderColor: showCopySuccess ? 'success.main' : undefined,
+                  color: showCopySuccess ? 'success.main' : undefined,
+                  '&:hover': {
+                    borderColor: showCopySuccess ? 'success.dark' : undefined,
+                    // Remove backgroundColor to prevent green fill
+                  }
+                }}
+              >
+                {showCopySuccess ? "Copied!" : "Copy to Clipboard"}
+              </Button>
+              <Button onClick={handleClosePrivateKeyDisplay} variant="contained" color="primary">
+                Close
+              </Button>
+            </Box>
+          </Box>        </DialogActions>
       </Dialog>
       
       <Snackbar 
@@ -506,9 +515,8 @@ function WalletLocationSection() {  const {
           variant="filled"
           sx={{ width: '100%' }}
         >
-          {error}
-        </Alert>
-      </Snackbar>      {/* Secure Wallet Dialog */}
+          {error}        </Alert>
+      </Snackbar>{/* Secure Wallet Dialog */}
       <SecureWalletDialog 
         open={secureDialogOpen}
         onClose={handleCloseSecureDialog}

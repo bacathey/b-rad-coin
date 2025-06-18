@@ -111,18 +111,17 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
               <>
                 {currentWallet.name}
                 {/* Show lock icon based on wallet security status */}
-                {isWalletOpen && (
-                  isWalletSecured ? (
+                {isWalletOpen && (                  isWalletSecured ? (
                     <Tooltip title="This wallet is secured">
                       <Box component="span" sx={{ display: 'inline-flex', ml: 1 }}>
-                        <LockIcon color="warning" fontSize="small" />
+                        <LockIcon color="success" fontSize="small" />
                       </Box>
                     </Tooltip>
                   ) : (
                     <Tooltip title="Click to add password protection">
                       <IconButton
                         size="small"
-                        color="success"
+                        color="warning"
                         onClick={handleOpenSecureDialog}
                         sx={{ ml: 0.5, p: 0.5 }}
                       >
