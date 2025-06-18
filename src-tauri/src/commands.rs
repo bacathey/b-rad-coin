@@ -1130,4 +1130,36 @@ pub async fn delete_all_wallets(
     Ok(deleted_items)
 }
 
+/// Command to get the private key of the currently open wallet
+#[command]
+pub async fn get_wallet_private_key(
+    wallet_manager: State<'_, AsyncWalletManager>,
+) -> CommandResult<String> {
+    info!("Command: get_wallet_private_key");
+
+    let manager = wallet_manager.get_manager().await;
+
+    // Check if a wallet is currently open
+    let current_wallet = match manager.get_current_wallet() {
+        Some(wallet) => wallet,
+        None => {
+            error!("No wallet is currently open");
+            return Err("No wallet is currently open".to_string());
+        }
+    };    let wallet_name = current_wallet.name.clone();
+    debug!("Getting private key for wallet: {}", wallet_name);
+
+    // Get the private key from the wallet data that's already loaded in memory
+    match &current_wallet.data.master_private_key {
+        Some(private_key) => {
+            info!("Successfully retrieved private key for wallet: {}", wallet_name);
+            Ok(private_key.clone())
+        }
+        None => {
+            error!("No private key found in wallet data for: {}", wallet_name);
+            Err("No private key found in wallet data".to_string())
+        }
+    }
+}
+
 

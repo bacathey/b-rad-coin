@@ -13,7 +13,7 @@ use sha2::Digest;
 pub struct Wallet {
     pub name: String,
     pub path: PathBuf,
-    // Add other wallet properties as needed
+    pub data: WalletData, // Store the loaded wallet data
 }
 
 /// WalletManager handles all wallet operations
@@ -119,13 +119,13 @@ impl WalletManager {
                 WalletData::load(&wallet_data_path, password)
             })
         });        // Check if we succeeded in loading wallet data
-        match wallet_data_result {
+        let final_wallet_data = match wallet_data_result {
             Ok(wallet_data) => {
                 debug!("Successfully loaded wallet data for: {}", name);
-                // You could store wallet_data in the Wallet struct if desired
-                // For now, we just log some info about it
                 debug!("Wallet balance: {}, addresses: {}", wallet_data.balance, wallet_data.addresses.len());
-            },            Err(e) => {
+                wallet_data
+            },
+            Err(e) => {
                 // Check for password/decryption errors - these should be propagated to user
                 if matches!(e, WalletDataError::InvalidPassword) {
                     error!("Invalid password provided for wallet: {}", name);
@@ -178,21 +178,25 @@ impl WalletManager {
                         }
                         
                         info!("Successfully created initial wallet data file for: {}", name);
+                        wallet_data
                     } else {
-                        // For other IO errors, log and continue
+                        // For other IO errors, return error
                         error!("Failed to load wallet data due to IO error: {}", e);
+                        return Err(WalletError::from(e));
                     }
                 } else {
-                    // For non-IO errors, log and continue
-                    error!("Failed to load wallet data, continuing anyway: {}", e);
+                    // For non-IO errors, return error
+                    error!("Failed to load wallet data: {}", e);
+                    return Err(WalletError::from(e));
                 }
             }
-        }
+        };
 
-        // Create a wallet object 
+        // Create a wallet object with the loaded data
         let opened_wallet = Wallet {
             name: name.to_string(),
             path: PathBuf::from(&wallet_path),
+            data: final_wallet_data,
         };
 
         // Set current wallet in memory only

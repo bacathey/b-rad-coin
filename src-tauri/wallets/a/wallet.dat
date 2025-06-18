@@ -1,14 +1,14 @@
 {
   "name": "a",
-  "created_at": 1750226379,
-  "modified_at": 1750226379,
+  "created_at": 1750227094,
+  "modified_at": 1750227094,
   "block_height": 0,
   "seed_phrase": "test word wallet a developer mode enabled skip verify testing phrase",
-  "master_private_key": "xprv_dev_624953b7fcbbbdc31d24012903a3a5825f79effa6e7e950ddb342f70ff26823b",
+  "master_private_key": "xprv_dev_4cc9cb05089a3d81acee0dc9bd4417b2820eaf33172d232ca0e230c6fd6ab057",
   "master_public_key": "xpub_dev_pubkey_a_dev",
   "keys": {
     "bc1qadev": {
-      "private_key": "624953b7fcbbbdc31d24012903a3a5825f79effa6e7e950ddb342f70ff26823b",
+      "private_key": "4cc9cb05089a3d81acee0dc9bd4417b2820eaf33172d232ca0e230c6fd6ab057",
       "public_key": "pubkey_a_dev",
       "address": "bc1qadev",
       "key_type": "NativeSegWit",

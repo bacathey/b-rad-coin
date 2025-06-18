@@ -26,7 +26,9 @@ import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SecurityIcon from '@mui/icons-material/Security';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import SecureWalletDialog from '../components/SecureWalletDialog';
+import { invoke } from '@tauri-apps/api/core';
 
 export default function Advanced() {
   const theme = useTheme();
@@ -123,8 +125,9 @@ function WalletLocationSection() {  const {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [confirmWalletName, setConfirmWalletName] = useState("");
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [secureDialogOpen, setSecureDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);  const [secureDialogOpen, setSecureDialogOpen] = useState(false);
+  const [privateKey, setPrivateKey] = useState('');
+  const [privateKeyLoading, setPrivateKeyLoading] = useState(false);
   const theme = useTheme(); // Add this line to get the theme object
   const isDarkMode = theme.palette.mode === 'dark'; // Add this line
     useEffect(() => {
@@ -215,10 +218,34 @@ function WalletLocationSection() {  const {
   const handleCloseSecureDialog = () => {
     setSecureDialogOpen(false);
   };
-  
-  const handleSuccessfulSecurity = async () => {
+    const handleSuccessfulSecurity = async () => {
     // Refresh wallet details to update the security status
     await refreshWalletDetails();
+  };  const handleShowPrivateKey = async () => {
+    if (!currentWallet) return;
+    
+    // Reset previous state
+    setPrivateKey('');
+    
+    // Since the wallet data is already decrypted in memory when opened, 
+    // we can directly get the private key without asking for password again
+    await fetchPrivateKey();
+  };  const fetchPrivateKey = async () => {
+    if (!currentWallet) return;
+    
+    setPrivateKeyLoading(true);
+    
+    try {
+      const key = await invoke<string>('get_wallet_private_key');
+      setPrivateKey(key);
+    } catch (error) {
+      console.error('Failed to get private key:', error);
+    } finally {
+      setPrivateKeyLoading(false);
+    }
+  };
+  const handleClosePrivateKeyDisplay = () => {
+    setPrivateKey('');
   };
   
   if (!isWalletOpen || !currentWallet) {
@@ -278,13 +305,23 @@ function WalletLocationSection() {  const {
               {error}
             </Alert>
           )}
-        </Grid>
-        <Grid item xs={12} md={4} sx={{ 
+        </Grid>        <Grid item xs={12} md={4} sx={{ 
           display: 'flex', 
           gap: 2,
           flexDirection: { xs: 'column', sm: 'row' },
           justifyContent: { xs: 'flex-start', md: 'flex-end' }
-        }}>
+        }}>          <Tooltip title="Show the private key for this wallet">
+            <Button 
+              variant="outlined" 
+              color="primary" 
+              startIcon={privateKeyLoading ? <CircularProgress size={20} /> : <VisibilityIcon />} 
+              onClick={handleShowPrivateKey}
+              disabled={isLoading || privateKeyLoading}
+            >
+              {privateKeyLoading ? 'Loading...' : 'Show Private Key'}
+            </Button>
+          </Tooltip>
+          
           <Tooltip title="Delete this wallet">
             <Button 
               variant="outlined" 
@@ -295,7 +332,7 @@ function WalletLocationSection() {  const {
             >
               Delete Wallet
             </Button>
-          </Tooltip>          {!isWalletSecured && (
+          </Tooltip>{!isWalletSecured && (
             <Tooltip title="Secure this wallet with a password">
               <Button 
                 variant="outlined" 
@@ -380,6 +417,79 @@ function WalletLocationSection() {  const {
             sx={{ minWidth: '180px' }}
           >
             {isDeleting ? 'Deleting...' : 'Delete Permanently'}
+          </Button>
+        </DialogActions>      </Dialog>
+      
+      {/* Private Key Display Dialog */}
+      <Dialog
+        open={!!privateKey}
+        onClose={handleClosePrivateKeyDisplay}
+        aria-labelledby="private-key-display-dialog-title"
+        maxWidth="md"
+        fullWidth
+        TransitionComponent={Fade}
+        TransitionProps={{ timeout: 500 }}
+        PaperProps={{
+          sx: {
+            background: isDarkMode 
+              ? 'linear-gradient(145deg, #0a1929 0%, #132f4c 100%)' 
+              : 'linear-gradient(145deg, #ffffff 0%, #f5f7fa 100%)',
+            borderRadius: '12px',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+            border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.08)',
+          }
+        }}
+      >
+        <DialogTitle id="private-key-display-dialog-title" sx={{ pb: 1, display: 'flex', alignItems: 'center' }}>
+          <VisibilityIcon color="primary" sx={{ mr: 1 }} />
+          <Typography variant="h6" component="div" fontWeight={600}>
+            Private Key for "{currentWallet?.name}"
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              ⚠️ KEEP THIS PRIVATE KEY SECURE
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              Never share this private key with anyone. Anyone with access to this key can control your wallet and funds.
+            </Typography>
+          </Alert>
+          
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Master Private Key:
+          </Typography>
+          
+          <Box 
+            sx={{ 
+              p: 2,
+              bgcolor: isDarkMode ? 'rgba(0, 0, 0, 0.3)' : 'rgba(0, 0, 0, 0.05)',
+              borderRadius: 1,
+              fontFamily: 'monospace',
+              fontSize: '0.9rem',
+              wordBreak: 'break-all',
+              border: '1px solid',
+              borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+              maxHeight: '200px',
+              overflowY: 'auto'
+            }}
+          >
+            {privateKey}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button 
+            onClick={() => {
+              navigator.clipboard.writeText(privateKey);
+              // You could add a toast notification here
+            }}
+            variant="outlined"
+            sx={{ mr: 1 }}
+          >
+            Copy to Clipboard
+          </Button>
+          <Button onClick={handleClosePrivateKeyDisplay} variant="contained" color="primary">
+            Close
           </Button>
         </DialogActions>
       </Dialog>

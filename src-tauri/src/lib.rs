@@ -79,7 +79,8 @@ pub fn run() {
                         echo_command,
                         get_config_directory,
                         cleanup_orphaned_wallets,
-                        delete_all_wallets
+                        delete_all_wallets,
+                        get_wallet_private_key
                     ])
                     .setup(|_app| {
                         info!("Setting up application");
