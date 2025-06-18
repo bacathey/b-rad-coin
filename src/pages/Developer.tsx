@@ -12,12 +12,14 @@ import LockOpenIcon from '@mui/icons-material/LockOpen';
 
 export default function Developer() {
   const { appSettings, updateSkipSeedPhraseDialogs } = useAppSettings();
-  const { currentWallet } = useWallet();
+  const { currentWallet, setCurrentWallet, setIsWalletOpen, refreshWalletDetails } = useWallet();
   const [logOutput, setLogOutput] = useState<string>('');
   const [customCommand, setCustomCommand] = useState<string>('');
   const [result, setResult] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);  const [skipSeedPhraseDialogs, setSkipSeedPhraseDialogs] = useState<boolean>(appSettings?.skip_seed_phrase_dialogs || false);
+  const [loading, setLoading] = useState<boolean>(false);  const [error, setError] = useState<string | null>(null);
+  const [cleanupLoading, setCleanupLoading] = useState<boolean>(false);
+  const [deleteAllLoading, setDeleteAllLoading] = useState<boolean>(false);
+  const [skipSeedPhraseDialogs, setSkipSeedPhraseDialogs] = useState<boolean>(appSettings?.skip_seed_phrase_dialogs || false);
   
   // Add a ref to track if a toggle operation is in progress
   const toggleInProgressRef = useRef<boolean>(false);
@@ -46,8 +48,7 @@ export default function Developer() {
     } finally {
       setLoading(false);
     }
-  };
-  const handleViewLogs = async () => {
+  };  const handleViewLogs = async () => {
     setLoading(true);
     setError(null);
     
@@ -60,7 +61,72 @@ export default function Developer() {
     } finally {
       setLoading(false);
     }
-  };  // Function to update skip seed phrase dialogs setting
+  };  const handleCleanupOrphanedWallets = async () => {
+    setCleanupLoading(true);
+    setError(null);
+    
+    try {
+      const deletedItems = await invoke('cleanup_orphaned_wallets') as string[];
+      
+      if (deletedItems.length === 0) {
+        setResult('No orphaned wallet files or directories found to clean up.');
+      } else {
+        setResult(`Successfully cleaned up ${deletedItems.length} orphaned wallet items:\n${deletedItems.join('\n')}`);
+      }
+    } catch (err) {
+      console.error('Error cleaning up orphaned wallets:', err);
+      setError(`Error cleaning up orphaned wallets: ${err}`);
+    } finally {
+      setCleanupLoading(false);
+    }
+  };  const handleDeleteAllWallets = async () => {
+    // Show confirmation dialog before proceeding
+    const confirmed = window.confirm(
+      'WARNING: This will permanently delete ALL wallets from both the configuration and disk!\n\n' +
+      'This action cannot be undone. All wallet data will be lost.\n\n' +
+      'Are you sure you want to continue?'
+    );
+    
+    if (!confirmed) {
+      return;
+    }
+    
+    setDeleteAllLoading(true);
+    setError(null);
+    
+    try {
+      const deletedItems = await invoke('delete_all_wallets') as string[];
+      
+      // Clear wallet state in frontend after successful deletion
+      setCurrentWallet(null);
+      setIsWalletOpen(false);
+      
+      // Force refresh the wallet status from backend to ensure consistency
+      try {
+        const backendWalletStatus = await invoke<boolean>('check_wallet_status');
+        if (backendWalletStatus) {
+          console.warn('Backend reports wallet is still open after deletion, forcing close');
+          await invoke('close_wallet');
+        }
+      } catch (backendError) {
+        console.error('Error checking backend wallet status:', backendError);
+      }
+      
+      // Refresh wallet details to reflect empty state
+      await refreshWalletDetails();
+      
+      if (deletedItems.length === 0) {
+        setResult('No wallets found to delete.');
+      } else {
+        setResult(`Successfully deleted all wallets:\n${deletedItems.join('\n')}\n\nAll wallet data has been permanently removed.\n\nThe wallet selection dialog should now appear since no wallets exist.`);
+      }
+    } catch (err) {
+      console.error('Error deleting all wallets:', err);
+      setError(`Error deleting all wallets: ${err}`);
+    } finally {
+      setDeleteAllLoading(false);
+    }
+  };// Function to update skip seed phrase dialogs setting
   const handleSeedPhraseDialogsToggle = async (skipDialogs: boolean) => {
     // Prevent multiple simultaneous toggle operations
     if (toggleInProgressRef.current) {
@@ -138,14 +204,32 @@ export default function Developer() {
               onChange={(e) => setCustomCommand(e.target.value)}
               sx={{ mb: 2 }}
               placeholder="Enter command"
-            />
-            
-            <Button 
+            />            <Button 
               variant="contained" 
               onClick={handleRunCommand}
               disabled={!customCommand.trim() || loading}
+              sx={{ mr: 2 }}
             >
               Execute Command
+            </Button>
+
+            <Button 
+              variant="outlined" 
+              color="warning"
+              onClick={handleCleanupOrphanedWallets}
+              disabled={cleanupLoading || loading || deleteAllLoading}
+              sx={{ mr: 2 }}
+            >
+              {cleanupLoading ? 'Cleaning up...' : 'Cleanup Orphaned Wallets'}
+            </Button>
+
+            <Button 
+              variant="contained"
+              color="error"
+              onClick={handleDeleteAllWallets}
+              disabled={deleteAllLoading || loading || cleanupLoading}
+            >
+              {deleteAllLoading ? 'Deleting...' : 'Delete ALL Wallets'}
             </Button>
             
             {result && (

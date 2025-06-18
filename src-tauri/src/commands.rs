@@ -880,3 +880,254 @@ pub fn greet(name: String) -> String {
     info!("Command: greet - {}", name);
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
+
+/// Command to clean up orphaned wallet directories
+/// Deletes all wallet files/folders in the wallets directory that are not present in the app configuration
+#[command]
+pub async fn cleanup_orphaned_wallets(
+    wallet_manager: State<'_, AsyncWalletManager>,
+    config_manager: State<'_, Arc<ConfigManager>>,
+) -> CommandResult<Vec<String>> {
+    info!("Command: cleanup_orphaned_wallets - Starting cleanup process");
+    
+    let manager = wallet_manager.get_manager().await;
+    let config = config_manager.get_config();
+      // Get the base wallets directory
+    let wallets_dir = manager.get_wallets_dir();
+    info!("Scanning wallets directory: {}", wallets_dir.display());
+    
+    // Ensure the wallets directory exists
+    if !wallets_dir.exists() {
+        info!("Wallets directory does not exist, nothing to clean up");
+        return Ok(vec![]);
+    }
+    
+    // Get list of wallet names from config
+    let configured_wallets: std::collections::HashSet<String> = config
+        .wallets
+        .iter()
+        .map(|w| w.name.clone())
+        .collect();
+      debug!("Configured wallets: {:?}", configured_wallets);
+    
+    let mut deleted_items = Vec::new();
+    
+    // Read the wallets directory
+    match std::fs::read_dir(&wallets_dir) {
+        Ok(entries) => {
+            for entry in entries {
+                match entry {
+                    Ok(dir_entry) => {
+                        let path = dir_entry.path();
+                        let file_name = match path.file_name() {
+                            Some(name) => name.to_string_lossy().to_string(),
+                            None => continue,
+                        };
+                        
+                        // Skip if this is a configured wallet
+                        if configured_wallets.contains(&file_name) {
+                            continue;
+                        }
+                        
+                        // This is an orphaned wallet directory/file
+                        info!("Found orphaned wallet item: {}", file_name);
+                        
+                        // Attempt to delete it
+                        if path.is_dir() {
+                            match std::fs::remove_dir_all(&path) {
+                                Ok(()) => {
+                                    info!("Deleted orphaned wallet directory: {}", file_name);
+                                    deleted_items.push(format!("Directory: {}", file_name));
+                                }
+                                Err(e) => {
+                                    error!("Failed to delete orphaned wallet directory {}: {}", file_name, e);
+                                    return Err(format!("Failed to delete directory {}: {}", file_name, e));
+                                }
+                            }
+                        } else {
+                            match std::fs::remove_file(&path) {
+                                Ok(()) => {
+                                    info!("Deleted orphaned wallet file: {}", file_name);
+                                    deleted_items.push(format!("File: {}", file_name));
+                                }
+                                Err(e) => {
+                                    error!("Failed to delete orphaned wallet file {}: {}", file_name, e);
+                                    return Err(format!("Failed to delete file {}: {}", file_name, e));
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Error reading directory entry: {}", e);
+                        return Err(format!("Error reading directory entry: {}", e));
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to read wallets directory: {}", e);
+            return Err(format!("Failed to read wallets directory: {}", e));
+        }
+    }
+    
+    if deleted_items.is_empty() {
+        info!("No orphaned wallet items found to clean up");
+    } else {
+        info!("Cleaned up {} orphaned wallet items", deleted_items.len());
+    }
+    
+    Ok(deleted_items)
+}
+
+/// Command to delete all wallets from both config and disk
+/// Deletes all wallets listed in the config file and removes all wallet directories from the wallets folder
+#[command]
+pub async fn delete_all_wallets(
+    wallet_manager: State<'_, AsyncWalletManager>,
+    config_manager: State<'_, Arc<ConfigManager>>,
+    app: tauri::AppHandle,
+) -> CommandResult<Vec<String>> {    info!("Command: delete_all_wallets - Starting deletion process");
+    debug!("Command: delete_all_wallets");
+      // Close any currently open wallet first - do this separately to avoid deadlock
+    {
+        let manager = wallet_manager.get_manager().await;
+        if manager.get_current_wallet().is_some() {
+            info!("Closing currently open wallet before deletion");
+            drop(manager); // Release the lock explicitly
+            let mut manager_mut = wallet_manager.get_manager().await;
+            manager_mut.close_wallet();
+        }
+    } // Ensure the manager lock is dropped here
+    
+    // Now get a fresh lock for the deletion operations
+    let manager = wallet_manager.get_manager().await;
+    let config = config_manager.get_config();
+    
+    let mut deleted_items = Vec::new();
+      // Step 1: Delete wallets from their configured paths
+    for wallet_info in &config.wallets {
+        info!("Processing wallet from config: {}", wallet_info.name);
+        
+        // Get the full path to the wallet
+        let wallet_path = if std::path::Path::new(&wallet_info.path).is_absolute() {
+            std::path::PathBuf::from(&wallet_info.path)
+        } else {
+            // If relative path, join with the wallets directory
+            manager.get_wallets_dir().join(&wallet_info.path)
+        };
+        
+        debug!("Attempting to delete wallet at path: {}", wallet_path.display());
+        
+        if wallet_path.exists() {
+            if wallet_path.is_dir() {
+                match std::fs::remove_dir_all(&wallet_path) {
+                    Ok(()) => {
+                        info!("Deleted wallet directory: {}", wallet_info.name);
+                        deleted_items.push(format!("Config wallet (dir): {} at {}", wallet_info.name, wallet_path.display()));
+                    }
+                    Err(e) => {
+                        error!("Failed to delete wallet directory {}: {}", wallet_info.name, e);
+                        return Err(format!("Failed to delete wallet directory {}: {}", wallet_info.name, e));
+                    }
+                }
+            } else if wallet_path.is_file() {
+                match std::fs::remove_file(&wallet_path) {
+                    Ok(()) => {
+                        info!("Deleted wallet file: {}", wallet_info.name);
+                        deleted_items.push(format!("Config wallet (file): {} at {}", wallet_info.name, wallet_path.display()));
+                    }
+                    Err(e) => {
+                        error!("Failed to delete wallet file {}: {}", wallet_info.name, e);
+                        return Err(format!("Failed to delete wallet file {}: {}", wallet_info.name, e));
+                    }
+                }
+            }        } else {
+            debug!("Wallet path does not exist, skipping: {}", wallet_path.display());
+            deleted_items.push(format!("Config wallet (missing): {} (path not found: {})", wallet_info.name, wallet_path.display()));
+        }
+    }
+      // Step 2: Delete any remaining items in the wallets directory
+    let wallets_dir = manager.get_wallets_dir();
+    info!("Cleaning up remaining items in wallets directory: {}", wallets_dir.display());
+    
+    if wallets_dir.exists() {
+        match std::fs::read_dir(&wallets_dir) {
+            Ok(entries) => {
+                for entry in entries {
+                    match entry {
+                        Ok(dir_entry) => {
+                            let path = dir_entry.path();
+                            let file_name = match path.file_name() {
+                                Some(name) => name.to_string_lossy().to_string(),
+                                None => continue,
+                            };
+                            
+                            debug!("Found remaining item in wallets directory: {}", file_name);
+                            
+                            if path.is_dir() {
+                                match std::fs::remove_dir_all(&path) {
+                                    Ok(()) => {
+                                        info!("Deleted remaining wallet directory: {}", file_name);
+                                        deleted_items.push(format!("Remaining directory: {}", file_name));
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to delete remaining directory {}: {}", file_name, e);
+                                        return Err(format!("Failed to delete remaining directory {}: {}", file_name, e));
+                                    }
+                                }
+                            } else {
+                                match std::fs::remove_file(&path) {
+                                    Ok(()) => {
+                                        info!("Deleted remaining wallet file: {}", file_name);
+                                        deleted_items.push(format!("Remaining file: {}", file_name));
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to delete remaining file {}: {}", file_name, e);
+                                        return Err(format!("Failed to delete remaining file {}: {}", file_name, e));
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Error reading directory entry: {}", e);
+                            return Err(format!("Error reading directory entry: {}", e));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to read wallets directory: {}", e);
+                return Err(format!("Failed to read wallets directory: {}", e));
+            }
+        }
+    }
+      // Step 3: Clear the wallets from the config file
+    info!("Clearing wallets from config file");
+    let mut new_config = config.clone();
+    new_config.wallets.clear();
+    
+    match config_manager.update_config(new_config).await {
+        Ok(()) => {
+            info!("Successfully cleared wallets from config file");
+            deleted_items.push("Config file: Cleared all wallet entries".to_string());
+        }
+        Err(e) => {
+            error!("Failed to clear wallets from config: {}", e);
+            return Err(format!("Failed to clear wallets from config: {}", e));
+        }
+    }
+      if deleted_items.is_empty() {
+        info!("No wallets found to delete");
+    } else {
+        info!("Successfully deleted {} wallet items", deleted_items.len());
+        
+        // Emit an event to notify frontend that all wallets have been deleted
+        if let Some(main_window) = app.get_webview_window("main") {
+            let _ = main_window.emit("wallets-deleted", ());
+        }
+    }
+    
+    Ok(deleted_items)
+}
+
+

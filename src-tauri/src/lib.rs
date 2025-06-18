@@ -74,11 +74,12 @@ pub fn run() {
                         get_app_settings,
                         secure_wallet,
                         shutdown_application,                        get_app_version,
-                        greet,
-                        // Developer commands
+                        greet,                        // Developer commands
                         get_recent_logs,
                         echo_command,
-                        get_config_directory
+                        get_config_directory,
+                        cleanup_orphaned_wallets,
+                        delete_all_wallets
                     ])
                     .setup(|_app| {
                         info!("Setting up application");

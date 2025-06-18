@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 // Define the wallet type
 interface WalletInfo {
@@ -138,10 +139,28 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       
       // Always refresh available wallets
       await refreshWalletDetails();
-    }
-
-    checkWalletStatus();
+    }    checkWalletStatus();
   }, []);
+
+  // Effect to listen for wallet deletion events from backend
+  useEffect(() => {
+    const unlisten = listen('wallets-deleted', () => {
+      console.log('WalletContext: Received wallets-deleted event, clearing state');
+      setCurrentWallet(null);
+      setIsWalletOpen(false);
+      setIsWalletSecured(false);
+      setAvailableWallets([]);
+      
+      // Refresh wallet details to get the current state
+      refreshWalletDetails();
+    });
+
+    // Cleanup listener on unmount
+    return () => {
+      unlisten.then(f => f());
+    };
+  }, [refreshWalletDetails]);
+
   // Function to get the path of the current wallet
   const getCurrentWalletPath = async (): Promise<string | null> => {
     try {
