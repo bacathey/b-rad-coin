@@ -2,7 +2,6 @@ use crate::config::{Config, ConfigManager, WalletInfo};
 use crate::errors::WalletError;
 // Import KeyType and remove unused AddressInfo
 use crate::wallet_data::{WalletData, WalletDataError, KeyPair, KeyType};
-use base64::Engine;
 use log::{debug, error, info};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -126,8 +125,18 @@ impl WalletManager {
                 // You could store wallet_data in the Wallet struct if desired
                 // For now, we just log some info about it
                 debug!("Wallet balance: {}, addresses: {}", wallet_data.balance, wallet_data.addresses.len());
-            },
-            Err(e) => {
+            },            Err(e) => {
+                // Check for password/decryption errors - these should be propagated to user
+                if matches!(e, WalletDataError::InvalidPassword) {
+                    error!("Invalid password provided for wallet: {}", name);
+                    return Err(WalletError::from(e));
+                }
+                
+                if matches!(e, WalletDataError::DecryptionError(_)) {
+                    error!("Decryption error for wallet: {}", name);
+                    return Err(WalletError::from(e));
+                }
+                
                 // If it's an IoError and the file doesn't exist, create a new wallet data file
                 if let WalletDataError::IoError(io_err) = &e {
                     if io_err.kind() == std::io::ErrorKind::NotFound {
@@ -581,161 +590,11 @@ impl WalletManager {
         // Close any open wallet
         if self.current_wallet.is_some() {
             self.close_wallet();
-        }
-
-        debug!("Wallet manager shutdown complete");
+        }        debug!("Wallet manager shutdown complete");
         Ok(())
     }
 
-    /// Helper method to encrypt data with a password using AES with PBKDF2
-    fn encrypt_data(&self, data: &str, password: &str) -> Result<String, WalletError> {        use aes::{Aes256, cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray}};
-        use pbkdf2::pbkdf2_hmac;
-        use sha2::Sha256;
-        use rand::{RngCore, rng};        // Generate a salt for PBKDF2
-        let mut salt = [0u8; 16];
-        let mut rng = rng();
-        rng.fill_bytes(&mut salt);
-        
-        // Generate an initialization vector (IV) for AES
-        let mut iv = [0u8; 16]; 
-        rng.fill_bytes(&mut iv);
-
-        // Derive a key from the password using PBKDF2
-        let mut key = [0u8; 32]; // 256-bit key for AES-256
-        pbkdf2_hmac::<Sha256>(password.as_bytes(), &salt, 10000, &mut key);
-        
-        // Prepare the data for encryption (must be a multiple of 16 bytes for AES)
-        let data_bytes = data.as_bytes();
-        let padding_len = 16 - (data_bytes.len() % 16);
-        let mut padded_data = data_bytes.to_vec();
-        // PKCS#7 padding
-        padded_data.extend(vec![padding_len as u8; padding_len]);
-        
-        // Create AES cipher instance
-        let key_array = GenericArray::from_slice(&key);
-        let cipher = Aes256::new(key_array);
-
-        // Encrypt each block with AES
-        let mut encrypted_data = Vec::with_capacity(padded_data.len());
-        for chunk in padded_data.chunks(16) {
-            let mut block = GenericArray::from_slice(chunk).clone();
-            
-            // XOR with IV (for first block) or previous ciphertext block (for CBC mode)
-            for (i, byte) in block.iter_mut().enumerate() {
-                if encrypted_data.len() < 16 {
-                    // First block uses IV
-                    *byte ^= iv[i];
-                } else {
-                    // Subsequent blocks use previous ciphertext block (CBC mode)
-                    let prev_block_idx = encrypted_data.len() - 16;
-                    *byte ^= encrypted_data[prev_block_idx + i];
-                }
-            }
-            
-            // Encrypt the block
-            cipher.encrypt_block(&mut block);
-            
-            // Add the encrypted block to our result
-            encrypted_data.extend_from_slice(block.as_slice());
-        }
-
-        // Combine salt, IV, and encrypted data for storage
-        let mut result = Vec::with_capacity(salt.len() + iv.len() + encrypted_data.len());
-        result.extend_from_slice(&salt);
-        result.extend_from_slice(&iv);
-        result.extend_from_slice(&encrypted_data);
-        
-        // Convert to base64 for storage using the new Engine API
-        Ok(base64::engine::general_purpose::STANDARD.encode(result))
-    }
-
-    /// Helper method to decrypt data with a password
-    fn decrypt_data(&self, encrypted_data: &str, password: &str) -> Result<String, WalletError> {        use aes::{Aes256, cipher::{BlockDecrypt, KeyInit, generic_array::GenericArray}};
-        use pbkdf2::pbkdf2_hmac;
-        use sha2::Sha256;
-        
-        // Decode from base64 using the new Engine API
-        let encrypted_bytes = match base64::engine::general_purpose::STANDARD.decode(encrypted_data) {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                return Err(WalletError::Generic(format!(
-                    "Failed to decode encrypted data: {}",
-                    e
-                )));
-            }
-        };
-        
-        // The first 16 bytes are the salt, the next 16 bytes are the IV
-        if encrypted_bytes.len() < 32 {
-            return Err(WalletError::Generic("Encrypted data is invalid".to_string()));
-        }
-        
-        // Extract salt and IV
-        let salt = &encrypted_bytes[0..16];
-        let iv = &encrypted_bytes[16..32];
-        let ciphertext = &encrypted_bytes[32..];
-        
-        // Make sure the ciphertext length is a multiple of 16 (AES block size)
-        if ciphertext.len() % 16 != 0 {
-            return Err(WalletError::Generic("Encrypted data has invalid length".to_string()));
-        }
-        
-        // Derive the key from the password using PBKDF2 with the same parameters
-        let mut key = [0u8; 32]; // 256-bit key for AES-256
-        pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, 10000, &mut key);
-        
-        // Create AES cipher instance
-        let key_array = GenericArray::from_slice(&key);
-        let cipher = Aes256::new(key_array);
-        
-        // Decrypt each block with AES
-        let mut decrypted_data = Vec::with_capacity(ciphertext.len());
-        
-        for (block_idx, chunk) in ciphertext.chunks(16).enumerate() {
-            // Decrypt the block
-            let mut block = GenericArray::from_slice(chunk).clone();
-            
-            cipher.decrypt_block(&mut block);
-            
-            // XOR with IV for the first block or previous ciphertext block for subsequent blocks
-            for (i, byte) in block.iter_mut().enumerate() {
-                if block_idx == 0 {
-                    // First block uses IV
-                    *byte ^= iv[i];
-                } else {
-                    // Subsequent blocks use previous ciphertext block
-                    let prev_block_start = (block_idx - 1) * 16;
-                    *byte ^= ciphertext[prev_block_start + i];
-                }
-            }
-            
-            // Add the decrypted block to our result
-            decrypted_data.extend_from_slice(block.as_slice());
-        }
-        
-        // Remove PKCS#7 padding
-        if let Some(&padding_len) = decrypted_data.last() {
-            if padding_len as usize <= 16 && padding_len > 0 {
-                // Check if padding looks valid
-                let padding_start = decrypted_data.len() - padding_len as usize;
-                let is_valid_padding = decrypted_data[padding_start..].iter()
-                    .all(|&b| b == padding_len);
-                
-                if is_valid_padding {
-                    decrypted_data.truncate(padding_start);
-                }
-            }
-        }
-        
-        // Convert back to string
-        match String::from_utf8(decrypted_data) {
-            Ok(decrypted) => Ok(decrypted),
-            Err(e) => Err(WalletError::Generic(format!(
-                "Failed to convert decrypted data to string: {}",
-                e
-            ))),
-        }
-    }    /// Remove a wallet from configuration
+    /// Remove a wallet from configuration
     pub async fn remove_wallet_from_config(&mut self, wallet_name: &str) -> Result<(), WalletError> {
         if let Some(config_manager) = &self.config_manager {
             info!("Removing wallet '{}' from configuration", wallet_name);
