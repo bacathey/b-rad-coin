@@ -122,9 +122,16 @@ export default function Developer() {  const { appSettings, updateSkipSeedPhrase
       setError(`Error deleting all wallets: ${err}`);
     } finally {
       setDeleteAllLoading(false);
-    }
-  };// Function to update skip seed phrase dialogs setting
+    }  };
+
+// Function to update skip seed phrase dialogs setting
   const handleSeedPhraseDialogsToggle = async (skipDialogs: boolean) => {
+    // Check if developer mode is enabled first
+    if (!appSettings?.developer_mode) {
+      setError('Developer mode must be enabled in Settings before you can change this setting.');
+      return;
+    }
+    
     // Prevent multiple simultaneous toggle operations
     if (toggleInProgressRef.current) {
       console.log('Toggle already in progress, ignoring this request');
@@ -139,19 +146,27 @@ export default function Developer() {  const { appSettings, updateSkipSeedPhrase
       
       // Update local state for immediate UI feedback
       setSkipSeedPhraseDialogs(skipDialogs);
-      
-      // Call the context function to update the backend setting and persist to disk
+        // Call the context function to update the backend setting and persist to disk
       await updateSkipSeedPhraseDialogs(skipDialogs);
+      
+      console.log('UpdateSkipSeedPhraseDialogs completed. Current appSettings:', appSettings);
+      
+      // Add a small delay to let the context update propagate
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Verify the setting was updated by checking the appSettings context
       if (appSettings && appSettings.skip_seed_phrase_dialogs !== skipDialogs) {
         console.warn('Settings context does not reflect change, may not have persisted correctly');
+        console.warn('Expected:', skipDialogs, 'Actual:', appSettings.skip_seed_phrase_dialogs);
       } else {
         console.log('Skip seed phrase dialogs setting updated successfully and persisted');
-      }
-    } catch (err) {
+      }    } catch (err) {
       console.error('Failed to update skip seed phrase dialogs setting:', err);
-      setError('Failed to update skip seed phrase dialogs setting. Changes will not persist across app restarts.');
+      if (err instanceof Error && err.message.includes('Developer mode must be enabled')) {
+        setError('Developer mode must be enabled in Settings before you can skip seed phrase dialogs.');
+      } else {
+        setError('Failed to update skip seed phrase dialogs setting. Changes will not persist across app restarts.');
+      }
       
       // Revert UI state if the update failed
       setSkipSeedPhraseDialogs(!skipDialogs);
@@ -173,12 +188,17 @@ export default function Developer() {  const { appSettings, updateSkipSeedPhrase
             <List>              <SettingsItem
                 icon={<SecurityIcon color="primary" />}
                 primary="Skip Seed Phrase Dialogs"
-                secondary="Skip seed phrase verification steps during wallet creation"
+                secondary={
+                  appSettings?.developer_mode 
+                    ? "Skip seed phrase verification steps during wallet creation" 
+                    : "Developer mode must be enabled in Settings to use this feature"
+                }
                 action={
-                  <Switch                    checked={skipSeedPhraseDialogs} // Now directly using skip variable
-                    onChange={(e) => handleSeedPhraseDialogsToggle(e.target.checked)} // Directly pass the value
+                  <Switch
+                    checked={skipSeedPhraseDialogs}
+                    onChange={(e) => handleSeedPhraseDialogsToggle(e.target.checked)}
                     color="primary"
-                    disabled={loading} // Disable during loading
+                    disabled={loading || !appSettings?.developer_mode} // Disable if not in developer mode
                   />
                 }
               />

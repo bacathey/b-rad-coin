@@ -27,8 +27,8 @@ import {
   Collapse, // Add Collapse import
 } from '@mui/material';
 import { useWallet } from '../context/WalletContext';
+import { useAppSettings } from '../context/AppSettingsContext';
 import { invoke } from '@tauri-apps/api/core';
-import { AppSettings } from '../types/settings';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import AddIcon from '@mui/icons-material/Add';
 import LockIcon from '@mui/icons-material/Lock';
@@ -86,6 +86,7 @@ export default function OpenCreateWalletDialog() {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
   const { isWalletOpen, setIsWalletOpen, setCurrentWallet, refreshWalletDetails, availableWallets } = useWallet();
+  const { appSettings } = useAppSettings();
   
   // Dialog state
   const [selectedWallet, setSelectedWallet] = useState('');
@@ -136,67 +137,30 @@ export default function OpenCreateWalletDialog() {
     setGeneratedSeedPhrase('');
     console.log('Create Wallet dialog form has been reset');
   };
-  // Load app settings
+  // Load app settings  // Load and sync settings from context
   useEffect(() => {
-    async function loadSettings() {
-      try {
-        const settings = await invoke<AppSettings>('get_app_settings');
-        
-        // Store both settings separately
-        setIsDeveloperMode(settings.developer_mode);
-        
-        // Only allow skipping seed phrase dialogs if developer mode is enabled
-        if (settings.developer_mode && settings.skip_seed_phrase_dialogs) {
-          setShowSeedPhraseDialogs(false); // Skip dialogs only if both conditions are true
-        } else {
-          setShowSeedPhraseDialogs(true); // Always show dialogs in non-dev mode
-        }
-        
-        console.log('App settings loaded:', { 
-          developerMode: settings.developer_mode, 
-          skipSeedDialogs: settings.skip_seed_phrase_dialogs,
-          willShowDialogs: !settings.developer_mode || !settings.skip_seed_phrase_dialogs
-        });
-      } catch (error) {
-        console.error('Failed to load app settings:', error);
-        // Default to showing seed phrase dialogs if settings can't be loaded
-        setShowSeedPhraseDialogs(true);
-        setIsDeveloperMode(false);
-      }
-    }    
-    loadSettings();
-  }, []);
-
-  // Refresh settings when dialog becomes visible
-  useEffect(() => {
-    if (!isWalletOpen) {
-      // Dialog is visible, refresh settings in case they changed
-      async function refreshSettings() {
-        try {
-          const settings = await invoke<AppSettings>('get_app_settings');
-          
-          setIsDeveloperMode(settings.developer_mode);
-          
-          // Update the seed phrase dialog setting
-          if (settings.developer_mode && settings.skip_seed_phrase_dialogs) {
-            setShowSeedPhraseDialogs(false);
-          } else {
-            setShowSeedPhraseDialogs(true);
-          }
-          
-          console.log('App settings refreshed for dialog:', { 
-            developerMode: settings.developer_mode, 
-            skipSeedDialogs: settings.skip_seed_phrase_dialogs,
-            willShowDialogs: !settings.developer_mode || !settings.skip_seed_phrase_dialogs
-          });
-        } catch (error) {
-          console.error('Failed to refresh app settings:', error);
-        }
-      }
+    if (appSettings) {
+      setIsDeveloperMode(appSettings.developer_mode);
       
-      refreshSettings();
-    }
-  }, [isWalletOpen]); // Refresh whenever dialog visibility changes// Sync local walletsList with context's availableWallets
+      // Only allow skipping seed phrase dialogs if developer mode is enabled
+      if (appSettings.developer_mode && appSettings.skip_seed_phrase_dialogs) {
+        setShowSeedPhraseDialogs(false); // Skip dialogs only if both conditions are true
+      } else {
+        setShowSeedPhraseDialogs(true); // Always show dialogs in non-dev mode
+      }
+        console.log('App settings synced from context:', { 
+        developerMode: appSettings.developer_mode, 
+        skipSeedDialogs: appSettings.skip_seed_phrase_dialogs,
+        willShowDialogs: !appSettings.developer_mode || !appSettings.skip_seed_phrase_dialogs,
+        finalShowSeedPhraseDialogs: appSettings.developer_mode && appSettings.skip_seed_phrase_dialogs ? false : true
+      });
+    } else {
+      // Default to showing seed phrase dialogs if settings aren't loaded yet
+      setShowSeedPhraseDialogs(true);
+      setIsDeveloperMode(false);
+    }  }, [appSettings]); // Re-run whenever appSettings changes
+
+  // Sync local walletsList with context's availableWallets
   useEffect(() => {
     console.log('OpenCreateWalletDialog: Syncing wallet list from context, available wallets:', availableWallets.length);
     console.log('OpenCreateWalletDialog: Available wallet names:', availableWallets.map(w => w.name));
@@ -430,8 +394,14 @@ export default function OpenCreateWalletDialog() {
         password: walletPassword,
         usePassword: usePasswordProtection
       };
+        // Check if we should show seed phrase dialogs
+      console.log('Before wallet creation decision:', { 
+        showSeedPhraseDialogs, 
+        isDeveloperMode, 
+        appSettingsDeveloperMode: appSettings?.developer_mode,
+        appSettingsSkipSeed: appSettings?.skip_seed_phrase_dialogs
+      });
       
-      // Check if we should show seed phrase dialogs
       if (showSeedPhraseDialogs) {
         // Normal flow - show seed phrase generation and verification dialogs
         console.log('Normal flow: showing seed phrase dialogs');
