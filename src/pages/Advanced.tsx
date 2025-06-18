@@ -22,7 +22,6 @@ import {
 } from '@mui/material';
 import { useState, useEffect } from 'react';
 import { useWallet } from '../context/WalletContext';
-import FolderIcon from '@mui/icons-material/Folder';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -114,13 +113,9 @@ function WalletLocationSection() {  const {
     isWalletOpen, 
     isWalletSecured, 
     getCurrentWalletPath, 
-    openWalletFolder,
-    openWalletFolderWithShell,
     deleteWallet,
-    refreshWalletDetails 
-  } = useWallet();
+    refreshWalletDetails  } = useWallet();
   
-  const [walletPath, setWalletPath] = useState<string | null>(null);
   const [displayPath, setDisplayPath] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,12 +127,10 @@ function WalletLocationSection() {  const {
   const [secureDialogOpen, setSecureDialogOpen] = useState(false);
   const theme = useTheme(); // Add this line to get the theme object
   const isDarkMode = theme.palette.mode === 'dark'; // Add this line
-  
-  useEffect(() => {
+    useEffect(() => {
     if (isWalletOpen && currentWallet) {
       fetchWalletPath();
     } else {
-      setWalletPath(null);
       setDisplayPath(null);
     }
   }, [isWalletOpen, currentWallet]);
@@ -160,11 +153,7 @@ function WalletLocationSection() {  const {
           console.log(`  Position ${i}: "${char}" (char code: ${code})`);
         }
       }
-      
-      if (path) {
-        // Store the original path for operations (opening folder)
-        setWalletPath(path);
-        
+        if (path) {
         // Create a normalized path for display, ensuring Windows-style backslashes
         const normalizedPath = path.replace(/\//g, '\\');
         setDisplayPath(normalizedPath);
@@ -172,7 +161,6 @@ function WalletLocationSection() {  const {
         console.log(`Original path: ${path}`);
         console.log(`Display path: ${normalizedPath}`);
       } else {
-        setWalletPath(null);
         setDisplayPath(null);
       }
     } catch (error) {
@@ -182,117 +170,7 @@ function WalletLocationSection() {  const {
     } finally {
       setIsLoading(false);
     }
-  };
-    // Compare paths and handle folder opening more directly
-  const handleOpenFolder = async () => {
-    if (!walletPath) {
-      console.error('Cannot open folder: walletPath is null or undefined');
-      return;
-    }
-    
-    try {
-      // Log the path being used
-      console.log(`Opening wallet folder with path: "${walletPath}"`);
-      console.log(`Path type: ${typeof walletPath}`);
-      console.log(`Path length: ${walletPath.length}`);
-      
-      // If the path has unusual characters, log them
-      if (walletPath.includes('\u0000') || 
-          walletPath.includes('\r') || 
-          walletPath.includes('\n') ||
-          walletPath.includes('\t')) {
-        console.warn('Path contains special characters that may cause issues');
-        console.log('Path with visible special chars:', 
-                    walletPath.replace(/\u0000/g, '\\0')
-                             .replace(/\r/g, '\\r')
-                             .replace(/\n/g, '\\n')
-                             .replace(/\t/g, '\\t'));
-      }
-      
-      // Try extracting the wallet name from the path to use as a fallback
-      const pathParts = walletPath.split(/[\/\\]/);
-      let walletName = currentWallet?.name;
-      
-      // Try to find the wallet name in the path parts if not available from currentWallet
-      if (!walletName) {
-        for (const part of pathParts) {
-          if (part && part.length > 0 && !part.includes('.')) {
-            walletName = part;
-            break;
-          }
-        }
-      }
-      
-      console.log(`Extracted wallet name: ${walletName}`);
-      
-      // Try opening with the opener library first
-      console.log('Attempting to open folder with opener library...');
-      let result = await openWalletFolder(walletPath);
-      console.log(`openWalletFolder result: ${result}`);
-      
-      // If that fails, try with the shell command fallback
-      if (!result) {
-        console.log('Opener library failed, trying with shell command fallback...');
-        result = await openWalletFolderWithShell(walletPath);
-        console.log(`openWalletFolderWithShell result: ${result}`);
-      }
-      
-      // If that still fails and we have a wallet name, try a different path construction
-      if (!result && walletName) {
-        const fallbackPath = `C:\\Users\\bacat\\source\\repos\\b-rad-coin\\src-tauri\\wallets\\${walletName}`;
-        console.log(`Both methods failed. Trying again with fallback path: ${fallbackPath}`);
-        
-        // Try both methods with the fallback path
-        result = await openWalletFolder(fallbackPath);
-        if (!result) {
-          result = await openWalletFolderWithShell(fallbackPath);
-        }
-      }
-      
-      if (!result) {
-        const errorMessage = 'Failed to open wallet folder. The folder may no longer exist at the specified location.';
-        console.error(errorMessage);
-        setError(errorMessage);
-        setShowErrorAlert(true);
-      } else {
-        console.log('Successfully opened folder');
-      }
-    } catch (error) {
-      console.error('Error opening wallet folder:', error);
-      setError(`Error opening wallet folder: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setShowErrorAlert(true);
-    }
-  };
-    // Debug function to test folder opening with a fixed path
-  const testOpenFolder = async () => {
-    try {
-      // Use a known-good path to test
-      const testPath = "C:\\Users\\bacat\\source\\repos\\b-rad-coin\\src-tauri\\wallets";
-      console.log(`Testing folder opening with fixed path: "${testPath}"`);
-      
-      // Try opener library first
-      console.log("Testing opener library method...");
-      let result = await openWalletFolder(testPath);
-      console.log(`Test openWalletFolder result: ${result}`);
-      
-      if (!result) {
-        // Try shell command fallback
-        console.log("Opening with opener library failed, testing shell command fallback...");
-        result = await openWalletFolderWithShell(testPath);
-        console.log(`Test openWalletFolderWithShell result: ${result}`);
-      }
-      
-      if (!result) {
-        console.error('Test failed: Could not open test folder with either method');
-        setError('Failed to open test folder. This may indicate a system-level issue.');
-        setShowErrorAlert(true);
-      } else {
-        console.log('Test succeeded: Opened test folder');
-      }
-    } catch (error) {
-      console.error('Error in test folder open:', error);
-    }
-  };
+  };    // Compare paths and handle folder opening more directly
   
   const handleOpenDeleteDialog = () => {
     setDeleteDialogOpen(true);

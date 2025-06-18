@@ -37,11 +37,22 @@ impl WalletManager {
     pub fn set_config_manager(&mut self, config_manager: Arc<ConfigManager>) {
         debug!("Setting ConfigManager for wallet persistence");
         self.config_manager = Some(config_manager);
-    }
-
-    /// Get a list of available wallets
-    pub fn list_wallets(&self) -> Vec<&WalletInfo> {
+    }    /// Get a list of available wallets
+    pub fn list_wallets(&mut self) -> Vec<&WalletInfo> {
         debug!("Listing available wallets");
+        
+        // If we have a config manager, refresh our config from the file to ensure we have the latest data
+        if let Some(config_manager) = &self.config_manager {
+            let fresh_config = config_manager.get_config();
+            if self.config.wallets.len() != fresh_config.wallets.len() {
+                info!("Config refresh: wallet count changed from {} to {}", 
+                      self.config.wallets.len(),
+                      fresh_config.wallets.len());
+            }
+            self.config = fresh_config;
+        }
+        
+        debug!("Current config has {} wallets", self.config.wallets.len());
         self.config.wallets.iter().collect()
     }
 
@@ -513,20 +524,17 @@ impl WalletManager {
     }
 
     /// Helper method to encrypt data with a password using AES with PBKDF2
-    fn encrypt_data(&self, data: &str, password: &str) -> Result<String, WalletError> {
-        use aes::{Aes256, cipher::{BlockEncrypt, KeyInit}};
+    fn encrypt_data(&self, data: &str, password: &str) -> Result<String, WalletError> {        use aes::{Aes256, cipher::{BlockEncrypt, KeyInit, generic_array::GenericArray}};
         use pbkdf2::pbkdf2_hmac;
         use sha2::Sha256;
-        use generic_array::GenericArray;
-        use rand::{RngCore, rngs::OsRng};
-
-        // Generate a salt for PBKDF2
+        use rand::{RngCore, rng};        // Generate a salt for PBKDF2
         let mut salt = [0u8; 16];
-        OsRng.fill_bytes(&mut salt);
+        let mut rng = rng();
+        rng.fill_bytes(&mut salt);
         
         // Generate an initialization vector (IV) for AES
         let mut iv = [0u8; 16]; 
-        OsRng.fill_bytes(&mut iv);
+        rng.fill_bytes(&mut iv);
 
         // Derive a key from the password using PBKDF2
         let mut key = [0u8; 32]; // 256-bit key for AES-256
@@ -546,7 +554,7 @@ impl WalletManager {
         // Encrypt each block with AES
         let mut encrypted_data = Vec::with_capacity(padded_data.len());
         for chunk in padded_data.chunks(16) {
-            let mut block = GenericArray::clone_from_slice(chunk);
+            let mut block = GenericArray::from_slice(chunk).clone();
             
             // XOR with IV (for first block) or previous ciphertext block (for CBC mode)
             for (i, byte) in block.iter_mut().enumerate() {
@@ -578,11 +586,9 @@ impl WalletManager {
     }
 
     /// Helper method to decrypt data with a password
-    fn decrypt_data(&self, encrypted_data: &str, password: &str) -> Result<String, WalletError> {
-        use aes::{Aes256, cipher::{BlockDecrypt, KeyInit}};
+    fn decrypt_data(&self, encrypted_data: &str, password: &str) -> Result<String, WalletError> {        use aes::{Aes256, cipher::{BlockDecrypt, KeyInit, generic_array::GenericArray}};
         use pbkdf2::pbkdf2_hmac;
         use sha2::Sha256;
-        use generic_array::GenericArray;
         
         // Decode from base64 using the new Engine API
         let encrypted_bytes = match base64::engine::general_purpose::STANDARD.decode(encrypted_data) {
@@ -623,7 +629,7 @@ impl WalletManager {
         
         for (block_idx, chunk) in ciphertext.chunks(16).enumerate() {
             // Decrypt the block
-            let mut block = GenericArray::clone_from_slice(chunk);
+            let mut block = GenericArray::from_slice(chunk).clone();
             
             cipher.decrypt_block(&mut block);
             
@@ -665,10 +671,8 @@ impl WalletManager {
                 e
             ))),
         }
-    }
-
-    /// Remove a wallet from configuration
-    pub async fn remove_wallet_from_config(&self, wallet_name: &str) -> Result<(), WalletError> {
+    }    /// Remove a wallet from configuration
+    pub async fn remove_wallet_from_config(&mut self, wallet_name: &str) -> Result<(), WalletError> {
         if let Some(config_manager) = &self.config_manager {
             info!("Removing wallet '{}' from configuration", wallet_name);
             
@@ -689,12 +693,13 @@ impl WalletManager {
             updated_config.wallets = updated_config.wallets
                 .into_iter()
                 .filter(|w| w.name != wallet_name)
-                .collect();
-            
-            // Update the config file
-            match config_manager.update_config(updated_config).await {
+                .collect();            // Update the config file
+            match config_manager.update_config(updated_config.clone()).await {
                 Ok(_) => {
-                    info!("Wallet '{}' removed from configuration", wallet_name);
+                    info!("Wallet '{}' removed from configuration file", wallet_name);
+                    // Also update the internal config to keep it in sync
+                    self.config = updated_config;
+                    debug!("Internal WalletManager config updated: {} wallets remaining", self.config.wallets.len());
                     Ok(())
                 },
                 Err(e) => {

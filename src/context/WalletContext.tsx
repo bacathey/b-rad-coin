@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -52,30 +52,35 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [currentWallet, setCurrentWallet] = useState<WalletInfo | null>(null);
   const [isWalletSecured, setIsWalletSecured] = useState(false);
-  const [availableWallets, setAvailableWallets] = useState<WalletDetails[]>([]);
-
-  // Function to fetch all wallet details (including secured status)
-  const refreshWalletDetails = async () => {
+  const [availableWallets, setAvailableWallets] = useState<WalletDetails[]>([]);  // Function to fetch all wallet details (including secured status)
+  const refreshWalletDetails = useCallback(async () => {
+    console.log('WalletContext: refreshWalletDetails called');
     try {
       const wallets = await invoke<WalletDetails[]>('get_wallet_details');
+      console.log('WalletContext: Got wallets from backend:', wallets.length);
       setAvailableWallets(wallets);
       
-      // If we have a current wallet open, update its security status
-      if (currentWallet && isWalletOpen) {
-        const currentWalletDetails = wallets.find(w => w.name === currentWallet.name);
-        if (currentWalletDetails) {
-          setIsWalletSecured(currentWalletDetails.secured);
-          setCurrentWallet({
-            ...currentWallet,
-            secured: currentWalletDetails.secured
-          });
+      // Use functional updates to avoid dependencies
+      setCurrentWallet(prevWallet => {
+        if (prevWallet) {
+          const currentWalletDetails = wallets.find(w => w.name === prevWallet.name);
+          if (currentWalletDetails) {
+            setIsWalletSecured(currentWalletDetails.secured);
+            return {
+              ...prevWallet,
+              secured: currentWalletDetails.secured
+            };
+          }
         }
-      }
+        return prevWallet;
+      });
+      
+      console.log('WalletContext: availableWallets state updated');
     } catch (error) {
       console.error('Error fetching wallet details:', error);
       setAvailableWallets([]);
     }
-  };
+  }, []); // Empty dependencies since we use functional updates
 
   // Update isWalletSecured whenever currentWallet changes
   useEffect(() => {
@@ -198,20 +203,24 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       return false;
     }
   };
-  
   // Function to delete a wallet
   const deleteWallet = async (walletName: string): Promise<boolean> => {
+    console.log('WalletContext: deleteWallet called for:', walletName);
     try {
       const result = await invoke<boolean>('delete_wallet', { walletName });
+      console.log('WalletContext: delete_wallet backend result:', result);
       if (result) {
         // If the deleted wallet was the current one, reset state
         if (currentWallet?.name === walletName) {
+          console.log('WalletContext: Deleted wallet was current, resetting state');
           setIsWalletOpen(false);
           setCurrentWallet(null);
           setIsWalletSecured(false);
         }
         // Refresh the list of available wallets
+        console.log('WalletContext: Refreshing wallet details after deletion');
         await refreshWalletDetails();
+        console.log('WalletContext: Wallet details refresh completed');
       }
       return result;
     } catch (error) {

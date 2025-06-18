@@ -17,38 +17,38 @@ name = "b_rad_coin_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.0.0", features = [] }
+tauri-build = { version = "2.2.0", features = [] }
 
 [dependencies]
 # Tauri dependencies
-tauri = { version = "2.0.0", features = [] }
-tauri-plugin-fs = "2.0.0"
-tauri-plugin-opener = "2.0.0"
-tauri-plugin-single-instance = { version = "2.0.0" }
-serde = { version = "1.0", features = ["derive"] }
+tauri = { version = "2.5.1", features = [] }
+tauri-plugin-fs = "2.3.0"
+tauri-plugin-opener = "2.3.0"
+tauri-plugin-single-instance = { version = "2.2.4" }
+serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0"
-rand = "0.8"
-base64 = "0.21.0"
+rand = "0.9.1"
+base64 = "0.22.1"
 
 # Cryptography dependencies
 aes = "0.8.3"
 pbkdf2 = "0.12.2"
 hmac = "0.12.1"
-sha2 = "0.10.7"
-generic-array = "0.14.7"
+sha2 = "0.10.9"
+generic-array = "1.2.0"
 
 # Error handling
-anyhow = "1.0.75"
+anyhow = "1.0.98"
 thiserror = "2.0.12"  # For defining error types
 
 # Async dependencies
-tokio = { version = "1.44.2", features = ["full"] }
+tokio = { version = "1.45.1", features = ["full"] }
 async-trait = "0.1.88"
 
 # Logging dependencies
 log = "0.4.27"
 env_logger = "0.11.8"
-chrono = "0.4.31"
+chrono = "0.4.41"
 once_cell = "1.21.3"
 
 # Platform-specific directories
@@ -56,7 +56,7 @@ dirs = "6.0.0"
 ring = "0.17.14"
 
 # File system utilities
-opener = "0.6.1"
+opener = "0.8.2"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
@@ -64,5 +64,5 @@ opener = "0.6.1"
 custom-protocol = ["tauri/custom-protocol"]
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-updater = "2.7.0"
+tauri-plugin-updater = "2.8.1"
 

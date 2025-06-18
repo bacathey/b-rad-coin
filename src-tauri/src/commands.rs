@@ -7,7 +7,7 @@ use tauri::{command, Manager, State};
 use crate::config::{AppSettings, ConfigManager}; // Ensure WalletInfo is imported if not already
 use crate::security::AsyncSecurityManager;
 use crate::wallet_manager::AsyncWalletManager;
-use rand::seq::SliceRandom;
+use rand::prelude::IndexedRandom;
 use crate::bip39_words::WORD_LIST;
 
 /// Response type for commands with proper error handling
@@ -62,9 +62,8 @@ pub async fn close_wallet(wallet_manager: State<'_, AsyncWalletManager>) -> Comm
 #[command]
 pub async fn get_available_wallets(
     wallet_manager: State<'_, AsyncWalletManager>,
-) -> CommandResult<Vec<String>> {
-    debug!("Command: get_available_wallets");
-    let manager = wallet_manager.get_manager().await;
+) -> CommandResult<Vec<String>> {    debug!("Command: get_available_wallets");
+    let mut manager = wallet_manager.get_manager().await;
 
     // Get wallets and extract names
     let wallets = manager
@@ -80,12 +79,11 @@ pub async fn get_available_wallets(
 #[command]
 pub async fn get_wallet_details(
     wallet_manager: State<'_, AsyncWalletManager>,
-) -> CommandResult<Vec<WalletDetails>> {
-    debug!("Command: get_wallet_details");
-    let manager = wallet_manager.get_manager().await;
-
+) -> CommandResult<Vec<WalletDetails>> {    debug!("Command: get_wallet_details");
+    let mut manager = wallet_manager.get_manager().await;
+    
     // Get wallets and convert to WalletDetails
-    let wallets = manager
+    let wallets: Vec<WalletDetails> = manager
         .list_wallets()
         .into_iter()
         .map(|w| WalletDetails {
@@ -93,6 +91,10 @@ pub async fn get_wallet_details(
             secured: w.secured,
         })
         .collect();
+
+    debug!("get_wallet_details: Found {} wallets", wallets.len());if !wallets.is_empty() {
+        debug!("Available wallets: {}", wallets.iter().map(|w| w.name.as_str()).collect::<Vec<_>>().join(", "));
+    }
 
     Ok(wallets)
 }
@@ -592,9 +594,7 @@ pub fn get_app_version() -> CommandResult<String> {
 #[command]
 pub async fn generate_seed_phrase() -> CommandResult<String> {
     debug!("Command: generate_seed_phrase");
-    let mut rng = rand::thread_rng();
-    
-    // Select 12 unique words randomly from the BIP-39 English list
+    let mut rng = rand::rng();    // Select 12 unique words randomly from the BIP-39 English list
     let words: Vec<&str> = WORD_LIST
         .choose_multiple(&mut rng, 12)
         .cloned()
@@ -815,9 +815,7 @@ pub async fn delete_wallet(
         let wallets_base_dir = manager.get_wallets_dir(); // Returns PathBuf
         wallets_base_dir.join(&relative_wallet_path) // Join to get full PathBuf
         // WalletManager lock (manager) is released here
-    };
-    
-    // --- Step 4: Remove wallet entry from configuration using WalletManager's method ---
+    };      // --- Step 4: Remove wallet entry from configuration using WalletManager's method ---
     // This was the original location of this logic in the old delete_wallet.
     { // Scope for WalletManager lock (modifying config part)
         let mut manager = wallet_manager_state.get_manager().await;

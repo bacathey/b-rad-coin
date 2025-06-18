@@ -27,7 +27,6 @@ import {
   Collapse, // Add Collapse import
 } from '@mui/material';
 import { useWallet } from '../context/WalletContext';
-import { getWalletDetails } from '../lib/wallet'; 
 import { invoke } from '@tauri-apps/api/core';
 import { AppSettings } from '../types/settings';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
@@ -86,7 +85,7 @@ function TabPanel(props: TabPanelProps) {
 export default function OpenCreateWalletDialog() {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
-  const { isWalletOpen, setIsWalletOpen, setCurrentWallet, refreshWalletDetails } = useWallet();
+  const { isWalletOpen, setIsWalletOpen, setCurrentWallet, refreshWalletDetails, availableWallets } = useWallet();
   
   // Dialog state
   const [selectedWallet, setSelectedWallet] = useState('');
@@ -151,12 +150,43 @@ export default function OpenCreateWalletDialog() {
         setShowSeedPhraseDialogs(true);
         setIsDeveloperMode(false);
       }
-    }
-    
+    }    
     loadSettings();
-  }, []);
-
-  // Check for duplicate wallet names when wallet name changes
+  }, []);  // Sync local walletsList with context's availableWallets
+  useEffect(() => {
+    console.log('OpenCreateWalletDialog: Syncing wallet list from context, available wallets:', availableWallets.length);
+    console.log('OpenCreateWalletDialog: Available wallet names:', availableWallets.map(w => w.name));
+    console.log('OpenCreateWalletDialog: Currently selected wallet:', selectedWallet);
+    
+    setWalletsList(availableWallets);
+    
+    // If we have wallets, handle selection
+    if (availableWallets.length > 0) {
+      // Check if currently selected wallet still exists
+      const selectedWalletExists = selectedWallet && availableWallets.find(w => w.name === selectedWallet);
+      
+      if (!selectedWalletExists) {
+        // Either no wallet selected or selected wallet doesn't exist - select first one
+        console.log('OpenCreateWalletDialog: Selecting first wallet:', availableWallets[0].name);
+        setSelectedWallet(availableWallets[0].name);
+        setIsSelectedWalletSecured(availableWallets[0].secured);
+      } else {
+        // Selected wallet still exists, update its security status
+        const currentWalletDetails = availableWallets.find(w => w.name === selectedWallet);
+        if (currentWalletDetails) {
+          setIsSelectedWalletSecured(currentWalletDetails.secured);
+        }
+      }
+      setTabValue(0); // Set to Open Wallet tab when wallets exist
+    } else {
+      // If no wallets exist, clear selection and set to Create Wallet tab
+      console.log('OpenCreateWalletDialog: No wallets available, clearing selection');
+      setSelectedWallet('');
+      setIsSelectedWalletSecured(false);
+      setTabValue(1);
+    }
+    setIsGettingWallets(false);
+  }, [availableWallets, selectedWallet]); // Re-adding selectedWallet but with better logic to prevent loops  // Check for duplicate wallet names when wallet name changes
   useEffect(() => {
     if (newWalletName.trim()) {
       const isDuplicate = walletsList.some(wallet => 
@@ -174,40 +204,35 @@ export default function OpenCreateWalletDialog() {
       return `A wallet with name "${newWalletName}" already exists`;
     }
     return "";
-  }, [isWalletNameDuplicate, newWalletName]);
-
-  // Fetch available wallets when the component mounts or when isWalletOpen changes
+  }, [isWalletNameDuplicate, newWalletName]);  // Trigger wallet details refresh when the dialog opens
   useEffect(() => {
-    async function fetchWallets() {
-      try {
-        setIsGettingWallets(true);
-        const wallets = await getWalletDetails();
-        setWalletsList(wallets);
-        
-        // If we have wallets, select the first one by default for better UX
-        if (wallets.length > 0) {
-          setSelectedWallet(wallets[0].name);
-          setIsSelectedWalletSecured(wallets[0].secured);
-          setTabValue(0); // Set to Open Wallet tab when wallets exist
-        } else if (wallets.length === 0) {
-          // If no wallets exist, set to Create Wallet tab
-          setTabValue(1);
-        }
-      } catch (error) {
-        console.error('Failed to fetch available wallets:', error);
-        setWalletsList([]);
-        setTabValue(1); // Set to Create Wallet tab on error
-      } finally {
-        setIsGettingWallets(false);
-      }
-    }
-
-    // Always fetch wallets when the dialog should be open
+    // Always refresh wallets when the dialog should be open to ensure fresh data
     if (!isWalletOpen) {
-      fetchWallets();
+      console.log('OpenCreateWalletDialog: Dialog opening, refreshing wallet details');
+      setIsGettingWallets(true);
+      refreshWalletDetails().finally(() => setIsGettingWallets(false));
     }
-  }, [isWalletOpen]); // Remove selectedWallet dependency to avoid loop
+  }, [isWalletOpen]); // Removed refreshWalletDetails from dependencies
+  // Force refresh when dialog becomes visible to ensure we have fresh data
+  useEffect(() => {
+    if (!isWalletOpen) {
+      console.log('OpenCreateWalletDialog: Dialog became visible, ensuring fresh wallet list');
+      // Force a fresh load from the context
+      refreshWalletDetails().catch(error => {
+        console.error('Failed to refresh wallet details on dialog open:', error);
+      });
+    }
+  }, [isWalletOpen, refreshWalletDetails]);
 
+  // Clear all password fields whenever the dialog becomes visible
+  useEffect(() => {
+    if (!isWalletOpen) {
+      console.log('OpenCreateWalletDialog: Dialog opened, clearing all password fields');
+      setWalletPassword('');
+      setOpenWalletPassword('');
+      setConfirmPassword('');
+    }
+  }, [isWalletOpen]);
   const handleWalletChange = (event: SelectChangeEvent) => {
     const walletName = event.target.value as string;
     setSelectedWallet(walletName);
@@ -216,10 +241,8 @@ export default function OpenCreateWalletDialog() {
     const walletInfo = walletsList.find(w => w.name === walletName);
     setIsSelectedWalletSecured(walletInfo?.secured || false);
     
-    // Clear password if switching to an unsecured wallet
-    if (walletInfo && !walletInfo.secured) {
-      setOpenWalletPassword('');
-    }
+    // Always clear password when switching wallets for security
+    setOpenWalletPassword('');
   };
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
@@ -227,6 +250,10 @@ export default function OpenCreateWalletDialog() {
     setErrorMessage('');
     // Reset recovery mode when changing tabs
     setIsRecoveryMode(false);
+    // Clear all password fields when switching tabs for security
+    setWalletPassword('');
+    setOpenWalletPassword('');
+    setConfirmPassword('');
   };
 
   const handleOpenWallet = async () => {
@@ -531,6 +558,9 @@ export default function OpenCreateWalletDialog() {
     setUsePasswordProtection(false);
   };
 
+  // Debug log to track wallet list changes
+  console.log('OpenCreateWalletDialog render: walletsList =', walletsList.map(w => w.name), 'selectedWallet =', selectedWallet);
+
   return (
     <>
       {/* Backdrop that covers the entire app when wallet is not open */}      
@@ -675,8 +705,7 @@ export default function OpenCreateWalletDialog() {
                   <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
                     <CircularProgress />
                   </Box>
-                ) : (
-                  <FormControl fullWidth sx={{ mb: 2 }}>
+                ) : (                  <FormControl fullWidth sx={{ mb: 2 }}>
                     <InputLabel id="wallet-select-label">Select Wallet</InputLabel>
                     <Select
                       labelId="wallet-select-label"
@@ -684,20 +713,23 @@ export default function OpenCreateWalletDialog() {
                       value={selectedWallet}
                       label="Select Wallet"
                       onChange={handleWalletChange}
-                    >
-                      {walletsList.map((wallet) => (
-                        <MenuItem key={wallet.name} value={wallet.name}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                            <ListItemIcon sx={{ minWidth: 36 }}>
-                              {wallet.secured ? 
-                                <LockIcon color="warning" fontSize="small" /> : 
-                                <LockOpenIcon color="success" fontSize="small" />
-                              }
-                            </ListItemIcon>
-                            {wallet.name}
-                          </Box>
-                        </MenuItem>
-                      ))}
+                      key={walletsList.length}
+                    >                      {walletsList.map((wallet) => {
+                        console.log('OpenCreateWalletDialog: Rendering MenuItem for wallet:', wallet.name);
+                        return (
+                          <MenuItem key={wallet.name} value={wallet.name}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                              <ListItemIcon sx={{ minWidth: 36 }}>
+                                {wallet.secured ? 
+                                  <LockIcon color="warning" fontSize="small" /> : 
+                                  <LockOpenIcon color="success" fontSize="small" />
+                                }
+                              </ListItemIcon>
+                              {wallet.name}
+                            </Box>
+                          </MenuItem>
+                        );
+                      })}
                     </Select>
                   </FormControl>
                 )}
