@@ -7,6 +7,8 @@ use log::{debug, error, info};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use rand::Rng;
+use sha2::Digest;
 
 /// Wallet type representing an open wallet
 pub struct Wallet {
@@ -335,9 +337,7 @@ impl WalletManager {
 
         info!("Successfully created wallet: {}", name);
         Ok(())
-    }
-
-    /// Create a wallet with a seed phrase
+    }    /// Create a wallet with a seed phrase
     // Make this function sync as save is sync
     pub fn create_wallet_with_seed(&mut self, name: &str, password: &str, seed_phrase: &str, is_secured: bool) -> Result<(), WalletError> {
         info!("Attempting to create new wallet with seed phrase: {}", name);
@@ -363,27 +363,26 @@ impl WalletManager {
 
         }
 
-        // Generate a dummy master public key for now
-        // In a real implementation, this would be derived from the seed phrase
-        let master_public_key = "xpub_dummy_for_development_placeholder";
+        // Determine if this is a real seed phrase or developer placeholder
+        let is_placeholder_seed = seed_phrase.contains("test word wallet") && seed_phrase.contains("developer mode");
+        
+        // Generate keys based on seed phrase type
+        let (master_public_key, master_private_key, key_pair) = if is_placeholder_seed {
+            // Developer mode placeholder - generate random keys
+            self.generate_dev_mode_keys(name)?
+        } else {
+            // Real seed phrase - derive keys from it
+            self.derive_keys_from_seed(seed_phrase, name)?
+        };
 
         // Create new WalletData object
-        let mut wallet_data = WalletData::new(name, master_public_key, is_secured);
+        let mut wallet_data = WalletData::new(name, &master_public_key, is_secured);
         
-        // Set the seed phrase
-        wallet_data.set_sensitive_data(seed_phrase, "xpriv_dummy_for_development_placeholder");
+        // Set the seed phrase and master private key
+        wallet_data.set_sensitive_data(seed_phrase, &master_private_key);
 
-        // Derive and add a dummy key pair for now
-        // TODO: In a real implementation, derive proper keys from the seed phrase
-        wallet_data.add_key_pair(KeyPair {
-            address: format!("address_{}_0", name),
-            // Use KeyType enum variant
-            key_type: KeyType::Legacy, // Assuming p2pkh corresponds to Legacy
-            derivation_path: "m/44'/0'/0'/0/0".to_string(),
-            public_key: "dummy_public_key".to_string(),
-            // Provide String directly, not Option<String>
-            private_key: if is_secured { "dummy_encrypted_private_key".to_string() } else { "dummy_private_key".to_string() },
-        });
+        // Add the derived key pair
+        wallet_data.add_key_pair(key_pair);
         
         // Save the wallet data to disk
         let wallet_data_path = wallet_dir_path.join("wallet.dat");
@@ -432,10 +431,75 @@ impl WalletManager {
             }
         } else {
             debug!("No ConfigManager available, wallet config will not persist across sessions");
-        }
-
-        info!("Successfully created wallet with seed phrase: {}", name);
+        }        info!("Successfully created wallet with seed phrase: {}", name);
         Ok(())
+    }    /// Generate keys for developer mode (random keys)
+    fn generate_dev_mode_keys(&self, name: &str) -> Result<(String, String, KeyPair), WalletError> {
+        info!("Generating random keys for developer mode wallet: {}", name);
+        
+        // Generate random bytes for private key (32 bytes for secp256k1)
+        let mut private_key_bytes = [0u8; 32];
+        let mut rng = rand::rng();
+        for byte in &mut private_key_bytes {
+            *byte = rng.random();
+        }
+        
+        // Convert to hex string for storage
+        let private_key_hex = hex::encode(private_key_bytes);
+        
+        // Generate a placeholder public key (in real implementation, derive from private key)
+        let public_key = format!("pubkey_{}_dev", name);
+        
+        // Generate a placeholder address
+        let address = format!("bc1q{}dev", &name.chars().take(10).collect::<String>().to_lowercase());
+        
+        // Create master keys
+        let master_private_key = format!("xprv_dev_{}", private_key_hex);
+        let master_public_key = format!("xpub_dev_{}", public_key);
+        
+        let key_pair = KeyPair {
+            address: address.clone(),
+            key_type: KeyType::NativeSegWit, // Use native segwit for dev mode
+            derivation_path: "m/44'/0'/0'/0/0".to_string(),
+            public_key,
+            private_key: private_key_hex,
+        };
+        
+        Ok((master_public_key, master_private_key, key_pair))
+    }/// Derive keys from a real seed phrase
+    fn derive_keys_from_seed(&self, seed_phrase: &str, name: &str) -> Result<(String, String, KeyPair), WalletError> {
+        info!("Deriving keys from seed phrase for wallet: {}", name);
+        
+        // For now, we'll create deterministic keys based on the seed phrase
+        // In a real implementation, this would use proper BIP39/BIP32 derivation
+        
+        // Create a simple hash of the seed phrase for deterministic key generation
+        use sha2::Sha256;
+        let mut hasher = Sha256::new();
+        hasher.update(seed_phrase.as_bytes());
+        hasher.update(name.as_bytes()); // Add wallet name for uniqueness
+        let seed_hash = hasher.finalize();
+        
+        // Use the hash as our private key material
+        let private_key_hex = hex::encode(&seed_hash[..]);
+        
+        // Generate deterministic public key and address based on seed
+        let public_key = format!("pubkey_{}", &private_key_hex[..16]);
+        let address = format!("bc1q{}", &private_key_hex[..32].chars().take(32).collect::<String>().to_lowercase());
+        
+        // Create master keys
+        let master_private_key = format!("xprv_seed_{}", private_key_hex);
+        let master_public_key = format!("xpub_seed_{}", public_key);
+        
+        let key_pair = KeyPair {
+            address: address.clone(),
+            key_type: KeyType::NativeSegWit, // Use native segwit
+            derivation_path: "m/44'/0'/0'/0/0".to_string(),
+            public_key,
+            private_key: private_key_hex,
+        };
+        
+        Ok((master_public_key, master_private_key, key_pair))
     }
 
     /// Update a wallet to be secured with a password

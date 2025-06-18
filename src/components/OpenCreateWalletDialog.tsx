@@ -120,8 +120,22 @@ export default function OpenCreateWalletDialog() {
   const [verifySeedDialogOpen, setVerifySeedDialogOpen] = useState(false);
   const [generatedSeedPhrase, setGeneratedSeedPhrase] = useState('');
   const [tempWalletData, setTempWalletData] = useState<{name: string; password: string; usePassword: boolean} | null>(null);
-  const [showSeedPhraseDialogs, setShowSeedPhraseDialogs] = useState(true);
-  const [isDeveloperMode, setIsDeveloperMode] = useState(false);
+  const [showSeedPhraseDialogs, setShowSeedPhraseDialogs] = useState(true);  const [isDeveloperMode, setIsDeveloperMode] = useState(false);
+
+  // Helper function to reset Create Wallet dialog fields and submit button
+  const resetCreateWalletForm = () => {
+    setNewWalletName('');
+    setWalletPassword('');
+    setConfirmPassword('');
+    setUsePasswordProtection(false);
+    setErrorMessage('');
+    setIsLoading(false);
+    setIsRecoveryMode(false);
+    setRecoverySeedPhrase('');
+    setTempWalletData(null);
+    setGeneratedSeedPhrase('');
+    console.log('Create Wallet dialog form has been reset');
+  };
 
   // Load app settings
   useEffect(() => {
@@ -293,7 +307,6 @@ export default function OpenCreateWalletDialog() {
       setIsLoading(false);
     }
   };
-
   // New function to create wallet directly without relying on state updates
   const createWalletDirectly = async (walletData: {name: string; password: string; usePassword: boolean}) => {
     setErrorMessage('');
@@ -301,13 +314,28 @@ export default function OpenCreateWalletDialog() {
     try {
       console.log('Creating wallet directly:', walletData.name);
       
-      // In developer mode with skip enabled, we don't need a seed phrase
-      // The backend will generate a placeholder
+      // Generate a seed phrase for wallet creation
+      // Only in developer mode with skip dialogs should we pass undefined to let backend generate placeholder
+      let seedPhraseToUse: string | undefined;
+      
+      if (isDeveloperMode && !showSeedPhraseDialogs) {
+        // Developer mode with skip enabled - let backend handle with placeholder
+        console.log('Developer mode with skip dialogs: using backend placeholder');
+        seedPhraseToUse = undefined;
+      } else {
+        // Normal mode or developer mode without skip - generate real seed phrase
+        console.log('Generating seed phrase for direct wallet creation');
+        seedPhraseToUse = await invoke<string>('generate_seed_phrase');
+        if (!seedPhraseToUse) {
+          throw new Error('Failed to generate seed phrase');
+        }
+      }
+      
       const result = await invoke('create_wallet', { 
         walletName: walletData.name, 
         password: walletData.password,
         usePassword: walletData.usePassword,
-        seedPhrase: undefined // Backend will handle this in dev mode
+        seedPhrase: seedPhraseToUse
       });
       
       if (result) {
@@ -339,7 +367,6 @@ export default function OpenCreateWalletDialog() {
       setIsLoading(false);
     }
   };
-
   const handleCreateWallet = async () => {
     setErrorMessage('');
     
@@ -374,9 +401,10 @@ export default function OpenCreateWalletDialog() {
         usePassword: usePasswordProtection
       };
       
-      // Generate seed phrase for normal flow
+      // Check if we should show seed phrase dialogs
       if (showSeedPhraseDialogs) {
-        // For the normal flow, we set the tempWalletData and show dialogs
+        // Normal flow - show seed phrase generation and verification dialogs
+        console.log('Normal flow: showing seed phrase dialogs');
         setTempWalletData(walletData);
         
         const phrase = await invoke<string>('generate_seed_phrase');
@@ -387,15 +415,18 @@ export default function OpenCreateWalletDialog() {
           setErrorMessage('Failed to generate seed phrase');
           setIsLoading(false);
         }
-      } else {
-        // Skip seed phrase generation and dialog flow in developer mode with skip option
+      } else if (isDeveloperMode) {
+        // Developer mode with skip dialogs enabled - create wallet directly
         console.log('Developer mode with skip dialogs enabled, creating wallet directly');
         console.log(`Developer mode: ${isDeveloperMode}, Skip dialogs: ${!showSeedPhraseDialogs}`);
         
-        // For skip mode, we need to create the wallet immediately
-        // We don't use state updates since they're asynchronous
-        // Instead, pass the data directly to the function
+        // Use the direct creation function which will handle the seed phrase appropriately
         await createWalletDirectly(walletData);
+      } else {
+        // This should not happen - if not in developer mode, dialogs should always be shown
+        console.error('Invalid state: not in developer mode but trying to skip dialogs');
+        setErrorMessage('Seed phrase verification is required for wallet creation');
+        setIsLoading(false);
       }
     } catch (error) {
       console.error('Failed to start wallet creation:', error);
@@ -591,11 +622,9 @@ export default function OpenCreateWalletDialog() {
       {/* Add Seed Phrase Dialog */}
       <SeedPhraseDialog
         open={seedPhraseDialogOpen}
-        seedPhrase={generatedSeedPhrase}
-        onClose={() => {
+        seedPhrase={generatedSeedPhrase}        onClose={() => {
           setSeedPhraseDialogOpen(false);
-          setTempWalletData(null); // Clear temp data if user cancels
-          setGeneratedSeedPhrase('');
+          resetCreateWalletForm(); // Reset all Create Wallet dialog fields and submit button
         }}
         onContinue={() => {
           setSeedPhraseDialogOpen(false);
@@ -606,11 +635,9 @@ export default function OpenCreateWalletDialog() {
       {/* Add Verify Seed Phrase Dialog */}
       <VerifySeedPhraseDialog
         open={verifySeedDialogOpen}
-        seedPhrase={generatedSeedPhrase}
-        onClose={() => {
+        seedPhrase={generatedSeedPhrase}        onClose={() => {
           setVerifySeedDialogOpen(false);
-          setTempWalletData(null); // Clear temp data if user cancels verification
-          setGeneratedSeedPhrase('');
+          resetCreateWalletForm(); // Reset all Create Wallet dialog fields and submit button
         }}
         onVerified={() => {
           setVerifySeedDialogOpen(false);
