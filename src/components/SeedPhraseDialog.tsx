@@ -33,13 +33,12 @@ export default function SeedPhraseDialog({
   const theme = useTheme(); // Add useTheme hook
   const isDarkMode = theme.palette.mode === 'dark'; // Check dark mode
   const [copied, setCopied] = useState(false);
-
   // Handle copying seed phrase to clipboard
   const handleCopyToClipboard = async () => {
     try {
       await navigator.clipboard.writeText(seedPhrase);
       setCopied(true);
-      setTimeout(() => setCopied(false), 3000); // Reset after 3 seconds
+      setTimeout(() => setCopied(false), 1500); // Reset after 1.5 seconds (same as private key dialog)
     } catch (error) {
       console.error('Failed to copy:', error);
     }
@@ -125,14 +124,22 @@ export default function SeedPhraseDialog({
               />
             ))}
           </Box>
-          
-          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
             <Button
               variant="outlined"
-              color="primary"
+              color={copied ? "success" : "primary"}
               startIcon={copied ? <CheckCircleIcon /> : <ContentCopyIcon />}
               onClick={handleCopyToClipboard}
-              sx={{ textTransform: 'none' }}
+              sx={{ 
+                textTransform: 'none',
+                minWidth: '160px', // Fixed width to prevent resizing
+                borderColor: copied ? 'success.main' : undefined,
+                color: copied ? 'success.main' : undefined,
+                '&:hover': {
+                  borderColor: copied ? 'success.dark' : undefined,
+                  // Remove backgroundColor to prevent green fill
+                }
+              }}
             >
               {copied ? 'Copied!' : 'Copy to Clipboard'}
             </Button>
