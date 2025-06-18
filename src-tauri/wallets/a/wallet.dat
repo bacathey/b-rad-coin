@@ -1,13 +1,28 @@
 {
   "name": "a",
-  "created_at": 1750225883,
-  "modified_at": 1750225883,
+  "created_at": 1750226379,
+  "modified_at": 1750226379,
   "block_height": 0,
-  "seed_phrase": null,
-  "master_private_key": null,
-  "master_public_key": "xpub_dummy_placeholder_for_basic_wallet",
-  "keys": {},
-  "addresses": [],
+  "seed_phrase": "test word wallet a developer mode enabled skip verify testing phrase",
+  "master_private_key": "xprv_dev_624953b7fcbbbdc31d24012903a3a5825f79effa6e7e950ddb342f70ff26823b",
+  "master_public_key": "xpub_dev_pubkey_a_dev",
+  "keys": {
+    "bc1qadev": {
+      "private_key": "624953b7fcbbbdc31d24012903a3a5825f79effa6e7e950ddb342f70ff26823b",
+      "public_key": "pubkey_a_dev",
+      "address": "bc1qadev",
+      "key_type": "NativeSegWit",
+      "derivation_path": "m/44'/0'/0'/0/0"
+    }
+  },
+  "addresses": [
+    {
+      "address": "bc1qadev",
+      "key_type": "NativeSegWit",
+      "derivation_path": "m/44'/0'/0'/0/0",
+      "label": null
+    }
+  ],
   "utxos": [],
   "transactions": [],
   "balance": 0,

@@ -32,17 +32,15 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       return null;
     }
   }; 
-
   // Update developer mode setting
   const updateDeveloperMode = async (enabled: boolean) => {
     try {
       console.log('Setting developer mode to:', enabled);
       
-      // Use "developerMode" camelCase in JS (will be converted to snake_case on the Rust side)
-      const payload = { developerMode: enabled };
-      
-      // Update backend
-      const result = await invoke<boolean>('update_app_settings', payload);
+      // Use snake_case to match the Rust backend expectations
+      const result = await invoke<boolean>('update_app_settings', {
+        developer_mode: enabled
+      });
       
       if (result) {
         console.log('Developer mode updated successfully');
@@ -61,9 +59,8 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       await refreshSettings();
       throw err;
     }
-  };  
-  
-  // Update skip seed phrase dialogs setting
+  };
+    // Update skip seed phrase dialogs setting
   const updateSkipSeedPhraseDialogs = async (skipDialogs: boolean) => {
     try {
       console.log('Updating skip seed phrase dialogs setting to:', skipDialogs);
@@ -74,14 +71,9 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         throw new Error('Developer mode must be enabled to skip seed phrase dialogs');
       }
       
-      // Use camelCase in JavaScript (will be converted to snake_case in Rust)
+      // Use snake_case to match the Rust backend expectations
       const result = await invoke<boolean>('update_app_settings', {
-        skipSeedPhraseDialogs: skipDialogs, // camelCase here
-        developer_mode: undefined,  // Send undefined for fields we're not updating
-        theme: undefined,
-        auto_backup: undefined,
-        notifications_enabled: undefined,
-        log_level: undefined
+        skip_seed_phrase_dialogs: skipDialogs
       });
       
       if (result) {

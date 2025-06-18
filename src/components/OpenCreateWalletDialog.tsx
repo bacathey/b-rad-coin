@@ -136,7 +136,6 @@ export default function OpenCreateWalletDialog() {
     setGeneratedSeedPhrase('');
     console.log('Create Wallet dialog form has been reset');
   };
-
   // Load app settings
   useEffect(() => {
     async function loadSettings() {
@@ -166,7 +165,38 @@ export default function OpenCreateWalletDialog() {
       }
     }    
     loadSettings();
-  }, []);  // Sync local walletsList with context's availableWallets
+  }, []);
+
+  // Refresh settings when dialog becomes visible
+  useEffect(() => {
+    if (!isWalletOpen) {
+      // Dialog is visible, refresh settings in case they changed
+      async function refreshSettings() {
+        try {
+          const settings = await invoke<AppSettings>('get_app_settings');
+          
+          setIsDeveloperMode(settings.developer_mode);
+          
+          // Update the seed phrase dialog setting
+          if (settings.developer_mode && settings.skip_seed_phrase_dialogs) {
+            setShowSeedPhraseDialogs(false);
+          } else {
+            setShowSeedPhraseDialogs(true);
+          }
+          
+          console.log('App settings refreshed for dialog:', { 
+            developerMode: settings.developer_mode, 
+            skipSeedDialogs: settings.skip_seed_phrase_dialogs,
+            willShowDialogs: !settings.developer_mode || !settings.skip_seed_phrase_dialogs
+          });
+        } catch (error) {
+          console.error('Failed to refresh app settings:', error);
+        }
+      }
+      
+      refreshSettings();
+    }
+  }, [isWalletOpen]); // Refresh whenever dialog visibility changes// Sync local walletsList with context's availableWallets
   useEffect(() => {
     console.log('OpenCreateWalletDialog: Syncing wallet list from context, available wallets:', availableWallets.length);
     console.log('OpenCreateWalletDialog: Available wallet names:', availableWallets.map(w => w.name));
@@ -800,7 +830,7 @@ export default function OpenCreateWalletDialog() {
                   No wallets found.
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Please switch to the "Create New" tab to create your first wallet.
+                  Please switch to the "Create New" tab to create or recover a wallet.
                 </Typography>
                 <Button 
                   sx={{ mt: 3 }}

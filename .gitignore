@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Wallets directory (contains sensitive wallet data)
+wallets/
