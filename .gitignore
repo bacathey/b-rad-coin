@@ -25,3 +25,4 @@ dist-ssr
 
 # Wallets directory (contains sensitive wallet data)
 wallets/
+src-tauri/wallets/
