@@ -7,7 +7,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use rand::Rng;
-use sha2::Digest;
+use bip39::Mnemonic;
+use bitcoin::secp256k1::{Secp256k1, PublicKey};
+use bitcoin::bip32::{Xpriv, Xpub, DerivationPath};
+use bitcoin::{Network, CompressedPublicKey};
+use std::str::FromStr;
 
 /// Wallet type representing an open wallet
 pub struct Wallet {
@@ -479,39 +483,68 @@ impl WalletManager {
         };
         
         Ok((master_public_key, master_private_key, key_pair))
-    }/// Derive keys from a real seed phrase
+    }    /// Derive keys from a real seed phrase using BIP39/BIP32 standards
     fn derive_keys_from_seed(&self, seed_phrase: &str, name: &str) -> Result<(String, String, KeyPair), WalletError> {
-        info!("Deriving keys from seed phrase for wallet: {}", name);
+        use bitcoin::{Address, PrivateKey};
         
-        // For now, we'll create deterministic keys based on the seed phrase
-        // In a real implementation, this would use proper BIP39/BIP32 derivation
+        info!("Deriving keys from seed phrase for wallet: {} using BIP39/BIP32 standards", name);
         
-        // Create a simple hash of the seed phrase for deterministic key generation
-        use sha2::Sha256;
-        let mut hasher = Sha256::new();
-        hasher.update(seed_phrase.as_bytes());
-        hasher.update(name.as_bytes()); // Add wallet name for uniqueness
-        let seed_hash = hasher.finalize();
+        // Parse the mnemonic phrase
+        let mnemonic = Mnemonic::from_str(seed_phrase)
+            .map_err(|e| WalletError::KeyDerivationError(format!("Invalid mnemonic: {}", e)))?;
         
-        // Use the hash as our private key material
-        let private_key_hex = hex::encode(&seed_hash[..]);
+        // Generate seed from mnemonic (this creates the root seed)
+        let seed = mnemonic.to_seed("");
         
-        // Generate deterministic public key and address based on seed
-        let public_key = format!("pubkey_{}", &private_key_hex[..16]);
-        let address = format!("bc1q{}", &private_key_hex[..32].chars().take(32).collect::<String>().to_lowercase());
+        // Initialize secp256k1 context
+        let secp = Secp256k1::new();
         
-        // Create master keys
-        let master_private_key = format!("xprv_seed_{}", private_key_hex);
-        let master_public_key = format!("xpub_seed_{}", public_key);
+        // Create master extended private key from seed
+        let master_xpriv = Xpriv::new_master(Network::Bitcoin, &seed)
+            .map_err(|e| WalletError::KeyDerivationError(format!("Failed to create master key: {}", e)))?;
+        
+        // Create master extended public key
+        let master_xpub = Xpub::from_priv(&secp, &master_xpriv);
+        
+        // Define derivation path: m/44'/0'/0'/0/0 (BIP44 for Bitcoin mainnet, account 0, external chain, index 0)
+        let derivation_path = DerivationPath::from_str("m/44'/0'/0'/0/0")
+            .map_err(|e| WalletError::KeyDerivationError(format!("Invalid derivation path: {}", e)))?;
+        
+        // Derive the child key pair
+        let derived_xpriv = master_xpriv.derive_priv(&secp, &derivation_path)
+            .map_err(|e| WalletError::KeyDerivationError(format!("Failed to derive private key: {}", e)))?;
+        
+        let _derived_xpub = Xpub::from_priv(&secp, &derived_xpriv);
+        
+        // Get the raw private and public keys
+        let private_key = derived_xpriv.private_key;
+        let public_key = PublicKey::from_secret_key(&secp, &private_key);
+        
+        // Generate Bitcoin address (using P2WPKH - native segwit)
+        // Convert SecretKey to PrivateKey for address generation
+        let bitcoin_private_key = PrivateKey::new(private_key, Network::Bitcoin);
+        
+        // Convert to compressed public key for address generation
+        let compressed_pubkey = CompressedPublicKey::from_private_key(&secp, &bitcoin_private_key)
+            .map_err(|e| WalletError::KeyDerivationError(format!("Failed to create compressed public key: {}", e)))?;
+        
+        let address = Address::p2wpkh(&compressed_pubkey, Network::Bitcoin);
+        
+        // Format keys as strings
+        let master_private_key = master_xpriv.to_string();
+        let master_public_key = master_xpub.to_string();
+        let private_key_hex = hex::encode(private_key.secret_bytes());
+        let public_key_hex = hex::encode(public_key.serialize());
         
         let key_pair = KeyPair {
-            address: address.clone(),
-            key_type: KeyType::NativeSegWit, // Use native segwit
-            derivation_path: "m/44'/0'/0'/0/0".to_string(),
-            public_key,
+            address: address.to_string(),
+            key_type: KeyType::NativeSegWit,
+            derivation_path: derivation_path.to_string(),
+            public_key: public_key_hex,
             private_key: private_key_hex,
         };
         
+        info!("Successfully derived keys using BIP39/BIP32 for wallet: {}", name);
         Ok((master_public_key, master_private_key, key_pair))
     }
 

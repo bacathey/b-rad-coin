@@ -7,8 +7,8 @@ use tauri::{command, Manager, State};
 use crate::config::{AppSettings, ConfigManager}; // Ensure WalletInfo is imported if not already
 use crate::security::AsyncSecurityManager;
 use crate::wallet_manager::AsyncWalletManager;
-use rand::prelude::IndexedRandom;
-use crate::bip39_words::WORD_LIST;
+use bip39::Mnemonic;
+use rand::Rng;
 
 /// Response type for commands with proper error handling
 type CommandResult<T> = Result<T, String>;
@@ -590,20 +590,28 @@ pub fn get_app_version() -> CommandResult<String> {
     Ok(version.to_string())
 }
 
-/// Command to generate a new 12-word BIP-39 seed phrase
+/// Command to generate a new 12-word BIP-39 seed phrase using cryptographically secure methods
 #[command]
 pub async fn generate_seed_phrase() -> CommandResult<String> {
-    debug!("Command: generate_seed_phrase");
-    let mut rng = rand::rng();    // Select 12 unique words randomly from the BIP-39 English list
-    let words: Vec<&str> = WORD_LIST
-        .choose_multiple(&mut rng, 12)
-        .cloned()
-        .collect();
-        
-    // Join the words with spaces
-    let phrase = words.join(" ");
+    debug!("Command: generate_seed_phrase using BIP39 standard");
+      // Generate entropy for 128-bit security (12 words)
+    let mut entropy = [0u8; 16];
+    rand::rng().fill(&mut entropy);
     
-    debug!("Generated seed phrase (first word: {}, last word: {})", words.first().unwrap_or(&""), words.last().unwrap_or(&"")); // Avoid logging the full phrase
+    // Create mnemonic from entropy using BIP39 standard
+    let mnemonic = Mnemonic::from_entropy(&entropy)
+        .map_err(|e| format!("Failed to generate BIP39 mnemonic: {}", e))?;
+    
+    let phrase = mnemonic.to_string();
+    
+    // Get first and last words for safe logging (never log the full phrase)
+    let words: Vec<&str> = phrase.split_whitespace().collect();
+    let first_word = words.first().unwrap_or(&"");
+    let last_word = words.last().unwrap_or(&"");
+    
+    debug!("Generated BIP39 seed phrase (first word: {}, last word: {})", first_word, last_word);
+    info!("Successfully generated secure BIP39 mnemonic with {} words", words.len());
+    
     Ok(phrase)
 }
 

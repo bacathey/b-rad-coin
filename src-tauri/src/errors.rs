@@ -79,6 +79,7 @@ pub enum WalletError {
     AlreadyExists(String),
     InvalidOperation(String),
     ConfigError(String),
+    KeyDerivationError(String),
     Generic(String),
 }
 
@@ -90,6 +91,7 @@ impl fmt::Display for WalletError {
             WalletError::AlreadyExists(name) => write!(f, "Wallet '{}' already exists", name),
             WalletError::InvalidOperation(msg) => write!(f, "Invalid wallet operation: {}", msg),
             WalletError::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
+            WalletError::KeyDerivationError(msg) => write!(f, "Key derivation error: {}", msg),
             WalletError::Generic(msg) => write!(f, "{}", msg),
         }
     }
