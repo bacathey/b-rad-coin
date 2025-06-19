@@ -441,7 +441,10 @@ export default function WalletDialog() {
                       <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>                        <ListItemIcon sx={{ minWidth: 36 }}>
                           {wallet.secured ? 
                             <LockIcon color="success" fontSize="small" /> : 
-                            <LockOpenIcon color="warning" fontSize="small" />
+                            <LockOpenIcon 
+                              sx={{ color: isDarkMode ? '#ffeb3b' : '#f57c00' }} 
+                              fontSize="small" 
+                            />
                           }
                         </ListItemIcon>
                         {wallet.name}
@@ -508,10 +511,12 @@ export default function WalletDialog() {
                   color="primary"
                 />
               )}
-              label={(                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  {usePasswordProtection ? 
+              label={(                <Box sx={{ display: 'flex', alignItems: 'center' }}>                  {usePasswordProtection ? 
                     <LockIcon color="success" fontSize="small" sx={{ mr: 1 }} /> : 
-                    <LockOpenIcon color="warning" fontSize="small" sx={{ mr: 1 }} />
+                    <LockOpenIcon 
+                      sx={{ color: isDarkMode ? '#ffeb3b' : '#f57c00', mr: 1 }} 
+                      fontSize="small" 
+                    />
                   }
                   <Typography>
                     Password protect this wallet

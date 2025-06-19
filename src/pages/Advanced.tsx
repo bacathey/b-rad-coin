@@ -331,13 +331,19 @@ function WalletLocationSection() {  const {
               Delete Wallet
             </Button>
           </Tooltip>{!isWalletSecured && (
-            <Tooltip title="Secure this wallet with a password">
-              <Button 
+            <Tooltip title="Secure this wallet with a password">              <Button 
                 variant="outlined" 
-                color="warning" 
                 startIcon={<SecurityIcon />}
                 onClick={handleOpenSecureDialog}
                 disabled={isLoading}
+                sx={{
+                  borderColor: isDarkMode ? '#81c784' : '#2e7d32',
+                  color: isDarkMode ? '#81c784' : '#2e7d32',
+                  '&:hover': {
+                    borderColor: isDarkMode ? '#66bb6a' : '#1b5e20',
+                    backgroundColor: isDarkMode ? 'rgba(129, 199, 132, 0.1)' : 'rgba(46, 125, 50, 0.1)'
+                  }
+                }}
               >
                 Secure Wallet
               </Button>
@@ -443,16 +449,42 @@ function WalletLocationSection() {  const {
           <Typography variant="h6" component="div" fontWeight={600}>
             Private Key for "{currentWallet?.name}"
           </Typography>
-        </DialogTitle>
-        <DialogContent>
-          <Alert severity="warning" sx={{ mb: 3 }}>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+        </DialogTitle>        <DialogContent>
+          <Box 
+            sx={{ 
+              mb: 3,
+              p: 2,
+              borderRadius: 1,
+              backgroundColor: isDarkMode ? 'rgba(229, 115, 115, 0.1)' : 'rgba(211, 47, 47, 0.08)',
+              border: '1px solid',
+              borderColor: isDarkMode ? 'rgba(229, 115, 115, 0.3)' : 'rgba(211, 47, 47, 0.2)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1
+            }}
+          >
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                fontWeight: 700,
+                color: isDarkMode ? '#ffcdd2' : '#c62828',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5
+              }}
+            >
               ⚠️ KEEP THIS PRIVATE KEY SECURE
             </Typography>
-            <Typography variant="body2" sx={{ mt: 1 }}>
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                color: isDarkMode ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.7)',
+                fontSize: '0.9rem'
+              }}
+            >
               Never share this private key with anyone. Anyone with access to this key can control your wallet and funds.
             </Typography>
-          </Alert>
+          </Box>
           
           <Typography variant="body2" sx={{ mb: 2 }}>
             Master Private Key:

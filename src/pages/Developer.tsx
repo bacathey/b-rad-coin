@@ -1,4 +1,4 @@
-import { Grid, Typography, Button, Box, TextField, Switch, List, Divider } from '@mui/material';
+import { Grid, Typography, Button, Box, TextField, Switch, List, Divider, useTheme } from '@mui/material';
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from "@tauri-apps/api/core";
 import { PageContainer } from '../components/ui/PageContainer';
@@ -8,7 +8,11 @@ import SecurityIcon from '@mui/icons-material/Security';
 import { useAppSettings } from '../context/AppSettingsContext';
 import { useWallet } from '../context/WalletContext';
 
-export default function Developer() {  const { appSettings, updateSkipSeedPhraseDialogs } = useAppSettings();
+export default function Developer() {
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
+  
+  const { appSettings, updateSkipSeedPhraseDialogs } = useAppSettings();
   const { setCurrentWallet, setIsWalletOpen, refreshWalletDetails } = useWallet();
   const [logOutput, setLogOutput] = useState<string>('');
   const [customCommand, setCustomCommand] = useState<string>('');
@@ -229,14 +233,19 @@ export default function Developer() {  const { appSettings, updateSkipSeedPhrase
               >
                 Execute Command
               </Button>
-            </Box>
-
-            <Button 
+            </Box>            <Button 
               variant="outlined" 
-              color="warning"
               onClick={handleCleanupOrphanedWallets}
               disabled={cleanupLoading || loading || deleteAllLoading}
-              sx={{ mr: 2 }}
+              sx={{ 
+                mr: 2,
+                borderColor: isDarkMode ? '#ffa726' : '#f57c00',
+                color: isDarkMode ? '#ffa726' : '#f57c00',
+                '&:hover': {
+                  borderColor: isDarkMode ? '#ff9800' : '#e65100',
+                  backgroundColor: isDarkMode ? 'rgba(255, 167, 38, 0.1)' : 'rgba(245, 124, 0, 0.1)'
+                }
+              }}
             >
               {cleanupLoading ? 'Cleaning up...' : 'Cleanup Orphaned Wallets'}
             </Button>

@@ -71,18 +71,38 @@ export default function SeedPhraseDialog({
           transition: 'all 500ms cubic-bezier(0.4, 0, 0.2, 1)'
         }
       }}
-    >
-      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <WarningIcon color="warning" />
+    >      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <WarningIcon 
+          sx={{ 
+            color: isDarkMode ? '#f48fb1' : '#c62828'
+          }} 
+        />
         <Typography variant="h5">Save Your Seed Phrase</Typography>
       </DialogTitle>
-      
-      <DialogContent>
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          <Typography fontWeight={500}>
+        <DialogContent>        <Box 
+          sx={{ 
+            mb: 2,
+            p: 2,
+            borderRadius: 1,
+            backgroundColor: isDarkMode ? 'rgba(244, 67, 54, 0.1)' : 'rgba(211, 47, 47, 0.08)',
+            border: '1px solid',
+            borderColor: isDarkMode ? 'rgba(244, 67, 54, 0.3)' : 'rgba(211, 47, 47, 0.2)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1
+          }}
+        >
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              fontWeight: 600,
+              color: isDarkMode ? '#f48fb1' : '#c62828',
+              fontSize: '0.95rem'
+            }}
+          >
             This seed phrase is the only way to recover your wallet if your device is lost, stolen, or damaged.
           </Typography>
-        </Alert>
+        </Box>
         
         <Typography variant="body1" paragraph>
           This 12-word recovery phrase is used to generate the private key for your new wallet. 

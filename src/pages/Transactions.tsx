@@ -118,17 +118,15 @@ export default function Transactions() {
               flexDirection: 'column'
             }}>
               <CardContent>
-                <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                  <NotificationsIcon 
+                <Stack direction="row" spacing={1} alignItems="center" mb={1}>                  <NotificationsIcon 
                     sx={{ 
-                      color: isDarkMode ? '#ffb74d' : '#ed6c02',
+                      color: isDarkMode ? 'rgba(255, 193, 7, 0.9)' : '#f57c00',
                       fontSize: 28
                     }} 
-                  />
-                  <Typography 
+                  /><Typography 
                     variant="h6" 
                     sx={{
-                      color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : '#ed6c02',
+                      color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : '#1a237e',
                       fontWeight: 600
                     }}
                   >
@@ -427,7 +425,7 @@ export default function Transactions() {
                       }} 
                     />
                     <Bar dataKey="incoming" name="Incoming (BTC)" barSize={20} fill={isDarkMode ? "#8884d8" : "#3f51b5"} />
-                    <Bar dataKey="outgoing" name="Outgoing (BTC)" barSize={20} fill={isDarkMode ? "#ff7300" : "#f44336"} />
+                    <Bar dataKey="outgoing" name="Outgoing (BTC)" barSize={20} fill={isDarkMode ? "#ff5722" : "#f44336"} />
                     <Line type="monotone" dataKey="total" name="Net Flow (BTC)" stroke={isDarkMode ? "#64b5f6" : "#1565c0"} strokeWidth={2} />
                   </ComposedChart>
                 </ResponsiveContainer>

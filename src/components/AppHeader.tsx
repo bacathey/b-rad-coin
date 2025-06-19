@@ -117,13 +117,18 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
                         <LockIcon color="success" fontSize="small" />
                       </Box>
                     </Tooltip>
-                  ) : (
-                    <Tooltip title="Click to add password protection">
+                  ) : (                    <Tooltip title="Click to add password protection">
                       <IconButton
                         size="small"
-                        color="warning"
                         onClick={handleOpenSecureDialog}
-                        sx={{ ml: 0.5, p: 0.5 }}
+                        sx={{ 
+                          ml: 0.5, 
+                          p: 0.5,
+                          color: mode === 'dark' ? '#ffeb3b' : '#f57c00',
+                          '&:hover': {
+                            backgroundColor: mode === 'dark' ? 'rgba(255, 235, 59, 0.1)' : 'rgba(245, 124, 0, 0.1)'
+                          }
+                        }}
                       >
                         <LockOpenIcon fontSize="small" />
                       </IconButton>
