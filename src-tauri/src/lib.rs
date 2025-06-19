@@ -4,7 +4,8 @@ mod bip39_words;
 use log::{debug, error, info, LevelFilter};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::{generate_context, generate_handler, Manager};
+use tauri::{generate_context, generate_handler, Manager, Emitter};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 //use tauri_plugin_updater::UpdaterExt;
 
 // Add static flag to track shutdown state
@@ -49,11 +50,10 @@ pub fn run() {
 
         // Initialize components
         match initialize_app().await {
-            Ok(app_state) => {
-                // Build and run Tauri application with our components
+            Ok(app_state) => {                // Build and run Tauri application with our components
                 let app = tauri::Builder::default()
                     .plugin(tauri_plugin_updater::Builder::new().build())
-                    .plugin(tauri_plugin_opener::init())                    .manage(app_state.wallet_manager)
+                    .plugin(tauri_plugin_opener::init()).manage(app_state.wallet_manager)
                     .manage(app_state.security_manager)
                     .manage(app_state.config_manager)                    .invoke_handler(generate_handler![
                         check_wallet_status,
@@ -73,7 +73,11 @@ pub fn run() {
                         update_app_settings,
                         get_app_settings,
                         secure_wallet,
-                        shutdown_application,                        get_app_version,
+                        shutdown_application,
+                        show_main_window,
+                        hide_to_tray,
+                        update_tray_wallet_status,
+                        update_tray_network_status,                        get_app_version,
                         greet,                        // Developer commands
                         get_recent_logs,
                         echo_command,
@@ -81,39 +85,26 @@ pub fn run() {
                         cleanup_orphaned_wallets,
                         delete_all_wallets,
                         get_wallet_private_key
-                    ])
-                    .setup(|_app| {
+                    ]).setup(|app| {
                         info!("Setting up application");
+                        
+                        // Create system tray
+                        setup_system_tray(app)?;
+                        
                         //let handle = _app.handle().clone();
                         //tauri::async_runtime::spawn(async move {
                             //update(handle).await.unwrap();
                         //});
                         Ok(())
-                    })
-                    .on_window_event(|window, event| {
+                    })                    .on_window_event(|window, event| {
                         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                            debug!("Window close requested");
-
-                            // Only proceed if shutdown is not already in progress
-                            if !SHUTDOWN_IN_PROGRESS.load(Ordering::SeqCst) {
-                                // Get the app handle to initiate shutdown
-                                let app_handle = window.app_handle().clone();
-
-                                // Use our shutdown command directly instead of duplicating code
-                                tokio::spawn(async move {
-                                    // This will handle all the shutdown steps properly
-                                    match commands::shutdown_application(app_handle).await {
-                                        Ok(_) => debug!("Shutdown initiated successfully from window close event"),
-                                        Err(e) => error!("Failed to initiate shutdown: {}", e),
-                                    }
-                                });
-
-                                // Prevent immediate close, our shutdown sequence will handle it
-                                api.prevent_close();
-                            } else {
-                                debug!("Shutdown already in progress, allowing close to proceed");
-                                // Do not prevent close if shutdown is already in progress
-                            }
+                            debug!("Window close requested - minimizing to tray");
+                            
+                            // Hide the window instead of closing the app
+                            let _ = window.hide();
+                            
+                            // Prevent the default close behavior
+                            api.prevent_close();
                         }
                     })
                     .build(generate_context!())
@@ -211,6 +202,138 @@ async fn initialize_app() -> AppResult<AppState> {
         wallet_manager: async_wallet_manager,
         security_manager: async_security_manager,
     })
+}
+
+/// Setup system tray with menu and event handlers
+fn setup_system_tray(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    
+    info!("Setting up system tray");
+    
+    // Create tray menu items
+    let wallet_status_item = MenuItem::with_id(app, "wallet_status", "No wallet open", false, None::<&str>)?;
+    let network_status_item = MenuItem::with_id(app, "network_status", "Network: Disconnected", false, None::<&str>)?;
+    let separator1 = PredefinedMenuItem::separator(app)?;
+    
+    let show_item = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
+    let hide_item = MenuItem::with_id(app, "hide", "Hide Window", true, None::<&str>)?;
+    let separator2 = PredefinedMenuItem::separator(app)?;
+    
+    let open_wallet_item = MenuItem::with_id(app, "open_wallet", "Open Wallet...", true, None::<&str>)?;
+    let create_wallet_item = MenuItem::with_id(app, "create_wallet", "Create Wallet...", true, None::<&str>)?;
+    let close_wallet_item = MenuItem::with_id(app, "close_wallet", "Close Wallet", false, None::<&str>)?;
+    let separator3 = PredefinedMenuItem::separator(app)?;
+    
+    let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    
+    let menu = Menu::with_items(app, &[
+        &wallet_status_item,
+        &network_status_item,
+        &separator1,
+        &show_item,
+        &hide_item,
+        &separator2,
+        &open_wallet_item,
+        &create_wallet_item,
+        &close_wallet_item,
+        &separator3,
+        &quit_item,
+    ])?;
+    
+    // Create tray icon
+    let _tray = TrayIconBuilder::with_id("main-tray")
+        .tooltip("B-Rad Coin Wallet")
+        .icon(app.default_window_icon().unwrap().clone())
+        .menu(&menu)
+        .on_tray_icon_event(|tray, event| {
+            match event {
+                TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, button_state: tauri::tray::MouseButtonState::Up, .. } => {
+                    debug!("Tray icon left clicked - showing window");
+                    let app = tray.app_handle();
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                TrayIconEvent::DoubleClick { button: tauri::tray::MouseButton::Left, .. } => {
+                    debug!("Tray icon double clicked - showing window");
+                    let app = tray.app_handle();
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                _ => {}
+            }
+        })        .on_menu_event(|app, event| {
+            match event.id.as_ref() {
+                "quit" => {
+                    info!("Quit selected from tray menu");
+                    // Set shutdown flag and exit the application
+                    SHUTDOWN_IN_PROGRESS.store(true, Ordering::SeqCst);
+                    
+                    let app_handle = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        match commands::shutdown_application(app_handle).await {
+                            Ok(_) => debug!("Shutdown completed successfully from tray menu"),
+                            Err(e) => error!("Failed to shutdown from tray menu: {}", e),
+                        }
+                    });
+                }
+                "show" => {
+                    debug!("Show selected from tray menu");
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                "hide" => {
+                    debug!("Hide selected from tray menu");
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                }
+                "open_wallet" => {
+                    debug!("Open wallet selected from tray menu");
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        // Emit event to frontend to open wallet dialog
+                        let _ = window.emit("tray-open-wallet", ());
+                    }
+                }
+                "create_wallet" => {
+                    debug!("Create wallet selected from tray menu");
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        // Emit event to frontend to open create wallet dialog
+                        let _ = window.emit("tray-create-wallet", ());
+                    }
+                }                "close_wallet" => {
+                    debug!("Close wallet selected from tray menu");
+                    let app_handle = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let wallet_manager = app_handle.state::<AsyncWalletManager>();
+                        match commands::close_wallet(wallet_manager).await {
+                            Ok(_) => {
+                                debug!("Wallet closed successfully from tray menu");
+                                // Update tray menu to reflect wallet closed
+                                if let Some(window) = app_handle.get_webview_window("main") {
+                                    let _ = window.emit("wallet-closed", ());
+                                }
+                            },
+                            Err(e) => error!("Failed to close wallet from tray menu: {}", e),
+                        }
+                    });
+                }
+                _ => {}
+            }
+        })
+        .build(app)?;
+    
+    info!("System tray created successfully");
+    Ok(())
 }
 
 

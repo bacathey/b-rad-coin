@@ -2,6 +2,8 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import type { ReactNode } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { useTrayIntegration } from '../hooks/useTrayIntegration';
+import { useWalletDialog } from './WalletDialogContext';
 
 // Define the wallet type
 interface WalletInfo {
@@ -53,7 +55,70 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [currentWallet, setCurrentWallet] = useState<WalletInfo | null>(null);
   const [isWalletSecured, setIsWalletSecured] = useState(false);
-  const [availableWallets, setAvailableWallets] = useState<WalletDetails[]>([]);  // Function to fetch all wallet details (including secured status)
+  const [availableWallets, setAvailableWallets] = useState<WalletDetails[]>([]);
+  // Get wallet dialog context if available (it might not be available during initial render)
+  const walletDialog = useWalletDialog();
+
+  // Function to close current wallet
+  const closeCurrentWallet = async () => {
+    if (!isWalletOpen) {
+      console.log('No wallet is currently open');
+      return;
+    }
+    
+    try {
+      console.log('Closing current wallet via tray action');
+      const result = await invoke<boolean>('close_wallet');
+      if (result) {
+        setCurrentWallet(null);
+        setIsWalletOpen(false);
+        setIsWalletSecured(false);
+        console.log('Current wallet closed successfully');
+      } else {
+        console.error('Failed to close current wallet');
+        throw new Error('Failed to close wallet');
+      }
+    } catch (error) {
+      console.error('Error closing current wallet:', error);
+      throw error;
+    }
+  };
+
+  // Initialize tray integration with navigation callbacks
+  const { updateTrayWalletStatus, updateTrayNetworkStatus } = useTrayIntegration({
+    onOpenWallet: () => {
+      console.log('Tray requested open wallet - opening dialog with Open tab');
+      if (walletDialog) {
+        walletDialog.openDialog(0); // 0 = Open wallet tab
+      }
+    },    onCreateWallet: () => {
+      console.log('Tray requested create wallet - using forceCreateWalletTab');
+      console.log('WalletDialog context available:', !!walletDialog);
+      if (walletDialog) {
+        console.log('Calling walletDialog.forceCreateWalletTab()');
+        walletDialog.forceCreateWalletTab();
+        console.log('Called walletDialog.forceCreateWalletTab()');
+      }
+    },
+    onCloseCurrentWallet: closeCurrentWallet,
+    onWalletClosed: () => {
+      console.log('Wallet closed from tray - updating UI state');
+      // The wallet state should already be updated by the close command
+      // This is just for any additional UI updates if needed
+    },
+  });
+
+  // Update tray when wallet status changes
+  useEffect(() => {
+    const walletName = isWalletOpen && currentWallet ? currentWallet.name : null;
+    updateTrayWalletStatus(walletName);
+  }, [isWalletOpen, currentWallet, updateTrayWalletStatus]);
+
+  // Initialize network status (stub for now)
+  useEffect(() => {
+    // For now, always show disconnected - this can be updated when network functionality is implemented
+    updateTrayNetworkStatus(false);
+  }, [updateTrayNetworkStatus]);// Function to fetch all wallet details (including secured status)
   const refreshWalletDetails = useCallback(async () => {
     console.log('WalletContext: refreshWalletDetails called');
     try {

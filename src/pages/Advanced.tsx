@@ -326,12 +326,13 @@ function WalletLocationSection() {  const {
               color="error" 
               startIcon={<DeleteIcon />} 
               onClick={handleOpenDeleteDialog}
-              disabled={isLoading}
-            >
+              disabled={isLoading}            >
               Delete Wallet
             </Button>
-          </Tooltip>{!isWalletSecured && (
-            <Tooltip title="Secure this wallet with a password">              <Button 
+          </Tooltip>
+          {!isWalletSecured && (
+            <Tooltip title="Secure this wallet with a password">
+              <Button
                 variant="outlined" 
                 startIcon={<SecurityIcon />}
                 onClick={handleOpenSecureDialog}

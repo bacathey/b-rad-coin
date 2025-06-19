@@ -31,6 +31,7 @@ import About from "./pages/About";
 // Context Providers
 import { WalletProvider, useWallet } from "./context/WalletContext";
 import { AppSettingsProvider } from "./context/AppSettingsContext";
+import { WalletDialogProvider } from "./context/WalletDialogContext";
 
 // Sidebar width
 const drawerWidth = 240;
@@ -188,24 +189,25 @@ function App() {
   async function greet() {
     // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
     setGreetMsg(await invoke("greet", { name }));
-  }
-  return (
+  }  return (
     <WalletProvider>
       <AppSettingsProvider>
         <ThemeProvider theme={theme}>
           <CssBaseline />
           <BrowserRouter>
-            <AppContentWrapper 
-              mode={mode} 
-              toggleColorMode={toggleColorMode} 
-              mobileOpen={mobileOpen}
-              handleDrawerToggle={handleDrawerToggle}
-              greetMsg={greetMsg}
-              name={name}
-              setName={setName}
-              greet={greet}
-            />
-            <OpenCreateWalletDialog />
+            <WalletDialogProvider>
+              <AppContentWrapper 
+                mode={mode} 
+                toggleColorMode={toggleColorMode} 
+                mobileOpen={mobileOpen}
+                handleDrawerToggle={handleDrawerToggle}
+                greetMsg={greetMsg}
+                name={name}
+                setName={setName}
+                greet={greet}
+              />
+              <OpenCreateWalletDialog />
+            </WalletDialogProvider>
           </BrowserRouter>
         </ThemeProvider>
       </AppSettingsProvider>

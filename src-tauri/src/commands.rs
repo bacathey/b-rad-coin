@@ -1170,4 +1170,85 @@ pub async fn get_wallet_private_key(
     }
 }
 
+/// Command to show the main window (used by tray)
+#[command]
+pub async fn show_main_window(app_handle: tauri::AppHandle) -> CommandResult<()> {
+    debug!("Command: show_main_window");
+    
+    if let Some(window) = app_handle.get_webview_window("main") {
+        window.show().map_err(format_error)?;
+        window.set_focus().map_err(format_error)?;
+        info!("Main window shown and focused");
+        Ok(())
+    } else {
+        error!("Main window not found");
+        Err("Main window not found".to_string())
+    }
+}
+
+/// Command to hide the main window (minimize to tray)
+#[command]
+pub async fn hide_to_tray(app_handle: tauri::AppHandle) -> CommandResult<()> {
+    debug!("Command: hide_to_tray");
+    
+    if let Some(window) = app_handle.get_webview_window("main") {
+        window.hide().map_err(format_error)?;
+        info!("Main window hidden to tray");
+        Ok(())
+    } else {
+        error!("Main window not found");
+        Err("Main window not found".to_string())
+    }
+}
+
+/// Command to update the system tray menu with current wallet status
+#[command]
+pub async fn update_tray_wallet_status(
+    _app_handle: tauri::AppHandle,
+    wallet_name: Option<String>,
+) -> CommandResult<()> {
+    debug!("Command: update_tray_wallet_status for wallet: {:?}", wallet_name);
+    
+    // For now, just log the update - actual menu item updating in Tauri 2 is complex
+    let wallet_text = match wallet_name {
+        Some(name) => format!("Wallet: {}", name),
+        None => "No wallet open".to_string(),
+    };
+    
+    info!("Tray wallet status updated to: {}", wallet_text);
+    
+    // TODO: Implement actual menu item text update when Tauri 2 API supports it
+    // Currently, Tauri 2 doesn't have a straightforward way to update menu item text
+    // This is a placeholder for future implementation
+    
+    Ok(())
+}
+
+/// Command to update the system tray menu with network status
+#[command]
+pub async fn update_tray_network_status(
+    _app_handle: tauri::AppHandle,
+    is_connected: bool,
+    peer_count: Option<u32>,
+) -> CommandResult<()> {
+    debug!("Command: update_tray_network_status - connected: {}, peers: {:?}", is_connected, peer_count);
+    
+    let status_text = if is_connected {
+        match peer_count {
+            Some(count) => format!("Network: Connected ({} peers)", count),
+            None => "Network: Connected".to_string(),
+        }
+    } else {
+        "Network: Disconnected".to_string()
+    };
+    
+    info!("Tray network status updated to: {}", status_text);
+    
+    // TODO: Implement actual menu item text update when Tauri 2 API supports it
+    // Currently, Tauri 2 doesn't have a straightforward way to update menu item text
+    // This is a placeholder for future implementation
+    
+    Ok(())
+}
+
 
