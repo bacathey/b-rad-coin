@@ -75,15 +75,22 @@ impl BlockchainDatabase {
     pub fn new(data_dir: PathBuf) -> Result<Self> {
         let db_path = data_dir.join("blockchain.db");
         
+        println!("Initializing blockchain database at: {:?}", db_path);
+        
         // Ensure the data directory exists
         if let Some(parent) = db_path.parent() {
+            println!("Creating directory: {:?}", parent);
             std::fs::create_dir_all(parent)
                 .context("Failed to create blockchain data directory")?;
+            println!("Directory created successfully");
         }
 
+        println!("Opening sled database...");
         let db = sled::open(&db_path)
             .context("Failed to open blockchain database")?;
+        println!("Sled database opened successfully");
 
+        println!("Opening database trees...");
         let blocks = db.open_tree("blocks")
             .context("Failed to open blocks tree")?;
         let transactions = db.open_tree("transactions")
@@ -94,6 +101,7 @@ impl BlockchainDatabase {
             .context("Failed to open addresses tree")?;
         let metadata = db.open_tree("metadata")
             .context("Failed to open metadata tree")?;
+        println!("All database trees opened successfully");
 
         Ok(Self {
             db,
@@ -281,6 +289,88 @@ impl BlockchainDatabase {
         self.db.flush()?;
         Ok(())
     }
+
+    /// Generate test blockchain data with specific wallet addresses
+    pub async fn generate_test_blocks_with_addresses(&self, addresses: Vec<String>, num_blocks: u64) -> Result<(), String> {
+        info!("Generating {} test blocks with {} wallet addresses", num_blocks, addresses.len());
+        
+        if addresses.is_empty() {
+            return Err("No addresses provided for test block generation".to_string());
+        }
+        
+        let current_height = self.get_block_height().await.map_err(|e| e.to_string())?;
+        
+        for block_height in (current_height + 1)..=(current_height + num_blocks) {
+            // Create a test block with transactions to wallet addresses
+            let mut transactions = Vec::new();
+            
+            // Create 1-3 transactions per block
+            let tx_count = (block_height % 3) + 1;
+            
+            for tx_index in 0..tx_count {
+                // Select a random address from the provided wallet addresses
+                let recipient_address = addresses[(block_height as usize + tx_index as usize) % addresses.len()].clone();
+                
+                // Create a transaction with a random amount (between 1000 and 50000 satoshis)
+                let amount = 1000 + ((block_height * 1000 + tx_index * 500) % 49000);
+                
+                let transaction = Transaction {
+                    txid: format!("test_tx_{}_{}", block_height, tx_index),
+                    inputs: vec![], // Test transactions don't need inputs
+                    outputs: vec![
+                        TransactionOutput {
+                            value: amount,
+                            script_pubkey: format!("test_script_for_{}", recipient_address),
+                            address: Some(recipient_address.clone()),
+                        }
+                    ],
+                    block_height,
+                    timestamp: chrono::Utc::now().timestamp() - ((num_blocks - (block_height - current_height)) * 30), // 30 seconds per block backwards
+                };
+                
+                transactions.push(transaction);
+                
+                // Create UTXO for this transaction output
+                let utxo = UTXO {
+                    txid: transaction.txid.clone(),
+                    output_index: 0,
+                    value: amount,
+                    script_pubkey: transaction.outputs[0].script_pubkey.clone(),
+                    address: recipient_address,
+                    block_height,
+                    is_spent: false,
+                };
+                
+                // Store the UTXO
+                self.add_utxo(utxo).await.map_err(|e| e.to_string())?;
+            }
+            
+            // Create the block
+            let block = Block {
+                height: block_height,
+                hash: format!("test_block_hash_{}", block_height),
+                previous_hash: if block_height > 0 {
+                    Some(format!("test_block_hash_{}", block_height - 1))
+                } else {
+                    None
+                },
+                merkle_root: format!("test_merkle_{}", block_height),
+                timestamp: chrono::Utc::now().timestamp() - ((num_blocks - (block_height - current_height)) * 30),
+                nonce: block_height * 12345,
+                transactions,
+            };
+            
+            // Store the block
+            self.add_block(block).await.map_err(|e| e.to_string())?;
+            
+            debug!("Generated test block {} with {} transactions", block_height, tx_count);
+        }
+        
+        info!("Successfully generated {} test blocks with wallet addresses", num_blocks);
+        Ok(())
+    }
+
+    // ...existing code...
 }
 
 /// Thread-safe wrapper for BlockchainDatabase

@@ -223,9 +223,7 @@ impl WalletManager {
         } else {
             debug!("No wallet is currently open to close");
         }
-    }
-
-    /// Get the currently open wallet
+    }    /// Get the currently open wallet
     pub fn get_current_wallet(&self) -> Option<&Wallet> {
         if let Some(wallet) = &self.current_wallet {
             debug!("Retrieved current wallet: {}", wallet.name);
@@ -233,7 +231,28 @@ impl WalletManager {
             debug!("No wallet is currently open");
         }
         self.current_wallet.as_ref()
-    }    /// Get the base directory for wallets
+    }
+
+    /// Get a mutable reference to the currently open wallet
+    pub fn get_current_wallet_mut(&mut self) -> Option<&mut Wallet> {
+        if let Some(wallet) = &self.current_wallet {
+            debug!("Retrieved mutable current wallet: {}", wallet.name);
+        } else {
+            debug!("No wallet is currently open");
+        }
+        self.current_wallet.as_mut()
+    }
+
+    /// Update the current wallet's data
+    pub fn update_current_wallet_data(&mut self, new_data: WalletData) -> Result<(), WalletError> {
+        if let Some(wallet) = &mut self.current_wallet {
+            info!("Updating wallet data for: {}", wallet.name);
+            wallet.data = new_data;
+            Ok(())
+        } else {
+            Err(WalletError::NoWalletOpen)
+        }
+    }/// Get the base directory for wallets
     pub fn get_wallets_dir(&self) -> PathBuf {
         // Determine the wallets directory based on the platform
         // First try to get it from the app configuration
@@ -320,14 +339,21 @@ impl WalletManager {
                  "Failed to write wallet data to disk: {}",
                  e
              )));
-        }
-        debug!("Wallet data written to disk: {}", wallet_data_path.display());
+        }        debug!("Wallet data written to disk: {}", wallet_data_path.display());
+
+        // Extract addresses from wallet data
+        let wallet_addresses: Vec<String> = wallet_data.addresses.iter()
+            .map(|addr_info| addr_info.address.clone())
+            .collect();
 
         // Create wallet info object
         let wallet_info = WalletInfo {
             name: name.to_string(),
             path: wallet_path,
             secured: is_secured,
+            addresses: wallet_addresses,
+            block_height: 0, // Start at genesis
+            last_sync: None,
         };
 
         // Add to in-memory config
@@ -418,14 +444,21 @@ impl WalletManager {
                     "Failed to save wallet data: {}",
                     e
                 )));
-            }
-        }
+            }        }
+        
+        // Extract addresses from wallet data
+        let wallet_addresses: Vec<String> = wallet_data.addresses.iter()
+            .map(|addr_info| addr_info.address.clone())
+            .collect();
         
         // Register the wallet in the config
         let wallet_info = WalletInfo {
             name: name.to_string(),
             path: wallet_path,
             secured: is_secured,
+            addresses: wallet_addresses,
+            block_height: 0, // Start at genesis
+            last_sync: None,
         };
 
         // Add to in-memory config
@@ -677,6 +710,7 @@ impl WalletManager {
 }
 
 /// Async wrapper for WalletManager to be used with Tauri state
+#[derive(Clone)]
 pub struct AsyncWalletManager {
     inner: Arc<Mutex<WalletManager>>,
 }
@@ -704,12 +738,16 @@ impl AsyncWalletManager {
     pub async fn shutdown(&self) -> Result<(), WalletError> {
         let mut manager = self.inner.lock().await;
         manager.shutdown()
-    }
-
-    /// Create a wallet with a seed phrase
+    }    /// Create a wallet with a seed phrase
     pub async fn create_wallet_with_seed(&self, name: &str, password: &str, seed_phrase: &str, is_secured: bool) -> Result<(), WalletError> {
         let mut manager = self.inner.lock().await;
         // Call the synchronous version
         manager.create_wallet_with_seed(name, password, seed_phrase, is_secured)
+    }
+
+    /// Update the current wallet's data
+    pub async fn update_current_wallet_data(&self, new_data: WalletData) -> Result<(), WalletError> {
+        let mut manager = self.inner.lock().await;
+        manager.update_current_wallet_data(new_data)
     }
 }

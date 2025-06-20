@@ -390,6 +390,7 @@ pub async fn open_wallet(
     password: Option<String>,
     wallet_manager: State<'_, AsyncWalletManager>,
     security_manager: State<'_, AsyncSecurityManager>,
+    wallet_sync: State<'_, AsyncWalletSyncService>,
 ) -> CommandResult<bool> {
     info!("Command: open_wallet for wallet: {}", wallet_name);
 
@@ -430,13 +431,28 @@ pub async fn open_wallet(
                     "Authentication succeeded for secured wallet: {}",
                     wallet_name
                 );
-                drop(sec_manager); // Explicitly release security manager lock
-
-                // Now open the wallet with the validated password
+                drop(sec_manager); // Explicitly release security manager lock                // Now open the wallet with the validated password
                 let mut manager = wallet_manager.get_manager().await;
                 match manager.open_wallet(&wallet_name, Some(&password)) {
                     Ok(_) => {
                         info!("Successfully opened secured wallet: {}", wallet_name);
+                        
+                        // Automatically start wallet synchronization
+                        if let Some(wallet) = manager.get_current_wallet() {
+                            let addresses: Vec<String> = wallet.data.addresses.iter()
+                                .map(|addr| addr.address.clone())
+                                .collect();
+                            
+                            if !addresses.is_empty() {
+                                info!("Starting automatic sync for wallet: {} with {} addresses", wallet_name, addresses.len());
+                                if let Err(e) = wallet_sync.start_wallet_sync(wallet_name.clone(), addresses).await {
+                                    warn!("Failed to start automatic wallet sync: {}", e);
+                                }
+                            } else {
+                                info!("No addresses found in wallet: {}, skipping sync", wallet_name);
+                            }
+                        }
+                        
                         Ok(true)
                     }
                     Err(e) => {
@@ -450,12 +466,28 @@ pub async fn open_wallet(
                 Err(format_error(e))
             }
         }
-    } else {
-        // For unsecured wallets, just open directly
+    } else {        // For unsecured wallets, just open directly
         let mut manager = wallet_manager.get_manager().await;
         match manager.open_wallet(&wallet_name, None) {
             Ok(_) => {
                 info!("Successfully opened unsecured wallet: {}", wallet_name);
+                
+                // Automatically start wallet synchronization
+                if let Some(wallet) = manager.get_current_wallet() {
+                    let addresses: Vec<String> = wallet.data.addresses.iter()
+                        .map(|addr| addr.address.clone())
+                        .collect();
+                    
+                    if !addresses.is_empty() {
+                        info!("Starting automatic sync for wallet: {} with {} addresses", wallet_name, addresses.len());
+                        if let Err(e) = wallet_sync.start_wallet_sync(wallet_name.clone(), addresses).await {
+                            warn!("Failed to start automatic wallet sync: {}", e);
+                        }
+                    } else {
+                        info!("No addresses found in wallet: {}, skipping sync", wallet_name);
+                    }
+                }
+                
                 Ok(true)
             }
             Err(e) => {

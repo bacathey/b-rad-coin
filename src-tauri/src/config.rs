@@ -24,6 +24,15 @@ pub struct WalletInfo {
     pub path: String,
     /// Whether the wallet is password protected
     pub secured: bool,
+    /// List of wallet addresses
+    #[serde(default)]
+    pub addresses: Vec<String>,
+    /// Current block height the wallet is synced to
+    #[serde(default)]
+    pub block_height: u64,
+    /// Last sync timestamp
+    #[serde(default)]
+    pub last_sync: Option<i64>,
 }
 
 /// Application settings
@@ -437,5 +446,157 @@ impl ConfigManager {
 
         info!("Configuration updated successfully");
         Ok(())
+    }
+
+    /// Update wallet addresses and sync information
+    pub async fn update_wallet_sync_info(
+        &self,
+        wallet_name: &str,
+        addresses: Vec<String>,
+        block_height: u64,
+        last_sync: Option<i64>,
+    ) -> Result<(), ConfigError> {
+        info!("Updating wallet sync info for wallet: {}", wallet_name);
+
+        // Clone the config first to avoid holding the mutex guard across an await point
+        let config_clone;
+        {
+            let mut config = self.config.lock().unwrap();
+
+            // Find the wallet to update
+            if let Some(wallet) = config.wallets.iter_mut().find(|w| w.name == wallet_name) {
+                // Update the sync information
+                wallet.addresses = addresses;
+                wallet.block_height = block_height;
+                wallet.last_sync = last_sync;
+                config_clone = config.clone();
+            } else {
+                error!("Wallet '{}' not found in configuration", wallet_name);
+                return Err(ConfigError::Generic(format!(
+                    "Wallet '{}' not found",
+                    wallet_name
+                )));
+            }
+        } // Mutex guard is dropped here
+
+        // Now we can await without holding the mutex guard
+        self.save_config_to_path(&config_clone, &self.config_path)
+            .await?;
+
+        // Update the stored config
+        let mut config = self.config.lock().unwrap();
+        *config = config_clone;
+
+        info!("Wallet sync info updated successfully");
+        Ok(())
+    }
+
+    /// Update wallet addresses only
+    pub async fn update_wallet_addresses(
+        &self,
+        wallet_name: &str,
+        addresses: Vec<String>,
+    ) -> Result<(), ConfigError> {
+        info!("Updating wallet addresses for wallet: {}", wallet_name);
+
+        // Clone the config first to avoid holding the mutex guard across an await point
+        let config_clone;
+        {
+            let mut config = self.config.lock().unwrap();
+
+            // Find the wallet to update
+            if let Some(wallet) = config.wallets.iter_mut().find(|w| w.name == wallet_name) {
+                // Update the addresses
+                wallet.addresses = addresses;
+                config_clone = config.clone();
+            } else {
+                error!("Wallet '{}' not found in configuration", wallet_name);
+                return Err(ConfigError::Generic(format!(
+                    "Wallet '{}' not found",
+                    wallet_name
+                )));
+            }
+        } // Mutex guard is dropped here
+
+        // Now we can await without holding the mutex guard
+        self.save_config_to_path(&config_clone, &self.config_path)
+            .await?;
+
+        // Update the stored config
+        let mut config = self.config.lock().unwrap();
+        *config = config_clone;
+
+        info!("Wallet addresses updated successfully");
+        Ok(())
+    }
+
+    /// Update wallet block height only
+    pub async fn update_wallet_block_height(
+        &self,
+        wallet_name: &str,
+        block_height: u64,
+    ) -> Result<(), ConfigError> {
+        info!("Updating wallet block height for wallet: {} to {}", wallet_name, block_height);
+
+        // Clone the config first to avoid holding the mutex guard across an await point
+        let config_clone;
+        {
+            let mut config = self.config.lock().unwrap();
+
+            // Find the wallet to update
+            if let Some(wallet) = config.wallets.iter_mut().find(|w| w.name == wallet_name) {
+                // Update the block height and last sync time
+                wallet.block_height = block_height;
+                wallet.last_sync = Some(chrono::Utc::now().timestamp());
+                config_clone = config.clone();
+            } else {
+                error!("Wallet '{}' not found in configuration", wallet_name);
+                return Err(ConfigError::Generic(format!(
+                    "Wallet '{}' not found",
+                    wallet_name
+                )));
+            }
+        } // Mutex guard is dropped here
+
+        // Now we can await without holding the mutex guard
+        self.save_config_to_path(&config_clone, &self.config_path)
+            .await?;
+
+        // Update the stored config
+        let mut config = self.config.lock().unwrap();
+        *config = config_clone;
+
+        info!("Wallet block height updated successfully");
+        Ok(())
+    }
+
+    /// Get all wallet addresses from all wallets
+    pub fn get_all_wallet_addresses(&self) -> Vec<String> {
+        let config = self.config.lock().unwrap();
+        let mut all_addresses = Vec::new();
+        
+        for wallet in &config.wallets {
+            all_addresses.extend(wallet.addresses.clone());
+        }
+        
+        debug!("Retrieved {} addresses from {} wallets", all_addresses.len(), config.wallets.len());
+        all_addresses
+    }
+
+    /// Get addresses for a specific wallet
+    pub fn get_wallet_addresses(&self, wallet_name: &str) -> Vec<String> {
+        let config = self.config.lock().unwrap();
+        
+        if let Some(wallet) = config.wallets.iter().find(|w| w.name == wallet_name) {
+            debug!("Retrieved {} addresses for wallet: {}", wallet.addresses.len(), wallet_name);
+            wallet.addresses.clone()
+        } else {
+            debug!("Wallet '{}' not found", wallet_name);
+            Vec::new()
+        }
+    }    /// Get wallet info by name
+    pub fn get_wallet_info(&self, wallet_name: &str) -> Option<WalletInfo> {
+        let config = self.config.lock().unwrap();
+        config.wallets.iter().find(|w| w.name == wallet_name).cloned()
     }
 }

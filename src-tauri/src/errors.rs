@@ -80,6 +80,7 @@ pub enum WalletError {
     InvalidOperation(String),
     ConfigError(String),
     KeyDerivationError(String),
+    NoWalletOpen,
     Generic(String),
 }
 
@@ -92,6 +93,7 @@ impl fmt::Display for WalletError {
             WalletError::InvalidOperation(msg) => write!(f, "Invalid wallet operation: {}", msg),
             WalletError::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
             WalletError::KeyDerivationError(msg) => write!(f, "Key derivation error: {}", msg),
+            WalletError::NoWalletOpen => write!(f, "No wallet is currently open"),
             WalletError::Generic(msg) => write!(f, "{}", msg),
         }
     }

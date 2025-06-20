@@ -151,16 +151,23 @@ pub fn run() {
                 // Initialize wallet sync and mining services
                 info!("Initializing wallet sync and mining services");
                 let app_handle_for_services = app.app_handle().clone();
-                
-                tokio::spawn(async move {
+                  tokio::spawn(async move {
                     let app_handle_clone = app_handle_for_services.clone();
                     
-                    // Initialize wallet sync service
+                    // Get references to all services
                     let wallet_sync = app_handle_for_services.state::<AsyncWalletSyncService>();
+                    let wallet_manager = app_handle_for_services.state::<AsyncWalletManager>();
+                    let config_manager = app_handle_for_services.state::<Arc<ConfigManager>>();
+                    
+                    // Initialize wallet sync service
                     if let Err(e) = wallet_sync.initialize(app_handle_clone.clone()).await {
                         error!("Failed to initialize wallet sync service: {}", e);
                         return;
                     }
+                    
+                    // Set wallet manager and config manager for wallet sync service
+                    wallet_sync.set_wallet_manager(wallet_manager.inner().clone()).await;
+                    wallet_sync.set_config_manager(config_manager.inner().clone()).await;
                     
                     // Initialize mining service
                     let mining_service = app_handle_for_services.state::<AsyncMiningService>();
@@ -258,15 +265,19 @@ async fn initialize_app() -> AppResult<AppState> {
         .set_config_manager(config_manager.clone())
         .await;    // Initialize and start blockchain sync service
     debug!("Initializing blockchain sync service");
-    let blockchain_sync = AsyncBlockchainSyncService::new();
-      // Initialize blockchain database
+    let blockchain_sync = AsyncBlockchainSyncService::new();    // Initialize blockchain database
     debug!("Initializing blockchain database");
     let blockchain_data_dir = match dirs::data_dir() {
         Some(dir) => dir.join("com.b-rad-coin.app").join("blockchain"),
         None => return Err(errors::AppError::Generic("Failed to determine blockchain data directory".to_string())),
-    };    let blockchain_db = Arc::new(AsyncBlockchainDatabase::new(blockchain_data_dir).await
+    };
+    
+    info!("Blockchain data directory: {:?}", blockchain_data_dir);
+
+    let blockchain_db = Arc::new(AsyncBlockchainDatabase::new(blockchain_data_dir).await
         .map_err(|e| errors::AppError::Generic(format!("Failed to initialize blockchain database: {}", e)))?);
-    // Initialize wallet sync service
+    
+    info!("Blockchain database initialized successfully");
     debug!("Initializing wallet sync service");
     let wallet_sync = AsyncWalletSyncService::new(blockchain_db.clone());
     
