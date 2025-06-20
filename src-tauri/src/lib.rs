@@ -164,16 +164,30 @@ pub fn run() {
                         error!("Failed to initialize wallet sync service: {}", e);
                         return;
                     }
-                    
-                    // Set wallet manager and config manager for wallet sync service
+                      // Set wallet manager and config manager for wallet sync service
                     wallet_sync.set_wallet_manager(wallet_manager.inner().clone()).await;
                     wallet_sync.set_config_manager(config_manager.inner().clone()).await;
                     
                     // Initialize mining service
                     let mining_service = app_handle_for_services.state::<AsyncMiningService>();
-                    if let Err(e) = mining_service.initialize(app_handle_clone).await {
+                    if let Err(e) = mining_service.initialize(app_handle_clone.clone()).await {
                         error!("Failed to initialize mining service: {}", e);
                         return;
+                    }
+                    
+                    // Populate blockchain with test data using wallet addresses
+                    info!("Populating blockchain database with test data");
+                    let blockchain_db = app_handle_for_services.state::<Arc<AsyncBlockchainDatabase>>();
+                    let wallet_addresses = config_manager.get_all_wallet_addresses();
+                    
+                    if !wallet_addresses.is_empty() {
+                        if let Err(e) = blockchain_db.populate_test_data(wallet_addresses).await {
+                            error!("Failed to populate blockchain test data: {}", e);
+                        } else {
+                            info!("Blockchain test data populated successfully");
+                        }
+                    } else {
+                        info!("No wallet addresses found, skipping test data population");
                     }
                     
                     info!("Wallet sync and mining services initialized successfully");

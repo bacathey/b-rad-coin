@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sled::{Db, Tree};
 use tokio::sync::RwLock;
+use log::info;
 
 use bincode::{Decode, Encode};
 
@@ -288,87 +289,7 @@ impl BlockchainDatabase {
     pub fn flush(&self) -> Result<()> {
         self.db.flush()?;
         Ok(())
-    }
-
-    /// Generate test blockchain data with specific wallet addresses
-    pub async fn generate_test_blocks_with_addresses(&self, addresses: Vec<String>, num_blocks: u64) -> Result<(), String> {
-        info!("Generating {} test blocks with {} wallet addresses", num_blocks, addresses.len());
-        
-        if addresses.is_empty() {
-            return Err("No addresses provided for test block generation".to_string());
-        }
-        
-        let current_height = self.get_block_height().await.map_err(|e| e.to_string())?;
-        
-        for block_height in (current_height + 1)..=(current_height + num_blocks) {
-            // Create a test block with transactions to wallet addresses
-            let mut transactions = Vec::new();
-            
-            // Create 1-3 transactions per block
-            let tx_count = (block_height % 3) + 1;
-            
-            for tx_index in 0..tx_count {
-                // Select a random address from the provided wallet addresses
-                let recipient_address = addresses[(block_height as usize + tx_index as usize) % addresses.len()].clone();
-                
-                // Create a transaction with a random amount (between 1000 and 50000 satoshis)
-                let amount = 1000 + ((block_height * 1000 + tx_index * 500) % 49000);
-                
-                let transaction = Transaction {
-                    txid: format!("test_tx_{}_{}", block_height, tx_index),
-                    inputs: vec![], // Test transactions don't need inputs
-                    outputs: vec![
-                        TransactionOutput {
-                            value: amount,
-                            script_pubkey: format!("test_script_for_{}", recipient_address),
-                            address: Some(recipient_address.clone()),
-                        }
-                    ],
-                    block_height,
-                    timestamp: chrono::Utc::now().timestamp() - ((num_blocks - (block_height - current_height)) * 30), // 30 seconds per block backwards
-                };
-                
-                transactions.push(transaction);
-                
-                // Create UTXO for this transaction output
-                let utxo = UTXO {
-                    txid: transaction.txid.clone(),
-                    output_index: 0,
-                    value: amount,
-                    script_pubkey: transaction.outputs[0].script_pubkey.clone(),
-                    address: recipient_address,
-                    block_height,
-                    is_spent: false,
-                };
-                
-                // Store the UTXO
-                self.add_utxo(utxo).await.map_err(|e| e.to_string())?;
-            }
-            
-            // Create the block
-            let block = Block {
-                height: block_height,
-                hash: format!("test_block_hash_{}", block_height),
-                previous_hash: if block_height > 0 {
-                    Some(format!("test_block_hash_{}", block_height - 1))
-                } else {
-                    None
-                },
-                merkle_root: format!("test_merkle_{}", block_height),
-                timestamp: chrono::Utc::now().timestamp() - ((num_blocks - (block_height - current_height)) * 30),
-                nonce: block_height * 12345,
-                transactions,
-            };
-            
-            // Store the block
-            self.add_block(block).await.map_err(|e| e.to_string())?;
-            
-            debug!("Generated test block {} with {} transactions", block_height, tx_count);
-        }
-        
-        info!("Successfully generated {} test blocks with wallet addresses", num_blocks);
-        Ok(())
-    }
+    }    // Function removed - replaced with populate_test_data
 
     // ...existing code...
 }
@@ -439,11 +360,95 @@ impl AsyncBlockchainDatabase {
     pub async fn get_stats(&self) -> Result<HashMap<String, u64>> {
         let db = self.inner.read().await;
         db.get_stats()
-    }
-
-    /// Flush all pending writes to disk
+    }    /// Flush all pending writes to disk
     pub async fn flush(&self) -> Result<()> {
         let db = self.inner.read().await;
         db.flush()
+    }    /// Populate blockchain with test data using wallet addresses
+    pub async fn populate_test_data(&self, wallet_addresses: Vec<String>) -> Result<()> {
+        if wallet_addresses.is_empty() {
+            info!("No wallet addresses provided, skipping test data generation");
+            return Ok(());
+        }
+
+        info!("Populating blockchain with test data using {} wallet addresses", wallet_addresses.len());
+        
+        let current_height = self.get_block_height().await?;
+        if current_height > 0 {
+            info!("Blockchain already has data (height: {}), skipping test data generation", current_height);
+            return Ok(());
+        }
+
+        let db = self.inner.write().await;
+        
+        // Create some test blocks with transactions to wallet addresses
+        for block_height in 1u64..=10u64 {
+            let mut transactions = Vec::new();
+            
+            // Create 2 transactions per block
+            for tx_index in 0..2 {
+                let txid = format!("tx_{}_{}", block_height, tx_index);
+                
+                // For the first transaction in early blocks, create coinbase (no inputs)
+                let inputs = if block_height <= 3 && tx_index == 0 {
+                    vec![] // Coinbase transaction
+                } else {
+                    vec![TransactionInput {
+                        previous_txid: format!("tx_{}_{}", block_height - 1, 0),
+                        previous_output_index: 0,
+                        script_sig: "signature_placeholder".to_string(),
+                        sequence: 0xffffffff,
+                    }]
+                };
+
+                // Create outputs to wallet addresses
+                let mut outputs = Vec::new();
+                let addresses_to_use = std::cmp::min(wallet_addresses.len(), 2); // Use up to 2 addresses per transaction
+                
+                for i in 0..addresses_to_use {
+                    let address = &wallet_addresses[i % wallet_addresses.len()];
+                    let value = 1000000 + (block_height * 100000) + (tx_index * 10000) + (i as u64 * 5000); // Varying amounts
+                    
+                    outputs.push(TransactionOutput {
+                        value,
+                        script_pubkey: format!("OP_DUP OP_HASH160 {} OP_EQUALVERIFY OP_CHECKSIG", address),
+                        address: address.clone(),
+                    });
+                }
+
+                let transaction = Transaction {
+                    txid: txid.clone(),
+                    inputs,
+                    outputs,
+                    timestamp: 1640995200 + (block_height * 600), // ~10 minutes per block
+                    fee: 1000,
+                };
+
+                transactions.push(transaction);
+            }
+
+            // Create the block
+            let block = Block {
+                height: block_height,
+                hash: format!("block_hash_{}", block_height),
+                previous_hash: if block_height == 1 { 
+                    "genesis".to_string() 
+                } else { 
+                    format!("block_hash_{}", block_height - 1) 
+                },
+                timestamp: 1640995200 + (block_height * 600),
+                nonce: block_height * 12345,
+                difficulty: 1000,
+                transactions,
+                merkle_root: format!("merkle_root_{}", block_height),
+            };
+
+            // Store the block and its transactions
+            db.store_block(&block)?;
+            info!("Created test block {} with {} transactions", block_height, block.transactions.len());
+        }
+
+        info!("Test blockchain data populated successfully");
+        Ok(())
     }
 }
