@@ -6,52 +6,68 @@ import CloudDoneIcon from '@mui/icons-material/CloudDone';
 import CloudOffIcon from '@mui/icons-material/CloudOff';
 import SyncIcon from '@mui/icons-material/Sync';
 import PeopleIcon from '@mui/icons-material/People';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 interface NetworkStatusProps {
   className?: string;
 }
 
 interface BlockchainInfo {
-  connected: boolean;
-  syncProgress: number;
-  peers: number;
+  current_height: number;
+  is_connected: boolean;
+  is_syncing: boolean;
+  peer_count: number;
 }
 
 export const NetworkStatus: React.FC<NetworkStatusProps> = ({ className }) => {
-  const { isDarkMode } = useThemeMode();
-  const [blockchainInfo, setBlockchainInfo] = useState<BlockchainInfo>({
-    connected: false,
-    syncProgress: 0,
-    peers: 0,
+  const { isDarkMode } = useThemeMode();  const [blockchainInfo, setBlockchainInfo] = useState<BlockchainInfo>({
+    current_height: 0,
+    is_connected: false,
+    is_syncing: false,
+    peer_count: 0,
   });
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     const fetchNetworkStatus = async () => {
       try {
-        // In real implementation, this would call a Tauri command to get blockchain info
-        // const result = await invoke('get_blockchain_status');
-        
-        // Mock data for now
-        const mockData: BlockchainInfo = {
-          connected: true,
-          syncProgress: Math.floor(Math.random() * 30) + 70, // 70-100% sync
-          peers: Math.floor(Math.random() * 5) + 4, // 4-8 peers
-        };
-        
-        setBlockchainInfo(mockData);
+        // Get network status from the blockchain sync service
+        const networkStatus = await invoke<BlockchainInfo>('get_network_status');
+        setBlockchainInfo(networkStatus);
         setLoading(false);
-        
       } catch (error) {
         console.error('Failed to fetch network status:', error);
         setLoading(false);
       }
     };
 
+    // Listen for blockchain status events
+    const setupListener = async () => {
+      try {
+        const unlisten = await listen<BlockchainInfo>('blockchain-status', (event) => {
+          setBlockchainInfo(event.payload);
+          setLoading(false);
+        });
+        
+        // Return cleanup function
+        return unlisten;
+      } catch (error) {
+        console.error('Failed to setup blockchain status listener:', error);
+      }
+    };
+
+    // Initial fetch
     fetchNetworkStatus();
-    const intervalId = setInterval(fetchNetworkStatus, 10000); // Update every 10 seconds
     
-    return () => clearInterval(intervalId);
+    // Setup listener for real-time updates
+    let unlistenPromise = setupListener();
+    
+    // Fallback polling every 30 seconds
+    const interval = setInterval(fetchNetworkStatus, 30000);    return () => {
+      clearInterval(interval);
+      // Cleanup listener
+      unlistenPromise?.then(unlisten => unlisten?.());
+    };
   }, []);
 
   return (
@@ -82,9 +98,8 @@ export const NetworkStatus: React.FC<NetworkStatusProps> = ({ className }) => {
           <LinearProgress />
         </Box>
       ) : (
-        <>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-            {blockchainInfo.connected ? 
+        <>          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
+            {blockchainInfo.is_connected ? 
               <Chip 
                 icon={<CloudDoneIcon />} 
                 label="Connected" 
@@ -107,8 +122,8 @@ export const NetworkStatus: React.FC<NetworkStatusProps> = ({ className }) => {
             
             <Chip 
               icon={<PeopleIcon />} 
-              label={`${blockchainInfo.peers} Peers`} 
-              color={blockchainInfo.peers > 0 ? "primary" : "warning"} 
+              label={`${blockchainInfo.peer_count} Peers`} 
+              color={blockchainInfo.peer_count > 0 ? "primary" : "warning"} 
               size="small" 
               variant="outlined"
               sx={{
@@ -117,15 +132,14 @@ export const NetworkStatus: React.FC<NetworkStatusProps> = ({ className }) => {
               }}
             />
           </Stack>
-          
-          <Box sx={{ mb: 1 }}>
+            <Box sx={{ mb: 1 }}>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
               <SyncIcon fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
               Synchronization
             </Typography>
             <LinearProgress 
-              variant="determinate" 
-              value={blockchainInfo.syncProgress} 
+              variant={blockchainInfo.is_syncing ? "indeterminate" : "determinate"}
+              value={blockchainInfo.is_syncing ? undefined : 100}
               sx={{ 
                 height: 8, 
                 borderRadius: 2,
@@ -137,12 +151,12 @@ export const NetworkStatus: React.FC<NetworkStatusProps> = ({ className }) => {
             />
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1 }}>
               <Typography variant="caption">
-                {blockchainInfo.syncProgress < 100 ? 
-                  'XXX blocks remaining' : 
-                  'Fully synchronized'}
+                {blockchainInfo.is_syncing ? 
+                  `Block ${blockchainInfo.current_height} - Syncing...` : 
+                  `Block ${blockchainInfo.current_height} - Synchronized`}
               </Typography>
               <Typography variant="caption">
-                {blockchainInfo.syncProgress}%
+                {blockchainInfo.is_syncing ? 'Syncing' : 'Complete'}
               </Typography>
             </Stack>
           </Box>

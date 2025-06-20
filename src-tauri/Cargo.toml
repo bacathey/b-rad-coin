@@ -62,6 +62,10 @@ ring = "0.17.14"
 # File system utilities
 opener = "0.8.2"
 
+# Database dependencies
+sled = "0.34.7"  # Local database for blockchain data
+bincode = { version = "2.0.1", features = ["serde"] }
+
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
 # DO NOT REMOVE!!

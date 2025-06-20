@@ -9,6 +9,9 @@ use crate::security::AsyncSecurityManager;
 use crate::wallet_manager::AsyncWalletManager;
 use bip39::Mnemonic;
 use rand::Rng;
+use crate::blockchain_sync_simple::{AsyncBlockchainSyncService, NetworkStatus};
+use crate::wallet_sync_service::{AsyncWalletSyncService, WalletSyncStatus};
+use crate::mining_service::{AsyncMiningService, MiningStatus};
 
 /// Response type for commands with proper error handling
 type CommandResult<T> = Result<T, String>;
@@ -1249,6 +1252,208 @@ pub async fn update_tray_network_status(
     // This is a placeholder for future implementation
     
     Ok(())
+}
+
+/// Command to check the synchronization status of the blockchain
+#[command]
+pub async fn check_sync_status(
+    blockchain_sync_service: State<'_, AsyncBlockchainSyncService>,
+) -> CommandResult<NetworkStatus> {    info!("Command: check_sync_status");
+
+    // Get the current network status from the blockchain sync service
+    let status = blockchain_sync_service.get_network_status().await;
+
+    info!("Current network status: {:?}", status);
+
+    Ok(status)
+}
+
+/// Command to force synchronization with the blockchain
+#[command]
+pub async fn force_sync(
+    blockchain_sync_service: State<'_, AsyncBlockchainSyncService>,
+) -> CommandResult<bool> {    info!("Command: force_sync");    // Trigger a manual sync with the blockchain
+    blockchain_sync_service.start_sync_only().await.map_err(format_error)?;
+
+    info!("Synchronization with the blockchain has been triggered");
+
+    Ok(true)
+}
+
+/// Command to get current blockchain network status
+#[command]
+pub async fn get_network_status(
+    blockchain_sync: State<'_, AsyncBlockchainSyncService>,
+) -> CommandResult<NetworkStatus> {
+    debug!("Command: get_network_status");
+    let status = blockchain_sync.get_network_status().await;
+    debug!("Network status: connected={}, height={}, syncing={}, peers={}", 
+           status.is_connected, status.current_height, status.is_syncing, status.peer_count);
+    Ok(status)
+}
+
+/// Command to get current block height
+#[command]
+pub async fn get_block_height(
+    blockchain_sync: State<'_, AsyncBlockchainSyncService>,
+) -> CommandResult<i32> {
+    debug!("Command: get_block_height");
+    let height = blockchain_sync.get_block_height().await;
+    debug!("Current block height: {}", height);
+    Ok(height)
+}
+
+/// Command to check if blockchain is currently syncing
+#[command]
+pub async fn is_blockchain_syncing(
+    blockchain_sync: State<'_, AsyncBlockchainSyncService>,
+) -> CommandResult<bool> {
+    debug!("Command: is_blockchain_syncing");
+    let syncing = blockchain_sync.is_syncing().await;
+    debug!("Blockchain syncing: {}", syncing);
+    Ok(syncing)
+}
+
+/// Command to check network connection status
+#[command]
+pub async fn is_network_connected(
+    blockchain_sync: State<'_, AsyncBlockchainSyncService>,
+) -> CommandResult<bool> {
+    debug!("Command: is_network_connected");
+    let connected = blockchain_sync.is_connected().await;
+    debug!("Network connected: {}", connected);
+    Ok(connected)
+}
+
+/// Command to get peer count
+#[command]
+pub async fn get_peer_count(
+    blockchain_sync: State<'_, AsyncBlockchainSyncService>,
+) -> CommandResult<i32> {
+    debug!("Command: get_peer_count");
+    let count = blockchain_sync.get_peer_count().await;
+    debug!("Peer count: {}", count);
+    Ok(count)
+}
+
+// ============================================================================
+// Wallet Sync Commands
+// ============================================================================
+
+/// Command to start syncing a wallet
+#[command]
+pub async fn start_wallet_sync(
+    wallet_sync: State<'_, AsyncWalletSyncService>,
+    wallet_id: String,
+    addresses: Vec<String>,
+) -> CommandResult<()> {
+    debug!("Command: start_wallet_sync for wallet: {}", wallet_id);
+    
+    wallet_sync.start_wallet_sync(wallet_id.clone(), addresses).await
+        .map_err(format_error)?;
+    
+    info!("Started wallet sync for: {}", wallet_id);
+    Ok(())
+}
+
+/// Command to stop syncing a wallet
+#[command]
+pub async fn stop_wallet_sync(
+    wallet_sync: State<'_, AsyncWalletSyncService>,
+    wallet_id: String,
+) -> CommandResult<()> {
+    debug!("Command: stop_wallet_sync for wallet: {}", wallet_id);
+    
+    wallet_sync.stop_wallet_sync(&wallet_id).await
+        .map_err(format_error)?;
+    
+    info!("Stopped wallet sync for: {}", wallet_id);
+    Ok(())
+}
+
+/// Command to get wallet sync status
+#[command]
+pub async fn get_wallet_sync_status(
+    wallet_sync: State<'_, AsyncWalletSyncService>,
+    wallet_id: String,
+) -> CommandResult<Option<WalletSyncStatus>> {
+    debug!("Command: get_wallet_sync_status for wallet: {}", wallet_id);
+    
+    let status = wallet_sync.get_wallet_sync_status(&wallet_id).await;
+    debug!("Wallet sync status for {}: {:?}", wallet_id, status.is_some());
+    Ok(status)
+}
+
+/// Command to get all wallet sync statuses
+#[command]
+pub async fn get_all_wallet_sync_statuses(
+    wallet_sync: State<'_, AsyncWalletSyncService>,
+) -> CommandResult<std::collections::HashMap<String, WalletSyncStatus>> {
+    debug!("Command: get_all_wallet_sync_statuses");
+    
+    let statuses = wallet_sync.get_all_sync_statuses().await;
+    debug!("Retrieved {} wallet sync statuses", statuses.len());
+    Ok(statuses)
+}
+
+// ============================================================================
+// Mining Commands
+// ============================================================================
+
+/// Command to start mining for a wallet
+#[command]
+pub async fn start_mining(
+    mining_service: State<'_, AsyncMiningService>,
+    wallet_id: String,
+    mining_address: String,
+) -> CommandResult<()> {
+    debug!("Command: start_mining for wallet: {} at address: {}", wallet_id, mining_address);
+    
+    mining_service.start_mining(wallet_id.clone(), mining_address).await
+        .map_err(format_error)?;
+    
+    info!("Started mining for wallet: {}", wallet_id);
+    Ok(())
+}
+
+/// Command to stop mining for a wallet
+#[command]
+pub async fn stop_mining(
+    mining_service: State<'_, AsyncMiningService>,
+    wallet_id: String,
+) -> CommandResult<()> {
+    debug!("Command: stop_mining for wallet: {}", wallet_id);
+    
+    mining_service.stop_mining(&wallet_id).await
+        .map_err(format_error)?;
+    
+    info!("Stopped mining for wallet: {}", wallet_id);
+    Ok(())
+}
+
+/// Command to get mining status for a wallet
+#[command]
+pub async fn get_mining_status(
+    mining_service: State<'_, AsyncMiningService>,
+    wallet_id: String,
+) -> CommandResult<Option<MiningStatus>> {
+    debug!("Command: get_mining_status for wallet: {}", wallet_id);
+    
+    let status = mining_service.get_mining_status(&wallet_id).await;
+    debug!("Mining status for {}: {:?}", wallet_id, status.is_some());
+    Ok(status)
+}
+
+/// Command to get all mining statuses
+#[command]
+pub async fn get_all_mining_statuses(
+    mining_service: State<'_, AsyncMiningService>,
+) -> CommandResult<std::collections::HashMap<String, MiningStatus>> {
+    debug!("Command: get_all_mining_statuses");
+    
+    let statuses = mining_service.get_all_mining_statuses().await;
+    debug!("Retrieved {} mining statuses", statuses.len());
+    Ok(statuses)
 }
 
 

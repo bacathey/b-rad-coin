@@ -20,6 +20,11 @@ pub mod logging;
 pub mod security;
 pub mod wallet_data;
 pub mod wallet_manager;
+// pub mod core;  // Temporarily commented out due to missing dependencies
+pub mod blockchain_sync_simple;
+pub mod blockchain_database;
+pub mod wallet_sync_service;
+pub mod mining_service;
 
 use commands::*;
 use developer_commands::*;
@@ -27,6 +32,10 @@ use config::ConfigManager;
 use errors::AppResult;
 use security::{AsyncSecurityManager, SecurityManager};
 use wallet_manager::{AsyncWalletManager, WalletManager};
+use blockchain_sync_simple::AsyncBlockchainSyncService;
+use blockchain_database::AsyncBlockchainDatabase;
+use wallet_sync_service::AsyncWalletSyncService;
+use mining_service::AsyncMiningService;
 
 /// Application version
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -53,9 +62,13 @@ pub fn run() {
             Ok(app_state) => {                // Build and run Tauri application with our components
                 let app = tauri::Builder::default()
                     .plugin(tauri_plugin_updater::Builder::new().build())
-                    .plugin(tauri_plugin_opener::init()).manage(app_state.wallet_manager)
+                    .plugin(tauri_plugin_opener::init())                    .manage(app_state.wallet_manager)
                     .manage(app_state.security_manager)
-                    .manage(app_state.config_manager)                    .invoke_handler(generate_handler![
+                    .manage(app_state.config_manager)
+                    .manage(app_state.blockchain_sync)
+                    .manage(app_state.blockchain_db)
+                    .manage(app_state.wallet_sync)
+                    .manage(app_state.mining_service).invoke_handler(generate_handler![
                         check_wallet_status,
                         close_wallet,
                         get_available_wallets,
@@ -78,25 +91,35 @@ pub fn run() {
                         hide_to_tray,
                         update_tray_wallet_status,
                         update_tray_network_status,                        get_app_version,
-                        greet,                        // Developer commands
+                        greet,                        // Blockchain commands
+                        get_network_status,                        get_block_height,
+                        is_blockchain_syncing,
+                        is_network_connected,
+                        get_peer_count,
+                        // Wallet sync commands
+                        start_wallet_sync,
+                        stop_wallet_sync,
+                        get_wallet_sync_status,
+                        get_all_wallet_sync_statuses,
+                        // Mining commands
+                        start_mining,
+                        stop_mining,
+                        get_mining_status,
+                        get_all_mining_statuses,
+                        // Developer commands
                         get_recent_logs,
                         echo_command,
                         get_config_directory,
                         cleanup_orphaned_wallets,
                         delete_all_wallets,
-                        get_wallet_private_key
-                    ]).setup(|app| {
+                        get_wallet_private_key                    ]).setup(|app| {
                         info!("Setting up application");
                         
                         // Create system tray
                         setup_system_tray(app)?;
                         
-                        //let handle = _app.handle().clone();
-                        //tauri::async_runtime::spawn(async move {
-                            //update(handle).await.unwrap();
-                        //});
                         Ok(())
-                    })                    .on_window_event(|window, event| {
+                    }).on_window_event(|window, event| {
                         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                             debug!("Window close requested - minimizing to tray");
                             
@@ -106,9 +129,48 @@ pub fn run() {
                             // Prevent the default close behavior
                             api.prevent_close();
                         }
-                    })
-                    .build(generate_context!())
-                    .expect("Error while building tauri application");
+                    })                    .build(generate_context!())
+                    .expect("Error while building tauri application");                // Start blockchain sync service after app is built
+                info!("Starting blockchain sync service");
+                let app_handle_for_sync = app.app_handle().clone();
+                
+                // Start the blockchain sync service
+                tokio::spawn(async move {
+                    let app_handle_clone = app_handle_for_sync.clone();
+                    let blockchain_sync = app_handle_for_sync.state::<AsyncBlockchainSyncService>();
+                    
+                    if let Err(e) = blockchain_sync.start_sync(app_handle_clone.clone()).await {
+                        error!("Failed to start blockchain sync service: {}", e);
+                        return;
+                    }
+                    
+                    // Start periodic event emission
+                    blockchain_sync.start_event_emission(app_handle_clone).await;
+                });
+
+                // Initialize wallet sync and mining services
+                info!("Initializing wallet sync and mining services");
+                let app_handle_for_services = app.app_handle().clone();
+                
+                tokio::spawn(async move {
+                    let app_handle_clone = app_handle_for_services.clone();
+                    
+                    // Initialize wallet sync service
+                    let wallet_sync = app_handle_for_services.state::<AsyncWalletSyncService>();
+                    if let Err(e) = wallet_sync.initialize(app_handle_clone.clone()).await {
+                        error!("Failed to initialize wallet sync service: {}", e);
+                        return;
+                    }
+                    
+                    // Initialize mining service
+                    let mining_service = app_handle_for_services.state::<AsyncMiningService>();
+                    if let Err(e) = mining_service.initialize(app_handle_clone).await {
+                        error!("Failed to initialize mining service: {}", e);
+                        return;
+                    }
+                    
+                    info!("Wallet sync and mining services initialized successfully");
+                });
 
                 // Run the application
                 app.run(|app_handle, event| {
@@ -156,6 +218,10 @@ struct AppState {
     config_manager: Arc<ConfigManager>,
     wallet_manager: AsyncWalletManager,
     security_manager: AsyncSecurityManager,
+    blockchain_sync: AsyncBlockchainSyncService,
+    blockchain_db: Arc<AsyncBlockchainDatabase>,
+    wallet_sync: AsyncWalletSyncService,
+    mining_service: AsyncMiningService,
 }
 
 /// Set up application logging
@@ -186,21 +252,39 @@ async fn initialize_app() -> AppResult<AppState> {
     // Initialize wallet manager with config
     debug!("Initializing wallet manager");
     let wallet_manager = WalletManager::new(config_manager.get_config().clone());
-    let async_wallet_manager = AsyncWalletManager::new(wallet_manager);
-
-    // Connect the wallet manager to the config manager for persistence
+    let async_wallet_manager = AsyncWalletManager::new(wallet_manager);    // Connect the wallet manager to the config manager for persistence
     debug!("Connecting wallet manager to config manager for persistence");
     async_wallet_manager
         .set_config_manager(config_manager.clone())
-        .await;
+        .await;    // Initialize and start blockchain sync service
+    debug!("Initializing blockchain sync service");
+    let blockchain_sync = AsyncBlockchainSyncService::new();
+      // Initialize blockchain database
+    debug!("Initializing blockchain database");
+    let blockchain_data_dir = match dirs::data_dir() {
+        Some(dir) => dir.join("com.b-rad-coin.app").join("blockchain"),
+        None => return Err(errors::AppError::Generic("Failed to determine blockchain data directory".to_string())),
+    };    let blockchain_db = Arc::new(AsyncBlockchainDatabase::new(blockchain_data_dir).await
+        .map_err(|e| errors::AppError::Generic(format!("Failed to initialize blockchain database: {}", e)))?);
+    // Initialize wallet sync service
+    debug!("Initializing wallet sync service");
+    let wallet_sync = AsyncWalletSyncService::new(blockchain_db.clone());
+    
+    // Initialize mining service
+    debug!("Initializing mining service");
+    let mining_service = AsyncMiningService::new(blockchain_db.clone());
+    
+    // Note: blockchain sync will be started in setup() after app handle is available
 
-    info!("Application components initialized successfully");
-
-    // Return the application state with all components
+    info!("Application components initialized successfully");    // Return the application state with all components
     Ok(AppState {
         config_manager,
         wallet_manager: async_wallet_manager,
         security_manager: async_security_manager,
+        blockchain_sync,
+        blockchain_db,
+        wallet_sync,
+        mining_service,
     })
 }
 
