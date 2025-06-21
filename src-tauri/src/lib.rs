@@ -21,10 +21,11 @@ pub mod security;
 pub mod wallet_data;
 pub mod wallet_manager;
 // pub mod core;  // Temporarily commented out due to missing dependencies
-pub mod blockchain_sync_simple;
+pub mod blockchain_sync;
 pub mod blockchain_database;
 pub mod wallet_sync_service;
 pub mod mining_service;
+pub mod network_service;
 
 use commands::*;
 use developer_commands::*;
@@ -32,10 +33,11 @@ use config::ConfigManager;
 use errors::AppResult;
 use security::{AsyncSecurityManager, SecurityManager};
 use wallet_manager::{AsyncWalletManager, WalletManager};
-use blockchain_sync_simple::AsyncBlockchainSyncService;
+use blockchain_sync::AsyncBlockchainSyncService;
 use blockchain_database::AsyncBlockchainDatabase;
 use wallet_sync_service::AsyncWalletSyncService;
 use mining_service::AsyncMiningService;
+use network_service::AsyncNetworkService;
 
 /// Application version
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -66,9 +68,9 @@ pub fn run() {
                     .manage(app_state.security_manager)
                     .manage(app_state.config_manager)
                     .manage(app_state.blockchain_sync)
-                    .manage(app_state.blockchain_db)
-                    .manage(app_state.wallet_sync)
-                    .manage(app_state.mining_service).invoke_handler(generate_handler![
+                    .manage(app_state.blockchain_db)                    .manage(app_state.wallet_sync)
+                    .manage(app_state.mining_service)
+                    .manage(app_state.network_service).invoke_handler(generate_handler![
                         check_wallet_status,
                         close_wallet,
                         get_available_wallets,
@@ -139,7 +141,7 @@ pub fn run() {
                     let app_handle_clone = app_handle_for_sync.clone();
                     let blockchain_sync = app_handle_for_sync.state::<AsyncBlockchainSyncService>();
                     
-                    if let Err(e) = blockchain_sync.start_sync(app_handle_clone.clone()).await {
+                    if let Err(e) = blockchain_sync.start_sync().await {
                         error!("Failed to start blockchain sync service: {}", e);
                         return;
                     }
@@ -174,6 +176,21 @@ pub fn run() {
                         error!("Failed to initialize mining service: {}", e);
                         return;
                     }
+                    
+                    // Initialize network service
+                    let network_service = app_handle_for_services.state::<AsyncNetworkService>();
+                    if let Err(e) = network_service.initialize(app_handle_clone.clone()).await {
+                        error!("Failed to initialize network service: {}", e);
+                        return;
+                    }
+                    
+                    // Start network service
+                    if let Err(e) = network_service.start().await {
+                        error!("Failed to start network service: {}", e);
+                        return;
+                    }
+                    
+                    info!("Network service started successfully");
                     
                     // Populate blockchain with test data using wallet addresses
                     info!("Populating blockchain database with test data");
@@ -243,6 +260,7 @@ struct AppState {
     blockchain_db: Arc<AsyncBlockchainDatabase>,
     wallet_sync: AsyncWalletSyncService,
     mining_service: AsyncMiningService,
+    network_service: AsyncNetworkService,
 }
 
 /// Set up application logging
@@ -277,9 +295,7 @@ async fn initialize_app() -> AppResult<AppState> {
     debug!("Connecting wallet manager to config manager for persistence");
     async_wallet_manager
         .set_config_manager(config_manager.clone())
-        .await;    // Initialize and start blockchain sync service
-    debug!("Initializing blockchain sync service");
-    let blockchain_sync = AsyncBlockchainSyncService::new();    // Initialize blockchain database
+        .await;    // Initialize blockchain database first
     debug!("Initializing blockchain database");
     let blockchain_data_dir = match dirs::data_dir() {
         Some(dir) => dir.join("com.b-rad-coin.app").join("blockchain"),
@@ -292,16 +308,25 @@ async fn initialize_app() -> AppResult<AppState> {
         .map_err(|e| errors::AppError::Generic(format!("Failed to initialize blockchain database: {}", e)))?);
     
     info!("Blockchain database initialized successfully");
+
+    // Initialize and start blockchain sync service (now that we have the database)
+    debug!("Initializing blockchain sync service");
+    let blockchain_sync = AsyncBlockchainSyncService::new(blockchain_db.clone());
     debug!("Initializing wallet sync service");
     let wallet_sync = AsyncWalletSyncService::new(blockchain_db.clone());
-    
-    // Initialize mining service
+      // Initialize mining service
     debug!("Initializing mining service");
     let mining_service = AsyncMiningService::new(blockchain_db.clone());
     
+    // Initialize network service
+    debug!("Initializing network service");
+    let network_service = AsyncNetworkService::new(blockchain_db.clone(), None); // Use default port
+    
     // Note: blockchain sync will be started in setup() after app handle is available
 
-    info!("Application components initialized successfully");    // Return the application state with all components
+    info!("Application components initialized successfully");
+
+    // Return the application state with all components
     Ok(AppState {
         config_manager,
         wallet_manager: async_wallet_manager,
@@ -310,6 +335,7 @@ async fn initialize_app() -> AppResult<AppState> {
         blockchain_db,
         wallet_sync,
         mining_service,
+        network_service,
     })
 }
 

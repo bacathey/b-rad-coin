@@ -1,18 +1,18 @@
 //! Blockchain synchronization service
 
-use crate::core::*;
+use crate::blockchain_database::AsyncBlockchainDatabase;
 use crate::errors::*;
 use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::RwLock;
 
 /// Blockchain synchronization service
 pub struct BlockchainSyncService {
-    server: Option<Server>,
+    blockchain_db: Arc<AsyncBlockchainDatabase>,
     current_height: Arc<AtomicI32>,
     is_syncing: Arc<AtomicBool>,
     is_connected: Arc<AtomicBool>,
@@ -21,20 +21,20 @@ pub struct BlockchainSyncService {
 }
 
 /// Network status information
-#[derive(serde::Serialize, Clone, Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkStatus {
-    pub is_connected: bool,
     pub current_height: i32,
     pub is_syncing: bool,
+    pub is_connected: bool,
     pub peer_count: i32,
 }
 
 impl BlockchainSyncService {
     /// Create a new blockchain sync service
-    pub fn new() -> Self {
+    pub fn new(blockchain_db: Arc<AsyncBlockchainDatabase>) -> Self {
         Self {
-            server: None,
-            current_height: Arc::new(AtomicI32::new(-1)),
+            blockchain_db,
+            current_height: Arc::new(AtomicI32::new(0)),
             is_syncing: Arc::new(AtomicBool::new(false)),
             is_connected: Arc::new(AtomicBool::new(false)),
             peer_count: Arc::new(AtomicI32::new(0)),
@@ -48,68 +48,44 @@ impl BlockchainSyncService {
         
         self.app_handle = Some(app_handle.clone());
 
-        // Try to create or load existing blockchain
-        let blockchain = match Blockchain::new() {
-            Ok(bc) => {
-                info!("Loaded existing blockchain");
-                bc
+        // Get current blockchain height from database
+        match self.blockchain_db.get_block_height().await {
+            Ok(height) => {
+                let height_i32 = height as i32;
+                self.current_height.store(height_i32, Ordering::Relaxed);
+                info!("Current blockchain height: {}", height_i32);
             },
-            Err(_) => {
-                info!("No existing blockchain found, creating new one");
-                // Create a temporary wallet address for the genesis block
-                let genesis_address = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa".to_string();
-                Blockchain::create_blockchain(genesis_address)?
+            Err(e) => {
+                warn!("Failed to get blockchain height: {}", e);
+                self.current_height.store(0, Ordering::Relaxed);
             }
-        };
-
-        // Get the current height
-        let height = blockchain.get_best_height().unwrap_or(-1);
-        self.current_height.store(height, Ordering::Relaxed);
-        
-        info!("Current blockchain height: {}", height);
-
-        // Create UTXO set
-        let utxo_set = UTXOSet { blockchain };
-
-        // Create server for network communication
-        let server = Server::new("3001", "", utxo_set)?;
-        self.server = Some(server);
+        }
 
         // Start the sync process
         self.start_sync_process().await?;
 
         Ok(())
-    }
-
-    /// Start the blockchain synchronization process
+    }    /// Start the blockchain synchronization process
     async fn start_sync_process(&self) -> AppResult<()> {
         info!("Starting blockchain synchronization process");
 
-        let server = self.server.as_ref().unwrap().clone();
+        let blockchain_db = Arc::clone(&self.blockchain_db);
         let current_height = Arc::clone(&self.current_height);
         let is_syncing = Arc::clone(&self.is_syncing);
         let is_connected = Arc::clone(&self.is_connected);
         let peer_count = Arc::clone(&self.peer_count);
         let app_handle = self.app_handle.clone().unwrap();
 
-        // Start the server in a separate thread
-        let server_clone = server.clone();
-        thread::spawn(move || {
-            if let Err(e) = server_clone.start_server() {
-                error!("Failed to start blockchain server: {}", e);
-            }
-        });
-
         // Start the sync monitoring task
-        let sync_monitor = tokio::spawn(async move {
+        tokio::spawn(async move {
             let mut sync_interval = tokio::time::interval(Duration::from_secs(30));
             let mut status_update_interval = tokio::time::interval(Duration::from_secs(5));
 
             loop {
                 tokio::select! {
                     _ = sync_interval.tick() => {
-                        // Perform sync check
-                        Self::check_sync_status(&server, &current_height, &is_syncing, &is_connected, &peer_count).await;
+                        // Perform sync check and request blocks if needed
+                        Self::check_sync_status_and_request_blocks(&app_handle, &blockchain_db, &current_height, &is_syncing, &is_connected, &peer_count).await;
                     }
                     _ = status_update_interval.tick() => {
                         // Emit status update to frontend
@@ -120,40 +96,61 @@ impl BlockchainSyncService {
         });
 
         Ok(())
-    }
-
-    /// Check synchronization status
-    async fn check_sync_status(
-        server: &Server,
+    }    /// Check synchronization status and request blocks if needed (integrated with network service)
+    async fn check_sync_status_and_request_blocks(
+        app_handle: &AppHandle,
+        blockchain_db: &Arc<AsyncBlockchainDatabase>,
         current_height: &Arc<AtomicI32>,
         is_syncing: &Arc<AtomicBool>,
         is_connected: &Arc<AtomicBool>,
         peer_count: &Arc<AtomicI32>,
     ) {
-        debug!("Checking blockchain sync status");
+        debug!("Checking blockchain sync status and requesting blocks if needed");
 
-        // Update current height
-        if let Ok(height) = server.get_best_height() {
+        // Update current height from database
+        let local_height = if let Ok(height) = blockchain_db.get_block_height().await {
             let old_height = current_height.load(Ordering::Relaxed);
-            if height != old_height {
-                current_height.store(height, Ordering::Relaxed);
-                info!("Blockchain height updated: {} -> {}", old_height, height);
+            let new_height = height as i32;
+            if new_height != old_height {
+                current_height.store(new_height, Ordering::Relaxed);
+                info!("Blockchain height updated: {} -> {}", old_height, new_height);
             }
-        }
+            new_height as u64
+        } else {
+            0
+        };
 
-        // TODO: Implement actual peer discovery and connection checking
-        // For now, simulate network status
-        let known_nodes = server.get_known_nodes();
-        let peer_count_val = known_nodes.len() as i32;
-        peer_count.store(peer_count_val, Ordering::Relaxed);
+        // Get network service stats to check peer status and network height
+        let (network_height, connected_peers) = if let Some(network_service) = app_handle.try_state::<crate::network_service::AsyncNetworkService>() {
+            let stats = network_service.get_stats().await;
+            (stats.network_height, stats.connected_peers)
+        } else {
+            warn!("Network service not available for sync check");
+            (local_height, 0) // Fallback values
+        };
         
-        // Consider connected if we have peers
-        let connected = peer_count_val > 0;
+        peer_count.store(connected_peers as i32, Ordering::Relaxed);
+        let connected = connected_peers > 0;
         is_connected.store(connected, Ordering::Relaxed);
 
-        // Set syncing status (true if we're actively requesting blocks)
-        // This is a simplified implementation
-        is_syncing.store(connected && current_height.load(Ordering::Relaxed) < 100, Ordering::Relaxed);
+        // Check if we need to sync (network height is higher than local height)
+        let needs_sync = connected && network_height > local_height;
+        
+        if needs_sync && !is_syncing.load(Ordering::Relaxed) {
+            info!("Starting blockchain sync: local height {} < network height {}", local_height, network_height);
+            is_syncing.store(true, Ordering::Relaxed);
+            
+            // Request blocks using the network service (Bitcoin-style)
+            if let Some(network_service) = app_handle.try_state::<crate::network_service::AsyncNetworkService>() {
+                if let Err(e) = network_service.sync_blockchain().await {
+                    error!("Failed to start blockchain sync: {}", e);
+                } else {
+                    info!("Blockchain sync request sent to network service");
+                }
+            }
+            
+            is_syncing.store(false, Ordering::Relaxed);
+        }
     }
 
     /// Emit network status to frontend
@@ -199,41 +196,11 @@ impl BlockchainSyncService {
     /// Check if connected to network
     pub fn is_connected(&self) -> bool {
         self.is_connected.load(Ordering::Relaxed)
-    }    /// Get peer count
+    }
+
+    /// Get peer count
     pub fn get_peer_count(&self) -> i32 {
         self.peer_count.load(Ordering::Relaxed)
-    }
-
-    /// Initialize and start the blockchain sync process
-    pub async fn initialize(&mut self, app_handle: AppHandle) -> AppResult<()> {
-        self.app_handle = Some(app_handle);
-        Ok(())
-    }
-
-    /// Start the sync process
-    pub async fn start_sync_process(&mut self) -> AppResult<()> {
-        if let Some(app_handle) = &self.app_handle {
-            info!("Starting blockchain synchronization process");
-            
-            let current_height = self.current_height.clone();
-            let is_syncing = self.is_syncing.clone();
-            let is_connected = self.is_connected.clone();
-            let peer_count = self.peer_count.clone();
-            let app_handle_clone = app_handle.clone();
-            
-            // Start the sync background task
-            tokio::spawn(async move {
-                Self::run_sync_loop(
-                    app_handle_clone,
-                    current_height,
-                    is_syncing,
-                    is_connected,
-                    peer_count,
-                ).await;
-            });
-        }
-        
-        Ok(())
     }
 }
 
@@ -244,9 +211,9 @@ pub struct AsyncBlockchainSyncService {
 
 impl AsyncBlockchainSyncService {
     /// Create new async blockchain sync service
-    pub fn new() -> Self {
+    pub fn new(blockchain_db: Arc<AsyncBlockchainDatabase>) -> Self {
         Self {
-            inner: Arc::new(RwLock::new(BlockchainSyncService::new())),
+            inner: Arc::new(RwLock::new(BlockchainSyncService::new(blockchain_db))),
         }
     }
 
@@ -278,7 +245,9 @@ impl AsyncBlockchainSyncService {
     pub async fn is_connected(&self) -> bool {
         let service = self.inner.read().await;
         service.is_connected()
-    }    /// Get peer count
+    }
+
+    /// Get peer count
     pub async fn get_peer_count(&self) -> i32 {
         let service = self.inner.read().await;
         service.get_peer_count()
@@ -286,8 +255,8 @@ impl AsyncBlockchainSyncService {
 
     /// Start blockchain synchronization
     pub async fn start_sync(&self) -> AppResult<()> {
-        let mut service = self.inner.write().await;
-        service.start_sync_process().await
+        // The sync process is already started in initialize, so this is a no-op
+        Ok(())
     }
 
     /// Start event emission to frontend

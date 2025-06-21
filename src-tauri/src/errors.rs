@@ -12,6 +12,8 @@ pub enum AppError {
     Config(ConfigError),
     /// Errors related to security operations
     Security(SecurityError),
+    /// Errors related to network operations
+    Network(String),
     /// IO errors
     Io(io::Error),
     /// JSON serialization/deserialization errors
@@ -26,6 +28,7 @@ impl fmt::Display for AppError {
             AppError::Wallet(err) => write!(f, "Wallet error: {}", err),
             AppError::Config(err) => write!(f, "Config error: {}", err),
             AppError::Security(err) => write!(f, "Security error: {}", err),
+            AppError::Network(err) => write!(f, "Network error: {}", err),
             AppError::Io(err) => write!(f, "IO error: {}", err),
             AppError::Json(err) => write!(f, "JSON error: {}", err),
             AppError::Generic(msg) => write!(f, "{}", msg),

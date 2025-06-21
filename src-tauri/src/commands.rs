@@ -9,7 +9,7 @@ use crate::security::AsyncSecurityManager;
 use crate::wallet_manager::AsyncWalletManager;
 use bip39::Mnemonic;
 use rand::Rng;
-use crate::blockchain_sync_simple::{AsyncBlockchainSyncService, NetworkStatus};
+use crate::blockchain_sync::{AsyncBlockchainSyncService, NetworkStatus};
 use crate::wallet_sync_service::{AsyncWalletSyncService, WalletSyncStatus};
 use crate::mining_service::{AsyncMiningService, MiningStatus};
 
@@ -1305,7 +1305,7 @@ pub async fn check_sync_status(
 pub async fn force_sync(
     blockchain_sync_service: State<'_, AsyncBlockchainSyncService>,
 ) -> CommandResult<bool> {    info!("Command: force_sync");    // Trigger a manual sync with the blockchain
-    blockchain_sync_service.start_sync_only().await.map_err(format_error)?;
+    blockchain_sync_service.start_sync().await.map_err(format_error)?;
 
     info!("Synchronization with the blockchain has been triggered");
 
