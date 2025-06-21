@@ -16,6 +16,7 @@ interface NetworkStatusProps {
 
 interface BlockchainInfo {
   current_height: number;
+  network_height: number;
   is_connected: boolean;
   is_syncing: boolean;
   peer_count: number;
@@ -34,9 +35,9 @@ interface WalletSyncStatus {
 export const NetworkStatus: React.FC<NetworkStatusProps> = ({ className }) => {
   const { isDarkMode } = useThemeMode();
   const { currentWallet, isWalletOpen } = useWallet();
-
   const [blockchainInfo, setBlockchainInfo] = useState<BlockchainInfo>({
     current_height: 0,
+    network_height: 0,
     is_connected: false,
     is_syncing: false,
     peer_count: 0,
@@ -177,8 +178,46 @@ export const NetworkStatus: React.FC<NetworkStatusProps> = ({ className }) => {
           </Stack>          <Box sx={{ mb: 1 }}>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
               <SyncIcon fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
-              Synchronization
+              Blockchain Status
             </Typography>
+            
+            {/* Local and Network Heights */}
+            <Stack spacing={0.5} sx={{ mb: 2 }}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography variant="caption" color="text.secondary">
+                  Local Height:
+                </Typography>
+                <Typography variant="caption" fontWeight="medium">
+                  {blockchainInfo.current_height.toLocaleString()}
+                </Typography>
+              </Stack>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography variant="caption" color="text.secondary">
+                  Network Height:
+                </Typography>
+                <Typography variant="caption" fontWeight="medium">
+                  {blockchainInfo.network_height.toLocaleString()}
+                </Typography>
+              </Stack>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography variant="caption" color="text.secondary">
+                  Blocks Behind:
+                </Typography>
+                <Typography 
+                  variant="caption" 
+                  fontWeight="medium"
+                  color={
+                    blockchainInfo.network_height - blockchainInfo.current_height > 0 
+                      ? "warning.main" 
+                      : "success.main"
+                  }
+                >
+                  {Math.max(0, blockchainInfo.network_height - blockchainInfo.current_height).toLocaleString()}
+                </Typography>
+              </Stack>
+            </Stack>
+
+            {/* Sync Progress */}
             <LinearProgress 
               variant={blockchainInfo.is_syncing ? "indeterminate" : "determinate"}
               value={blockchainInfo.is_syncing ? undefined : 100}
@@ -194,8 +233,8 @@ export const NetworkStatus: React.FC<NetworkStatusProps> = ({ className }) => {
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1 }}>
               <Typography variant="caption">
                 {blockchainInfo.is_syncing ? 
-                  `Block ${blockchainInfo.current_height} - Syncing...` : 
-                  `Block ${blockchainInfo.current_height} - Synchronized`}
+                  `Syncing block ${blockchainInfo.current_height}...` : 
+                  `Synchronized at block ${blockchainInfo.current_height}`}
               </Typography>
               <Typography variant="caption">
                 {blockchainInfo.is_syncing ? 'Syncing' : 'Complete'}
@@ -204,7 +243,10 @@ export const NetworkStatus: React.FC<NetworkStatusProps> = ({ className }) => {
 
             {/* Wallet sync information */}
             {walletSyncStatus && (
-              <Stack spacing={0.5} sx={{ mt: 1 }}>
+              <Stack spacing={0.5} sx={{ mt: 2, pt: 1, borderTop: 1, borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary" fontWeight="medium">
+                  Wallet Sync Status:
+                </Typography>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="caption" color="text.secondary">
                     Wallet Block:
@@ -215,7 +257,7 @@ export const NetworkStatus: React.FC<NetworkStatusProps> = ({ className }) => {
                 </Stack>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="caption" color="text.secondary">
-                    Blocks Behind:
+                    Wallet Behind:
                   </Typography>
                   <Typography 
                     variant="caption" 

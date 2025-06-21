@@ -905,11 +905,11 @@ impl NetworkService {
                         } else {
                             info!("Stored stub block {} with {} transactions", block.height, block.transactions.len());
                         }
-                    }
-                      // Update network stats to reflect the new local height
+                    }                  // Update network stats to reflect the new local height
                     let mut stats_guard = self.stats.write().await;
-                    stats_guard.local_height = stats_guard.local_height.max(30); // We created 31 blocks (0-30)
-                    stats_guard.network_height = stats_guard.network_height.max(30); // Simulate network having these blocks
+                    stats_guard.local_height = stats_guard.local_height.max(10); // We created 11 blocks (0-10)
+                    stats_guard.network_height = 20; // Keep network height at 20 for testing
+                    stats_guard.connected_peers = 1; // Simulate one connected peer for development
                     drop(stats_guard);
                     
                     info!("Development blockchain stub created and stored successfully");
@@ -929,11 +929,35 @@ impl NetworkService {
         
         info!("Syncing blockchain: local height {} -> network height {}", local_height, network_height);
         
-        // Use headers-first sync for efficiency
-        self.request_headers(local_height + 1).await?;
+        // Development stub: Since we don't have real peers, simulate receiving the missing blocks
+        info!("Development mode: simulating reception of blocks {} to {}", local_height + 1, network_height);
         
-        // TODO: After receiving headers, request the actual block data
-        // This would be done in the message handler when we receive Headers response
+        match self.create_additional_blocks_stub(local_height + 1, network_height).await {
+            Ok(additional_blocks) => {
+                info!("Generated {} additional stub blocks", additional_blocks.len());
+                
+                // Store the additional blocks
+                for block in additional_blocks {
+                    if let Err(e) = self.blockchain_db.store_block(&block).await {
+                        error!("Failed to store additional block {}: {}", block.height, e);
+                    } else {
+                        info!("Stored additional block {} with {} transactions", block.height, block.transactions.len());
+                    }
+                }
+                
+                // Update local height to match network height
+                let mut stats_guard = self.stats.write().await;
+                stats_guard.local_height = network_height;
+                drop(stats_guard);
+                
+                info!("Successfully synced to network height {}", network_height);
+            },
+            Err(e) => {
+                error!("Failed to create additional blocks stub: {}", e);
+                // In a real implementation, this would request headers and blocks from peers
+                self.request_headers(local_height + 1).await?;
+            }
+        }
         
         Ok(())
     }
@@ -1139,9 +1163,8 @@ impl NetworkService {
         // Update balance for genesis
         *wallet_balances.get_mut(genesis_recipient).unwrap() += 5000000000;
         blocks.push(genesis_block);
-        
-        // Create blocks with varied transaction patterns
-        for height in 1..=30 {
+          // Create blocks with varied transaction patterns
+        for height in 1..=10 {
             current_timestamp += 600; // 10 minutes between blocks
             let mut transactions = Vec::new();
             
@@ -1327,6 +1350,75 @@ impl NetworkService {
             }
         }
     }
+
+    /// Create additional blocks for synchronization testing
+    async fn create_additional_blocks_stub(&self, start_height: u64, end_height: u64) -> AppResult<Vec<Block>> {
+        info!("Creating additional blocks stub from height {} to {}", start_height, end_height);
+        
+        if start_height > end_height {
+            return Ok(Vec::new());
+        }
+        
+        let mut blocks = Vec::new();
+        let wallet_addresses = self.get_existing_wallet_addresses().await;
+        let mut current_timestamp = chrono::Utc::now().timestamp() as u64;
+        
+        // Get the previous block hash for chaining
+        let previous_hash = if start_height > 0 {
+            match self.blockchain_db.get_block_by_height(start_height - 1).await {
+                Ok(Some(block)) => block.hash,
+                _ => format!("000000000{:09x}0000000000000000000000000000000", start_height - 1),
+            }
+        } else {
+            "0000000000000000000000000000000000000000000000000000000000000000".to_string()
+        };
+        
+        let mut prev_hash = previous_hash;
+        
+        for height in start_height..=end_height {
+            current_timestamp += 600; // 10 minutes between blocks
+            let mut transactions = Vec::new();
+            
+            // Coinbase transaction (mining reward)
+            let coinbase_recipient = &wallet_addresses[height as usize % wallet_addresses.len()];
+            let coinbase_amount = 5000000000 - (height * 5000000); // Decreasing mining rewards
+            transactions.push(self.create_coinbase_transaction(height, coinbase_recipient, coinbase_amount).await);
+            
+            // Add a few regular transactions
+            if height % 2 == 0 && wallet_addresses.len() >= 2 {
+                let from_addr = &wallet_addresses[0];
+                let to_addr = &wallet_addresses[1 % wallet_addresses.len()];
+                let amount = 50000000 + (height * 1000000); // Varying amounts
+                
+                transactions.push(self.create_regular_transaction(
+                    height,
+                    1,
+                    from_addr,
+                    to_addr,
+                    amount,
+                    current_timestamp + 60,
+                ).await);
+            }
+            
+            let block_hash = format!("000000000{:09x}{:08x}0000000000000000000000000000000", height, current_timestamp);
+              let block = Block {
+                height,
+                hash: block_hash.clone(),
+                previous_hash: prev_hash.clone(),
+                timestamp: current_timestamp,
+                nonce: height * 12345, // Simple nonce for testing
+                difficulty: 1000000, // Fixed difficulty for testing
+                transactions,
+                merkle_root: format!("merkle_root_{:08x}", height),
+            };
+            
+            prev_hash = block_hash;
+            blocks.push(block);
+        }
+        
+        info!("Created {} additional blocks for sync", blocks.len());
+        Ok(blocks)
+    }
 }
 
 impl Default for NetworkStats {
@@ -1338,7 +1430,7 @@ impl Default for NetworkStats {
             transactions_received: 0,
             bytes_sent: 0,
             bytes_received: 0,
-            network_height: 0,
+            network_height: 20, // For testing: simulate network having 20 blocks
             local_height: 0,
         }
     }

@@ -71,8 +71,7 @@ pub struct BlockchainDatabase {
     metadata: Tree,
 }
 
-impl BlockchainDatabase {
-    /// Create new blockchain database
+impl BlockchainDatabase {    /// Create new blockchain database
     pub fn new(data_dir: PathBuf) -> Result<Self> {
         let db_path = data_dir.join("blockchain.db");
         
@@ -81,15 +80,29 @@ impl BlockchainDatabase {
         // Ensure the data directory exists
         if let Some(parent) = db_path.parent() {
             println!("Creating directory: {:?}", parent);
-            std::fs::create_dir_all(parent)
-                .context("Failed to create blockchain data directory")?;
-            println!("Directory created successfully");
+            match std::fs::create_dir_all(parent) {
+                Ok(_) => println!("Directory created successfully"),
+                Err(e) => {
+                    println!("Failed to create directory: {}", e);
+                    return Err(anyhow::anyhow!("Failed to create blockchain data directory: {}", e));
+                }
+            }
         }
 
         println!("Opening sled database...");
-        let db = sled::open(&db_path)
-            .context("Failed to open blockchain database")?;
-        println!("Sled database opened successfully");
+        let db = match sled::open(&db_path) {
+            Ok(db) => {
+                println!("Sled database opened successfully");
+                db
+            },
+            Err(e) => {
+                println!("Failed to open sled database: {}", e);
+                println!("Attempted path: {:?}", db_path);
+                println!("Path exists: {}", db_path.exists());
+                println!("Parent exists: {}", db_path.parent().map(|p| p.exists()).unwrap_or(false));
+                return Err(anyhow::anyhow!("Failed to open blockchain database: {}", e));
+            }
+        };
 
         println!("Opening database trees...");
         let blocks = db.open_tree("blocks")

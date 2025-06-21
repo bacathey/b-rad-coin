@@ -24,6 +24,7 @@ pub struct BlockchainSyncService {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkStatus {
     pub current_height: i32,
+    pub network_height: i32,
     pub is_syncing: bool,
     pub is_connected: bool,
     pub peer_count: i32,
@@ -40,9 +41,7 @@ impl BlockchainSyncService {
             peer_count: Arc::new(AtomicI32::new(0)),
             app_handle: None,
         }
-    }
-
-    /// Initialize the blockchain sync service
+    }    /// Initialize the blockchain sync service
     pub async fn initialize(&mut self, app_handle: AppHandle) -> AppResult<()> {
         info!("Initializing blockchain sync service");
         
@@ -53,10 +52,10 @@ impl BlockchainSyncService {
             Ok(height) => {
                 let height_i32 = height as i32;
                 self.current_height.store(height_i32, Ordering::Relaxed);
-                info!("Current blockchain height: {}", height_i32);
+                info!("Blockchain sync service initialized with height: {}", height_i32);
             },
             Err(e) => {
-                warn!("Failed to get blockchain height: {}", e);
+                warn!("Failed to get blockchain height during initialization: {}", e);
                 self.current_height.store(0, Ordering::Relaxed);
             }
         }
@@ -75,6 +74,14 @@ impl BlockchainSyncService {
         let is_connected = Arc::clone(&self.is_connected);
         let peer_count = Arc::clone(&self.peer_count);
         let app_handle = self.app_handle.clone().unwrap();
+
+        // Ensure the current height is properly initialized
+        let db_height = blockchain_db.get_block_height().await.unwrap_or(0) as i32;
+        let sync_height = current_height.load(Ordering::Relaxed);
+        if sync_height != db_height {
+            info!("Updating sync service height from {} to {} to match database", sync_height, db_height);
+            current_height.store(db_height, Ordering::Relaxed);
+        }
 
         // Start the sync monitoring task
         tokio::spawn(async move {
@@ -96,7 +103,7 @@ impl BlockchainSyncService {
         });
 
         Ok(())
-    }    /// Check synchronization status and request blocks if needed (integrated with network service)
+    }/// Check synchronization status and request blocks if needed (integrated with network service)
     async fn check_sync_status_and_request_blocks(
         app_handle: &AppHandle,
         blockchain_db: &Arc<AsyncBlockchainDatabase>,
@@ -151,9 +158,7 @@ impl BlockchainSyncService {
             
             is_syncing.store(false, Ordering::Relaxed);
         }
-    }
-
-    /// Emit network status to frontend
+    }    /// Emit network status to frontend
     async fn emit_network_status(
         app_handle: &AppHandle,
         current_height: &Arc<AtomicI32>,
@@ -161,8 +166,17 @@ impl BlockchainSyncService {
         is_connected: &Arc<AtomicBool>,
         peer_count: &Arc<AtomicI32>,
     ) {
+        // Get network height from network service
+        let network_height = if let Some(network_service) = app_handle.try_state::<crate::network_service::AsyncNetworkService>() {
+            let stats = network_service.get_stats().await;
+            stats.network_height as i32
+        } else {
+            current_height.load(Ordering::Relaxed) // Fallback to current height
+        };
+
         let status = NetworkStatus {
             current_height: current_height.load(Ordering::Relaxed),
+            network_height,
             is_syncing: is_syncing.load(Ordering::Relaxed),
             is_connected: is_connected.load(Ordering::Relaxed),
             peer_count: peer_count.load(Ordering::Relaxed),
@@ -171,12 +185,13 @@ impl BlockchainSyncService {
         if let Err(e) = app_handle.emit("blockchain-status", &status) {
             debug!("Failed to emit blockchain status: {}", e);
         }
-    }
-
-    /// Get current network status
+    }    /// Get current network status
     pub fn get_network_status(&self) -> NetworkStatus {
+        // Note: This method doesn't have access to app_handle to get network height
+        // Network height will be 0 here, but the async version will have the correct value
         NetworkStatus {
             current_height: self.current_height.load(Ordering::Relaxed),
+            network_height: 0, // Will be updated by the async event emission
             is_syncing: self.is_syncing.load(Ordering::Relaxed),
             is_connected: self.is_connected.load(Ordering::Relaxed),
             peer_count: self.peer_count.load(Ordering::Relaxed),
@@ -279,5 +294,35 @@ impl AsyncBlockchainSyncService {
                 }
             }
         });
+    }    /// Get network status with network height from network service
+    pub async fn get_network_status_with_network_height(&self, app_handle: &AppHandle) -> NetworkStatus {
+        info!("Getting network status with network height");
+        let service = self.inner.read().await;
+        let local_status = service.get_network_status();
+        
+        info!("Local status: height={}, connected={}, syncing={}", 
+              local_status.current_height, local_status.is_connected, local_status.is_syncing);
+        
+        // Get network height from network service
+        let network_height = if let Some(network_service) = app_handle.try_state::<crate::network_service::AsyncNetworkService>() {
+            info!("Found network service, getting stats");
+            let stats = network_service.get_stats().await;
+            info!("Network service stats: network_height={}", stats.network_height);
+            stats.network_height as i32
+        } else {
+            warn!("Network service not found, using local height as fallback");
+            local_status.current_height // Fallback to current height
+        };
+
+        let result = NetworkStatus {
+            current_height: local_status.current_height,
+            network_height,
+            is_syncing: local_status.is_syncing,
+            is_connected: local_status.is_connected,
+            peer_count: local_status.peer_count,
+        };
+        
+        info!("Final network status: {:?}", result);
+        result
     }
 }

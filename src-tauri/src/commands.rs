@@ -1315,12 +1315,13 @@ pub async fn force_sync(
 /// Command to get current blockchain network status
 #[command]
 pub async fn get_network_status(
+    app: tauri::AppHandle,
     blockchain_sync: State<'_, AsyncBlockchainSyncService>,
 ) -> CommandResult<NetworkStatus> {
-    debug!("Command: get_network_status");
-    let status = blockchain_sync.get_network_status().await;
-    debug!("Network status: connected={}, height={}, syncing={}, peers={}", 
-           status.is_connected, status.current_height, status.is_syncing, status.peer_count);
+    info!("Command: get_network_status");
+    let status = blockchain_sync.get_network_status_with_network_height(&app).await;
+    info!("Network status: connected={}, local_height={}, network_height={}, syncing={}, peers={}", 
+           status.is_connected, status.current_height, status.network_height, status.is_syncing, status.peer_count);
     Ok(status)
 }
 
