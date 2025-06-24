@@ -302,7 +302,20 @@ impl BlockchainDatabase {    /// Create new blockchain database
     pub fn flush(&self) -> Result<()> {
         self.db.flush()?;
         Ok(())
-    }    // Function removed - replaced with populate_test_data
+    }
+
+    /// Close the database and release all resources
+    /// This flushes pending writes and ensures data integrity
+    pub fn close(&self) -> Result<()> {
+        info!("Releasing blockchain database resources");
+        
+        // Flush all pending writes to ensure data integrity
+        self.db.flush()
+            .context("Failed to flush database before closing")?;
+        
+        info!("Blockchain database resources released successfully");
+        Ok(())
+    }
 
     // ...existing code...
 }
@@ -377,7 +390,14 @@ impl AsyncBlockchainDatabase {
     pub async fn flush(&self) -> Result<()> {
         let db = self.inner.read().await;
         db.flush()
-    }    /// Populate blockchain with test data using wallet addresses
+    }    /// Close the database and release all resources
+    pub async fn close(&self) -> Result<()> {
+        info!("Closing async blockchain database and releasing resources");
+        let db = self.inner.read().await;
+        db.close()
+    }
+
+    /// Populate blockchain with test data using wallet addresses
     pub async fn populate_test_data(&self, wallet_addresses: Vec<String>) -> Result<()> {
         if wallet_addresses.is_empty() {
             info!("No wallet addresses provided, skipping test data generation");

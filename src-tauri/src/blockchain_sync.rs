@@ -85,7 +85,7 @@ impl BlockchainSyncService {
 
         // Start the sync monitoring task
         tokio::spawn(async move {
-            let mut sync_interval = tokio::time::interval(Duration::from_secs(30));
+            let mut sync_interval = tokio::time::interval(Duration::from_secs(10)); // Check sync every 10 seconds
             let mut status_update_interval = tokio::time::interval(Duration::from_secs(5));
 
             loop {
@@ -147,16 +147,41 @@ impl BlockchainSyncService {
             info!("Starting blockchain sync: local height {} < network height {}", local_height, network_height);
             is_syncing.store(true, Ordering::Relaxed);
             
-            // Request blocks using the network service (Bitcoin-style)
-            if let Some(network_service) = app_handle.try_state::<crate::network_service::AsyncNetworkService>() {
-                if let Err(e) = network_service.sync_blockchain().await {
-                    error!("Failed to start blockchain sync: {}", e);
-                } else {
-                    info!("Blockchain sync request sent to network service");
-                }
-            }
+            // Spawn a background task for blockchain synchronization
+            let blockchain_db_clone = blockchain_db.clone();
+            let current_height_clone = current_height.clone();
+            let is_syncing_clone = is_syncing.clone();
+            let app_handle_clone = app_handle.clone();
             
-            is_syncing.store(false, Ordering::Relaxed);
+            tokio::spawn(async move {
+                let sync_result = if let Some(network_service) = app_handle_clone.try_state::<crate::network_service::AsyncNetworkService>() {
+                    info!("Requesting blocks from network service");
+                    network_service.sync_blockchain().await
+                } else {
+                    error!("Network service not available for sync");
+                    Err(crate::errors::AppError::Generic("Network service not available".to_string()))
+                };
+                
+                match sync_result {
+                    Ok(_) => {
+                        info!("Blockchain sync completed successfully");
+                        
+                        // Update the current height after successful sync
+                        if let Ok(new_height) = blockchain_db_clone.get_block_height().await {
+                            let new_height_i32 = new_height as i32;
+                            let old_height = current_height_clone.swap(new_height_i32, Ordering::Relaxed);
+                            info!("Updated blockchain height after sync: {} -> {}", old_height, new_height_i32);
+                        }
+                    },
+                    Err(e) => {
+                        error!("Failed to complete blockchain sync: {}", e);
+                    }
+                }
+                
+                // Mark sync as completed
+                is_syncing_clone.store(false, Ordering::Relaxed);
+                info!("Blockchain sync process finished");
+            });
         }
     }    /// Emit network status to frontend
     async fn emit_network_status(
@@ -324,5 +349,45 @@ impl AsyncBlockchainSyncService {
         
         info!("Final network status: {:?}", result);
         result
+    }
+
+    /// Manually trigger blockchain synchronization (for testing/development)
+    pub async fn trigger_sync(&self, app_handle: &AppHandle) -> AppResult<()> {
+        let blockchain_db = {
+            let service = self.inner.read().await;
+            service.blockchain_db.clone()
+        };
+        
+        let current_height = {
+            let service = self.inner.read().await;
+            service.current_height.clone()
+        };
+        
+        let is_syncing = {
+            let service = self.inner.read().await;
+            service.is_syncing.clone()
+        };
+        
+        let is_connected = {
+            let service = self.inner.read().await;
+            service.is_connected.clone()
+        };
+        
+        let peer_count = {
+            let service = self.inner.read().await;
+            service.peer_count.clone()
+        };
+        
+        info!("Manually triggering blockchain synchronization");
+        BlockchainSyncService::check_sync_status_and_request_blocks(
+            app_handle,
+            &blockchain_db,
+            &current_height,
+            &is_syncing,
+            &is_connected,
+            &peer_count,
+        ).await;
+        
+        Ok(())
     }
 }

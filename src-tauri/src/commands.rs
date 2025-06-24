@@ -1303,11 +1303,15 @@ pub async fn check_sync_status(
 /// Command to force synchronization with the blockchain
 #[command]
 pub async fn force_sync(
+    app: tauri::AppHandle,
     blockchain_sync_service: State<'_, AsyncBlockchainSyncService>,
-) -> CommandResult<bool> {    info!("Command: force_sync");    // Trigger a manual sync with the blockchain
-    blockchain_sync_service.start_sync().await.map_err(format_error)?;
+) -> CommandResult<bool> {
+    info!("Command: force_sync");
 
-    info!("Synchronization with the blockchain has been triggered");
+    // Trigger a manual sync with the blockchain
+    blockchain_sync_service.trigger_sync(&app).await.map_err(format_error)?;
+
+    info!("Manual synchronization with the blockchain has been triggered");
 
     Ok(true)
 }

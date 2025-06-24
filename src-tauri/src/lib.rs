@@ -88,6 +88,7 @@ pub fn run() {
             is_blockchain_syncing,
             is_network_connected,
             get_peer_count,
+            force_sync,
             // Wallet sync commands
             start_wallet_sync,
             stop_wallet_sync,
@@ -111,51 +112,59 @@ pub fn run() {
             // Create system tray
             setup_system_tray(app)?;
             
-            // Initialize app components with a small delay to ensure runtime is ready
+            // Initialize app components immediately to start services
             let app_handle = app.handle().clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                tauri::async_runtime::spawn(async move {
-                    info!("DELAYED: Initializing application components");
-                    match initialize_app().await {
-                        Ok(app_state) => {
-                            info!("DELAYED: Application components initialized successfully");
-                            
-                            // Add all components to Tauri state
-                            app_handle.manage(app_state.wallet_manager);
-                            app_handle.manage(app_state.security_manager);
-                            app_handle.manage(app_state.config_manager);
-                            app_handle.manage(app_state.blockchain_sync);
-                            app_handle.manage(app_state.blockchain_db);
-                            app_handle.manage(app_state.wallet_sync);
-                            app_handle.manage(app_state.mining_service);
-                            app_handle.manage(app_state.network_service);
-                            
-                            info!("DELAYED: Starting blockchain sync service");
-                            
-                            // Initialize and start blockchain sync in the background
-                            let app_handle_for_sync = app_handle.clone();
-                            tauri::async_runtime::spawn(async move {
-                                let blockchain_sync = app_handle_for_sync.state::<AsyncBlockchainSyncService>();
-                                
-                                info!("SYNC: Initializing blockchain sync service with app handle");
-                                if let Err(e) = blockchain_sync.initialize(app_handle_for_sync.clone()).await {
-                                    error!("SYNC: Failed to initialize blockchain sync service: {}", e);
-                                    return;
-                                }
-                                info!("SYNC: Blockchain sync service initialized successfully");
-                                
-                                info!("SYNC: Starting blockchain sync process");
-                                if let Err(e) = blockchain_sync.start_sync().await {
-                                    error!("SYNC: Failed to start blockchain sync: {}", e);
-                                }
-                            });
+            tauri::async_runtime::spawn(async move {
+                info!("Initializing application components immediately");
+                match initialize_app().await {
+                    Ok(app_state) => {
+                        info!("Application components initialized successfully");
+                        
+                        // Store blockchain db reference for cleanup
+                        let blockchain_db_for_cleanup = app_state.blockchain_db.clone();
+                        
+                        // Add all components to Tauri state
+                        app_handle.manage(app_state.wallet_manager);
+                        app_handle.manage(app_state.security_manager);
+                        app_handle.manage(app_state.config_manager);
+                        app_handle.manage(app_state.blockchain_sync);
+                        app_handle.manage(app_state.blockchain_db);
+                        app_handle.manage(app_state.wallet_sync);
+                        app_handle.manage(app_state.mining_service);
+                        app_handle.manage(app_state.network_service);
+                        
+                        // Immediately start network service
+                        info!("Starting network service immediately");
+                        let network_service = app_handle.state::<AsyncNetworkService>();
+                        if let Err(e) = network_service.start().await {
+                            error!("Failed to start network service: {}", e);
+                        } else {
+                            info!("Network service started successfully");
                         }
-                        Err(e) => {
-                            error!("DELAYED: Failed to initialize application components: {}", e);
+                        
+                        // Immediately initialize and start blockchain sync
+                        info!("Starting blockchain sync service immediately");
+                        let blockchain_sync = app_handle.state::<AsyncBlockchainSyncService>();
+                        
+                        if let Err(e) = blockchain_sync.initialize(app_handle.clone()).await {
+                            error!("Failed to initialize blockchain sync service: {}", e);
+                        } else {
+                            info!("Blockchain sync service initialized successfully");
+                            
+                            if let Err(e) = blockchain_sync.start_sync().await {
+                                error!("Failed to start blockchain sync: {}", e);
+                            } else {
+                                info!("Blockchain sync started successfully");
+                            }
                         }
+                        
+                        // Set up resource cleanup handler for application shutdown
+                        setup_resource_cleanup_handler(app_handle.clone(), blockchain_db_for_cleanup);
                     }
-                });
+                    Err(e) => {
+                        error!("Failed to initialize application components: {}", e);
+                    }
+                }
             });
             
             Ok(())
@@ -172,10 +181,32 @@ pub fn run() {
         .build(generate_context!())
         .expect("Error while building tauri application");    // Run the app
     info!("Running application");
-    app.run(|_app_handle, event| match event {
+    app.run(|app_handle, event| match event {
         tauri::RunEvent::ExitRequested { api, .. } => {
-            debug!("Exit requested");
+            info!("Exit requested, cleaning up resources");
+            
+            // Set shutdown flag
+            SHUTDOWN_IN_PROGRESS.store(true, Ordering::SeqCst);
+            
+            // Perform cleanup
+            if let Some(blockchain_db) = app_handle.try_state::<Arc<AsyncBlockchainDatabase>>() {
+                let db_clone = blockchain_db.inner().clone();
+                tauri::async_runtime::spawn(async move {
+                    flush_and_release_database(db_clone).await;
+                });
+            }
+            
+            // Allow the exit after cleanup
             api.prevent_exit();
+            
+            // Give cleanup a moment to complete, then exit
+            std::thread::spawn(|| {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                std::process::exit(0);
+            });
+        }
+        tauri::RunEvent::Exit => {
+            info!("Application exiting");
         }
         _ => {}
     });
@@ -399,6 +430,51 @@ fn setup_system_tray(app: &tauri::App) -> tauri::Result<()> {
     
     info!("System tray created successfully");
     Ok(())
+}
+
+/// Setup resource cleanup handler for proper database flushing on shutdown
+fn setup_resource_cleanup_handler(app_handle: tauri::AppHandle, blockchain_db: Arc<AsyncBlockchainDatabase>) {
+    // Set up a handler that will be called during shutdown
+    let cleanup_db = blockchain_db.clone();
+    
+    // Register cleanup to be called on various exit scenarios
+    let app_handle_clone = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        // Wait for shutdown signal
+        tokio::signal::ctrl_c().await.ok();
+        info!("Received shutdown signal, flushing database to disk and releasing resources");
+        flush_and_release_database(cleanup_db).await;
+        std::process::exit(0);
+    });
+    
+    // Also set up cleanup for panic scenarios
+    let panic_cleanup_db = blockchain_db.clone();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        error!("Application panic detected: {:?}", panic_info);
+        
+        // Attempt to cleanup blockchain database in a blocking manner
+        let rt = tokio::runtime::Runtime::new();
+        if let Ok(runtime) = rt {
+            runtime.block_on(async {
+                flush_and_release_database(panic_cleanup_db.clone()).await;
+            });
+        }
+        
+        // Re-enable default panic behavior
+        std::process::abort();
+    }));
+}
+
+/// Flush blockchain database to disk and release resources
+async fn flush_and_release_database(blockchain_db: Arc<AsyncBlockchainDatabase>) {
+    info!("Flushing blockchain database to disk and releasing resources...");
+    
+    // Flush all data to disk and release database resources
+    if let Err(e) = blockchain_db.close().await {
+        error!("Failed to flush and release blockchain database resources: {}", e);
+    } else {
+        info!("Blockchain database successfully flushed to disk and resources released");
+    }
 }
 
 
