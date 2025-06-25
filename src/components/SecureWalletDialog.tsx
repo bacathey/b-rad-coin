@@ -107,9 +107,8 @@ export default function SecureWalletDialog({
         alignItems: 'center', 
         gap: 1,
         pb: 1
-      }}>
-        <LockIcon 
-          color="warning" 
+      }}>        <LockIcon 
+          color="success" 
           sx={{ mr: 1 }} 
         />
         <Typography variant="h6" component="div">

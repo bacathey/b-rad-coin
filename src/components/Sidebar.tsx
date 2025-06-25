@@ -14,8 +14,10 @@ import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import MiningIcon from '@mui/icons-material/Hardware';
+import CodeIcon from '@mui/icons-material/Code';
 import NetworkStatus from './NetworkStatus';
 import { transitions } from '../styles/themeConstants';
+import { useAppSettings } from '../context/AppSettingsContext';
 
 interface SidebarProps {
   mode: 'light' | 'dark';
@@ -23,9 +25,11 @@ interface SidebarProps {
   handleDrawerToggle: () => void;
 }
 
-export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: SidebarProps) {
-  const location = useLocation();
-  const navigate = useNavigate();
+export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: SidebarProps) {  const location = useLocation();
+  const navigate = useNavigate();  const { appSettings } = useAppSettings();
+    // We don't need to actively refresh settings here anymore
+  // The AppSettingsContext already refreshes on initial render
+  // And any changes to settings will be reflected via the context
 
   return (
     <Box sx={{ 
@@ -146,8 +150,7 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
               }}
             />
           </ListItemButton>
-        </ListItem>
-        <ListItem disablePadding>
+        </ListItem>        <ListItem disablePadding>
           <ListItemButton 
             selected={location.pathname === '/advanced'} 
             onClick={() => {
@@ -181,6 +184,44 @@ export default function Sidebar({ mode, mobileOpen, handleDrawerToggle }: Sideba
             />
           </ListItemButton>
         </ListItem>
+        
+        {/* Render the Developer menu item when developer mode is enabled */}
+        {appSettings && appSettings.developer_mode && (
+          <ListItem disablePadding>
+            <ListItemButton 
+              selected={location.pathname === '/developer'} 
+              onClick={() => {
+                navigate('/developer');
+                if (mobileOpen) handleDrawerToggle();
+              }}              sx={mode === 'light' && location.pathname === '/developer' ? {
+                borderLeft: '4px solid #5c6bc0', /* Changed from #1a237e to #5c6bc0 (lighter indigo) */
+                backgroundColor: 'rgba(92, 107, 192, 0.08)', /* Light indigo background */
+                transition: transitions.all
+              } : {
+                backgroundColor: mode === 'dark' ? 'rgba(144, 202, 249, 0.08)' : 'rgba(92, 107, 192, 0.04)', 
+                transition: transitions.all
+              }}
+            >              <ListItemIcon sx={mode === 'light' ? {
+                color: location.pathname === '/developer' ? '#5c6bc0' : 'rgba(0, 0, 0, 0.6)',
+                transition: transitions.color
+              } : {
+                color: location.pathname === '/developer' ? '#90caf9' : undefined,
+                transition: transitions.color
+              }}>
+                <CodeIcon />
+              </ListItemIcon>
+              <ListItemText 
+                primary="Developer" 
+                primaryTypographyProps={{
+                  sx: {
+                    color: mode === 'light' && location.pathname === '/developer' ? '#1a237e' : undefined,
+                    fontWeight: location.pathname === '/developer' ? 500 : 400,
+                    transition: `${transitions.color}, ${transitions.fontWeight}`
+                  }
+                }}
+              />
+            </ListItemButton>
+          </ListItem>        )}
       </List>
       
       {/* Push the network status to the bottom with flexbox */}

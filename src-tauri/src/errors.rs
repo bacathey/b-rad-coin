@@ -12,6 +12,8 @@ pub enum AppError {
     Config(ConfigError),
     /// Errors related to security operations
     Security(SecurityError),
+    /// Errors related to network operations
+    Network(String),
     /// IO errors
     Io(io::Error),
     /// JSON serialization/deserialization errors
@@ -26,6 +28,7 @@ impl fmt::Display for AppError {
             AppError::Wallet(err) => write!(f, "Wallet error: {}", err),
             AppError::Config(err) => write!(f, "Config error: {}", err),
             AppError::Security(err) => write!(f, "Security error: {}", err),
+            AppError::Network(err) => write!(f, "Network error: {}", err),
             AppError::Io(err) => write!(f, "IO error: {}", err),
             AppError::Json(err) => write!(f, "JSON error: {}", err),
             AppError::Generic(msg) => write!(f, "{}", msg),
@@ -78,6 +81,9 @@ pub enum WalletError {
     AccessDenied(String),
     AlreadyExists(String),
     InvalidOperation(String),
+    ConfigError(String),
+    KeyDerivationError(String),
+    NoWalletOpen,
     Generic(String),
 }
 
@@ -88,12 +94,29 @@ impl fmt::Display for WalletError {
             WalletError::AccessDenied(name) => write!(f, "Access denied to wallet '{}'", name),
             WalletError::AlreadyExists(name) => write!(f, "Wallet '{}' already exists", name),
             WalletError::InvalidOperation(msg) => write!(f, "Invalid wallet operation: {}", msg),
+            WalletError::ConfigError(msg) => write!(f, "Configuration error: {}", msg),
+            WalletError::KeyDerivationError(msg) => write!(f, "Key derivation error: {}", msg),
+            WalletError::NoWalletOpen => write!(f, "No wallet is currently open"),
             WalletError::Generic(msg) => write!(f, "{}", msg),
         }
     }
 }
 
 impl Error for WalletError {}
+
+// Convert WalletDataError to WalletError
+impl From<crate::wallet_data::WalletDataError> for WalletError {
+    fn from(error: crate::wallet_data::WalletDataError) -> Self {
+        use crate::wallet_data::WalletDataError;
+        match error {
+            WalletDataError::InvalidPassword => WalletError::AccessDenied("Invalid password".to_string()),
+            WalletDataError::DecryptionError(msg) => WalletError::AccessDenied(format!("Decryption failed: {}", msg)),
+            WalletDataError::EncryptionError(msg) => WalletError::Generic(format!("Encryption failed: {}", msg)),
+            WalletDataError::IoError(err) => WalletError::Generic(format!("IO error: {}", err)),
+            WalletDataError::SerializationError(err) => WalletError::Generic(format!("Serialization error: {}", err)),
+        }
+    }
+}
 
 /// Configuration-specific error types
 #[derive(Debug)]

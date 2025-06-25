@@ -27,7 +27,7 @@ import {
   Collapse, // Add Collapse import
 } from '@mui/material';
 import { useWallet } from '../context/WalletContext';
-import { getWalletDetails } from '../lib/wallet'; 
+import { useAppSettings } from '../context/AppSettingsContext';
 import { invoke } from '@tauri-apps/api/core';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import AddIcon from '@mui/icons-material/Add';
@@ -82,10 +82,11 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
-export default function OpenCreateWalletDialog() {
+export default function OpenCreateWalletDialog({ blockchainReady = true }: { blockchainReady?: boolean }) {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
-  const { isWalletOpen, setIsWalletOpen, setCurrentWallet, refreshWalletDetails } = useWallet();
+  const { isWalletOpen, setIsWalletOpen, setCurrentWallet, refreshWalletDetails, availableWallets } = useWallet();
+  const { appSettings } = useAppSettings();
   
   // Dialog state
   const [selectedWallet, setSelectedWallet] = useState('');
@@ -118,10 +119,82 @@ export default function OpenCreateWalletDialog() {
   // Add state for seed phrase flow
   const [seedPhraseDialogOpen, setSeedPhraseDialogOpen] = useState(false);
   const [verifySeedDialogOpen, setVerifySeedDialogOpen] = useState(false);
-  const [generatedSeedPhrase, setGeneratedSeedPhrase] = useState(''); // State for the generated phrase
+  const [generatedSeedPhrase, setGeneratedSeedPhrase] = useState('');
   const [tempWalletData, setTempWalletData] = useState<{name: string; password: string; usePassword: boolean} | null>(null);
-  
-  // Check for duplicate wallet names when wallet name changes
+  const [showSeedPhraseDialogs, setShowSeedPhraseDialogs] = useState(true);  const [isDeveloperMode, setIsDeveloperMode] = useState(false);
+
+  // Helper function to reset Create Wallet dialog fields and submit button
+  const resetCreateWalletForm = () => {
+    setNewWalletName('');
+    setWalletPassword('');
+    setConfirmPassword('');
+    setUsePasswordProtection(false);
+    setErrorMessage('');
+    setIsLoading(false);
+    setIsRecoveryMode(false);
+    setRecoverySeedPhrase('');
+    setTempWalletData(null);
+    setGeneratedSeedPhrase('');
+    console.log('Create Wallet dialog form has been reset');
+  };
+  // Load app settings  // Load and sync settings from context
+  useEffect(() => {
+    if (appSettings) {
+      setIsDeveloperMode(appSettings.developer_mode);
+      
+      // Only allow skipping seed phrase dialogs if developer mode is enabled
+      if (appSettings.developer_mode && appSettings.skip_seed_phrase_dialogs) {
+        setShowSeedPhraseDialogs(false); // Skip dialogs only if both conditions are true
+      } else {
+        setShowSeedPhraseDialogs(true); // Always show dialogs in non-dev mode
+      }
+        console.log('App settings synced from context:', { 
+        developerMode: appSettings.developer_mode, 
+        skipSeedDialogs: appSettings.skip_seed_phrase_dialogs,
+        willShowDialogs: !appSettings.developer_mode || !appSettings.skip_seed_phrase_dialogs,
+        finalShowSeedPhraseDialogs: appSettings.developer_mode && appSettings.skip_seed_phrase_dialogs ? false : true
+      });
+    } else {
+      // Default to showing seed phrase dialogs if settings aren't loaded yet
+      setShowSeedPhraseDialogs(true);
+      setIsDeveloperMode(false);
+    }  }, [appSettings]); // Re-run whenever appSettings changes
+
+  // Sync local walletsList with context's availableWallets
+  useEffect(() => {
+    console.log('OpenCreateWalletDialog: Syncing wallet list from context, available wallets:', availableWallets.length);
+    console.log('OpenCreateWalletDialog: Available wallet names:', availableWallets.map(w => w.name));
+    console.log('OpenCreateWalletDialog: Currently selected wallet:', selectedWallet);
+    
+    setWalletsList(availableWallets);
+    
+    // If we have wallets, handle selection
+    if (availableWallets.length > 0) {
+      // Check if currently selected wallet still exists
+      const selectedWalletExists = selectedWallet && availableWallets.find(w => w.name === selectedWallet);
+      
+      if (!selectedWalletExists) {
+        // Either no wallet selected or selected wallet doesn't exist - select first one
+        console.log('OpenCreateWalletDialog: Selecting first wallet:', availableWallets[0].name);
+        setSelectedWallet(availableWallets[0].name);
+        setIsSelectedWalletSecured(availableWallets[0].secured);
+      } else {
+        // Selected wallet still exists, update its security status
+        const currentWalletDetails = availableWallets.find(w => w.name === selectedWallet);
+        if (currentWalletDetails) {
+          setIsSelectedWalletSecured(currentWalletDetails.secured);
+        }
+      }
+      setTabValue(0); // Set to Open Wallet tab when wallets exist
+    } else {
+      // If no wallets exist, clear selection and set to Create Wallet tab
+      console.log('OpenCreateWalletDialog: No wallets available, clearing selection');
+      setSelectedWallet('');
+      setIsSelectedWalletSecured(false);
+      setTabValue(1);
+    }
+    setIsGettingWallets(false);
+  }, [availableWallets, selectedWallet]); // Re-adding selectedWallet but with better logic to prevent loops  // Check for duplicate wallet names when wallet name changes
   useEffect(() => {
     if (newWalletName.trim()) {
       const isDuplicate = walletsList.some(wallet => 
@@ -139,40 +212,35 @@ export default function OpenCreateWalletDialog() {
       return `A wallet with name "${newWalletName}" already exists`;
     }
     return "";
-  }, [isWalletNameDuplicate, newWalletName]);
-
-  // Fetch available wallets when the component mounts or when isWalletOpen changes
+  }, [isWalletNameDuplicate, newWalletName]);  // Trigger wallet details refresh when the dialog opens
   useEffect(() => {
-    async function fetchWallets() {
-      try {
-        setIsGettingWallets(true);
-        const wallets = await getWalletDetails();
-        setWalletsList(wallets);
-        
-        // If we have wallets, select the first one by default for better UX
-        if (wallets.length > 0) {
-          setSelectedWallet(wallets[0].name);
-          setIsSelectedWalletSecured(wallets[0].secured);
-          setTabValue(0); // Set to Open Wallet tab when wallets exist
-        } else if (wallets.length === 0) {
-          // If no wallets exist, set to Create Wallet tab
-          setTabValue(1);
-        }
-      } catch (error) {
-        console.error('Failed to fetch available wallets:', error);
-        setWalletsList([]);
-        setTabValue(1); // Set to Create Wallet tab on error
-      } finally {
-        setIsGettingWallets(false);
-      }
-    }
-
-    // Always fetch wallets when the dialog should be open
+    // Always refresh wallets when the dialog should be open to ensure fresh data
     if (!isWalletOpen) {
-      fetchWallets();
+      console.log('OpenCreateWalletDialog: Dialog opening, refreshing wallet details');
+      setIsGettingWallets(true);
+      refreshWalletDetails().finally(() => setIsGettingWallets(false));
     }
-  }, [isWalletOpen]); // Remove selectedWallet dependency to avoid loop
+  }, [isWalletOpen]); // Removed refreshWalletDetails from dependencies
+  // Force refresh when dialog becomes visible to ensure we have fresh data
+  useEffect(() => {
+    if (!isWalletOpen) {
+      console.log('OpenCreateWalletDialog: Dialog became visible, ensuring fresh wallet list');
+      // Force a fresh load from the context
+      refreshWalletDetails().catch(error => {
+        console.error('Failed to refresh wallet details on dialog open:', error);
+      });
+    }
+  }, [isWalletOpen, refreshWalletDetails]);
 
+  // Clear all password fields whenever the dialog becomes visible
+  useEffect(() => {
+    if (!isWalletOpen) {
+      console.log('OpenCreateWalletDialog: Dialog opened, clearing all password fields');
+      setWalletPassword('');
+      setOpenWalletPassword('');
+      setConfirmPassword('');
+    }
+  }, [isWalletOpen]);
   const handleWalletChange = (event: SelectChangeEvent) => {
     const walletName = event.target.value as string;
     setSelectedWallet(walletName);
@@ -181,10 +249,8 @@ export default function OpenCreateWalletDialog() {
     const walletInfo = walletsList.find(w => w.name === walletName);
     setIsSelectedWalletSecured(walletInfo?.secured || false);
     
-    // Clear password if switching to an unsecured wallet
-    if (walletInfo && !walletInfo.secured) {
-      setOpenWalletPassword('');
-    }
+    // Always clear password when switching wallets for security
+    setOpenWalletPassword('');
   };
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
@@ -192,6 +258,10 @@ export default function OpenCreateWalletDialog() {
     setErrorMessage('');
     // Reset recovery mode when changing tabs
     setIsRecoveryMode(false);
+    // Clear all password fields when switching tabs for security
+    setWalletPassword('');
+    setOpenWalletPassword('');
+    setConfirmPassword('');
   };
 
   const handleOpenWallet = async () => {
@@ -231,8 +301,66 @@ export default function OpenCreateWalletDialog() {
       setIsLoading(false);
     }
   };
-
-  // Modified handleCreateWallet to start the seed phrase flow
+  // New function to create wallet directly without relying on state updates
+  const createWalletDirectly = async (walletData: {name: string; password: string; usePassword: boolean}) => {
+    setErrorMessage('');
+    
+    try {
+      console.log('Creating wallet directly:', walletData.name);
+      
+      // Generate a seed phrase for wallet creation
+      // Only in developer mode with skip dialogs should we pass undefined to let backend generate placeholder
+      let seedPhraseToUse: string | undefined;
+      
+      if (isDeveloperMode && !showSeedPhraseDialogs) {
+        // Developer mode with skip enabled - let backend handle with placeholder
+        console.log('Developer mode with skip dialogs: using backend placeholder');
+        seedPhraseToUse = undefined;
+      } else {
+        // Normal mode or developer mode without skip - generate real seed phrase
+        console.log('Generating seed phrase for direct wallet creation');
+        seedPhraseToUse = await invoke<string>('generate_seed_phrase');
+        if (!seedPhraseToUse) {
+          throw new Error('Failed to generate seed phrase');
+        }
+      }
+      
+      const result = await invoke('create_wallet', { 
+        walletName: walletData.name, 
+        password: walletData.password,
+        usePassword: walletData.usePassword,
+        seedPhrase: seedPhraseToUse
+      });
+      
+      if (result) {
+        console.log('Wallet created successfully:', walletData.name);
+        setCurrentWallet({
+          name: walletData.name,
+          secured: walletData.usePassword
+        });
+        setIsWalletOpen(true);
+        await refreshWalletDetails();
+        
+        // Clear form data
+        setNewWalletName('');
+        setWalletPassword('');
+        setConfirmPassword('');
+        setUsePasswordProtection(false);
+      } else {
+        console.error('Wallet creation returned false');
+        setErrorMessage('Failed to create wallet');
+      }
+    } catch (error) {
+      console.error('Failed to create wallet directly:', error);
+      if (error instanceof Error) {
+        setErrorMessage(`Error: ${error.message}`);
+      } else {
+        setErrorMessage('Unknown error occurred during wallet creation');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
   const handleCreateWallet = async () => {
     setErrorMessage('');
     
@@ -246,88 +374,124 @@ export default function OpenCreateWalletDialog() {
       return;
     }
     
-    // Only validate passwords if using password protection
     if (usePasswordProtection) {
       if (!walletPassword) {
         setErrorMessage('Please enter a password');
         return;
       }
-      
       if (walletPassword !== confirmPassword) {
         setErrorMessage('Passwords do not match');
         return;
       }
     }
-    
+
     setIsLoading(true);
+    
     try {
-      // Generate a seed phrase for the new wallet
-      const phrase = await invoke<string>('generate_seed_phrase');
+      // Create the wallet data object that we'll use
+      const walletData = {
+        name: newWalletName,
+        password: walletPassword,
+        usePassword: usePasswordProtection
+      };
+        // Check if we should show seed phrase dialogs
+      console.log('Before wallet creation decision:', { 
+        showSeedPhraseDialogs, 
+        isDeveloperMode, 
+        appSettingsDeveloperMode: appSettings?.developer_mode,
+        appSettingsSkipSeed: appSettings?.skip_seed_phrase_dialogs
+      });
       
-      if (phrase) {
-        // Store wallet data temporarily until seed phrase is verified
-        setTempWalletData({
-          name: newWalletName,
-          password: walletPassword,
-          usePassword: usePasswordProtection
-        });
+      if (showSeedPhraseDialogs) {
+        // Normal flow - show seed phrase generation and verification dialogs
+        console.log('Normal flow: showing seed phrase dialogs');
+        setTempWalletData(walletData);
         
-        // Set the seed phrase and show the dialog
-        setGeneratedSeedPhrase(phrase);
-        setSeedPhraseDialogOpen(true);
+        const phrase = await invoke<string>('generate_seed_phrase');
+        if (phrase) {
+          setGeneratedSeedPhrase(phrase);
+          setSeedPhraseDialogOpen(true);
+        } else {
+          setErrorMessage('Failed to generate seed phrase');
+          setIsLoading(false);
+        }
+      } else if (isDeveloperMode) {
+        // Developer mode with skip dialogs enabled - create wallet directly
+        console.log('Developer mode with skip dialogs enabled, creating wallet directly');
+        console.log(`Developer mode: ${isDeveloperMode}, Skip dialogs: ${!showSeedPhraseDialogs}`);
+        
+        // Use the direct creation function which will handle the seed phrase appropriately
+        await createWalletDirectly(walletData);
       } else {
-        setErrorMessage('Failed to generate seed phrase');
+        // This should not happen - if not in developer mode, dialogs should always be shown
+        console.error('Invalid state: not in developer mode but trying to skip dialogs');
+        setErrorMessage('Seed phrase verification is required for wallet creation');
+        setIsLoading(false);
       }
     } catch (error) {
       console.error('Failed to start wallet creation:', error);
-      setErrorMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
+      if (error instanceof Error) {
+        setErrorMessage(`Error: ${error.message}`);
+      } else {
+        setErrorMessage('Unknown error occurred during wallet creation');
+      }
       setIsLoading(false);
     }
   };
-  
-  // Function to create the wallet after seed phrase verification
+  // Function to create the wallet after seed phrase verification (Dialog Flow)
   const finalizeWalletCreation = async () => {
-    if (!tempWalletData) return;
+    if (!tempWalletData) {
+      console.error('No temporary wallet data available for regular flow');
+      setErrorMessage('Wallet creation failed: No wallet data available');
+      setIsLoading(false);
+      return;
+    }
     
     setIsLoading(true);
-    setErrorMessage(''); // Clear previous errors
+    setErrorMessage('');
+    
     try {
+      console.log('Creating wallet after seed phrase verification:', tempWalletData.name);
+      
+      // For regular flow, we always use the seed phrase from the verification process
       const result = await invoke('create_wallet', { 
         walletName: tempWalletData.name, 
         password: tempWalletData.password,
         usePassword: tempWalletData.usePassword,
-        seedPhrase: generatedSeedPhrase // Pass the generated seed phrase
+        seedPhrase: generatedSeedPhrase
       });
       
       if (result) {
+        console.log('Wallet created successfully:', tempWalletData.name);
         setCurrentWallet({
           name: tempWalletData.name,
           secured: tempWalletData.usePassword
         });
         setIsWalletOpen(true);
-        await refreshWalletDetails(); // Refresh wallet details in context
+        await refreshWalletDetails();
         
-        // Reset temporary data and close dialogs
+        // Clear all wallet creation data
         setTempWalletData(null);
         setGeneratedSeedPhrase('');
-        // Reset form fields
         setNewWalletName('');
         setWalletPassword('');
         setConfirmPassword('');
         setUsePasswordProtection(false);
       } else {
+        console.error('Wallet creation returned false');
         setErrorMessage('Failed to create wallet after verification');
       }
     } catch (error) {
       console.error('Failed to finalize wallet creation:', error);
-      setErrorMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      // Keep dialogs closed but show error
+      if (error instanceof Error) {
+        setErrorMessage(`Error: ${error.message}`);
+      } else {
+        setErrorMessage('Unknown error occurred during wallet creation');
+      }
       setTempWalletData(null); 
       setGeneratedSeedPhrase('');
     } finally {
-      setIsLoading(false);
-      // Ensure dialogs are closed even on error during finalization
+      setIsLoading(false); // Ensure loading is false after finalization
       setSeedPhraseDialogOpen(false); 
       setVerifySeedDialogOpen(false);
     }
@@ -425,11 +589,14 @@ export default function OpenCreateWalletDialog() {
     setUsePasswordProtection(false);
   };
 
+  // Debug log to track wallet list changes
+  console.log('OpenCreateWalletDialog render: walletsList =', walletsList.map(w => w.name), 'selectedWallet =', selectedWallet);
+
   return (
     <>
-      {/* Backdrop that covers the entire app when wallet is not open */}      
+      {/* Backdrop that covers the entire app when wallet is not open and blockchain is ready */}      
       <Backdrop 
-        open={!isWalletOpen} 
+        open={!isWalletOpen && blockchainReady} 
         sx={{ 
           zIndex: theme.zIndex.drawer + 2,
           background: isDarkMode 
@@ -455,11 +622,9 @@ export default function OpenCreateWalletDialog() {
       {/* Add Seed Phrase Dialog */}
       <SeedPhraseDialog
         open={seedPhraseDialogOpen}
-        seedPhrase={generatedSeedPhrase}
-        onClose={() => {
+        seedPhrase={generatedSeedPhrase}        onClose={() => {
           setSeedPhraseDialogOpen(false);
-          setTempWalletData(null); // Clear temp data if user cancels
-          setGeneratedSeedPhrase('');
+          resetCreateWalletForm(); // Reset all Create Wallet dialog fields and submit button
         }}
         onContinue={() => {
           setSeedPhraseDialogOpen(false);
@@ -470,11 +635,9 @@ export default function OpenCreateWalletDialog() {
       {/* Add Verify Seed Phrase Dialog */}
       <VerifySeedPhraseDialog
         open={verifySeedDialogOpen}
-        seedPhrase={generatedSeedPhrase}
-        onClose={() => {
+        seedPhrase={generatedSeedPhrase}        onClose={() => {
           setVerifySeedDialogOpen(false);
-          setTempWalletData(null); // Clear temp data if user cancels verification
-          setGeneratedSeedPhrase('');
+          resetCreateWalletForm(); // Reset all Create Wallet dialog fields and submit button
         }}
         onVerified={() => {
           setVerifySeedDialogOpen(false);
@@ -483,7 +646,7 @@ export default function OpenCreateWalletDialog() {
       />
       
       <Dialog 
-        open={!isWalletOpen}
+        open={!isWalletOpen && blockchainReady}
         maxWidth="sm" 
         fullWidth 
         disableEscapeKeyDown
@@ -569,8 +732,7 @@ export default function OpenCreateWalletDialog() {
                   <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
                     <CircularProgress />
                   </Box>
-                ) : (
-                  <FormControl fullWidth sx={{ mb: 2 }}>
+                ) : (                  <FormControl fullWidth sx={{ mb: 2 }}>
                     <InputLabel id="wallet-select-label">Select Wallet</InputLabel>
                     <Select
                       labelId="wallet-select-label"
@@ -578,20 +740,25 @@ export default function OpenCreateWalletDialog() {
                       value={selectedWallet}
                       label="Select Wallet"
                       onChange={handleWalletChange}
-                    >
-                      {walletsList.map((wallet) => (
-                        <MenuItem key={wallet.name} value={wallet.name}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                            <ListItemIcon sx={{ minWidth: 36 }}>
-                              {wallet.secured ? 
-                                <LockIcon color="warning" fontSize="small" /> : 
-                                <LockOpenIcon color="success" fontSize="small" />
-                              }
-                            </ListItemIcon>
-                            {wallet.name}
-                          </Box>
-                        </MenuItem>
-                      ))}
+                      key={walletsList.length}
+                    >                      {walletsList.map((wallet) => {
+                        console.log('OpenCreateWalletDialog: Rendering MenuItem for wallet:', wallet.name);
+                        return (
+                          <MenuItem key={wallet.name} value={wallet.name}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                              <ListItemIcon sx={{ minWidth: 36 }}>                                {wallet.secured ? 
+                                  <LockIcon color="success" fontSize="small" /> : 
+                                  <LockOpenIcon 
+                                    sx={{ color: isDarkMode ? '#ffeb3b' : '#f57c00' }} 
+                                    fontSize="small" 
+                                  />
+                                }
+                              </ListItemIcon>
+                              {wallet.name}
+                            </Box>
+                          </MenuItem>
+                        );
+                      })}
                     </Select>
                   </FormControl>
                 )}
@@ -635,7 +802,7 @@ export default function OpenCreateWalletDialog() {
                   No wallets found.
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Please switch to the "Create New" tab to create your first wallet.
+                  Please switch to the "Create New" tab to create or recover a wallet.
                 </Typography>
                 <Button 
                   sx={{ mt: 3 }}
@@ -705,10 +872,12 @@ export default function OpenCreateWalletDialog() {
                 />
               )}
               label={(
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  {usePasswordProtection ? 
-                    <LockIcon color="warning" fontSize="small" sx={{ mr: 1 }} /> : 
-                    <LockOpenIcon color="success" fontSize="small" sx={{ mr: 1 }} />
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>                  {usePasswordProtection ? 
+                    <LockIcon color="success" fontSize="small" sx={{ mr: 1 }} /> : 
+                    <LockOpenIcon 
+                      sx={{ color: isDarkMode ? '#ffeb3b' : '#f57c00', mr: 1 }} 
+                      fontSize="small" 
+                    />
                   }
                   <Typography>
                     Password protect this wallet
@@ -770,8 +939,7 @@ export default function OpenCreateWalletDialog() {
                   color="primary"
                   // Use correct handler based on mode
                   onClick={isRecoveryMode ? handleRecoverWallet : handleCreateWallet} 
-                  // Update disabled logic for recovery mode seed phrase
-                  disabled={isLoading || !newWalletName || isWalletNameDuplicate || (usePasswordProtection && (!walletPassword || walletPassword !== confirmPassword)) || (isRecoveryMode && (!recoverySeedPhrase || recoverySeedPhrase.trim() === ''))} 
+                  disabled={isLoading || !newWalletName || isWalletNameDuplicate || (usePasswordProtection && (!walletPassword || walletPassword !== confirmPassword)) || (isRecoveryMode && (!recoverySeedPhrase || recoverySeedPhrase.trim() === ''))}
                   startIcon={isLoading && tabValue === 1 ? <CircularProgress size={20} /> : isRecoveryMode ? <RestoreIcon /> : <AddIcon />}
                   sx={{ 
                     minWidth: '160px',

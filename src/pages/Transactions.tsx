@@ -1,4 +1,4 @@
-// filepath: c:\Users\bacat\source\repos\my-tauri-app\src\pages\Transactions.tsx
+// filepath: c:\Users\bacat\source\repos\b-rad-coin\src\pages\Transactions.tsx
 import { 
   Typography, 
   Box, 
@@ -16,8 +16,8 @@ import {
   TableHead,
   TableRow
 } from '@mui/material';
-// Use the Grid2 component with direct import
-import Grid from '@mui/material/Grid2';
+// Use the standard Grid component 
+import { Grid } from '@mui/material';
 import { useState } from 'react';
 import {
   ResponsiveContainer,
@@ -99,54 +99,34 @@ export default function Transactions() {
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setChartTab(newValue);
-  };
-
-  return (
-    <Box 
-      sx={{ 
-        width: '100%',
-        maxWidth: '100%',
-        pt: 3,
-        px: { xs: 2, sm: 3 },
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center'
-      }}
-    >
-      <Typography 
-        variant="h4" 
-        component="h1" 
-        gutterBottom
-        sx={{
-          color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : '#1a237e',
-          textShadow: isDarkMode ? '0 2px 10px rgba(0,0,0,0.3)' : 'none',
-          fontWeight: 600
-        }}
-      >
+  };  return (
+    <Box sx={{ p: 3, mt: 2 }}>
+      <Typography variant="h4" component="h1" gutterBottom sx={{ 
+        color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : '#1a237e',
+        textShadow: isDarkMode ? '0 2px 10px rgba(0,0,0,0.3)' : 'none',        fontWeight: 600
+      }}>
         Transactions
       </Typography>
       
-      <Grid container spacing={3} sx={{ width: '100%', maxWidth: 1200, mx: 'auto' }}>
-        {/* Left column - contains the Pending Transactions and Transaction Summary cards */}
-        <Grid sx={{ gridColumn: { xs: "span 12", md: "span 6" } }}>
+      <Grid container spacing={3} sx={{ width: '100%', maxWidth: 1200, mx: 'auto', alignItems: "flex-start", mt: 1 }}>{/* Left column - contains the Pending Transactions and Transaction Summary cards */}
+        <Grid item xs={12} md={6}>
           {/* Stack the two cards vertically */}
-          <Stack spacing={3}>
-            {/* Pending Transactions Card */}
+          <Stack spacing={3}>            {/* Pending Transactions Card */}
             <Card sx={{
-              ...cardStyle
+              ...cardStyle,
+              display: 'flex',
+              flexDirection: 'column'
             }}>
               <CardContent>
-                <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                  <NotificationsIcon 
+                <Stack direction="row" spacing={1} alignItems="center" mb={1}>                  <NotificationsIcon 
                     sx={{ 
-                      color: isDarkMode ? '#ffb74d' : '#ed6c02',
+                      color: isDarkMode ? 'rgba(255, 193, 7, 0.9)' : '#f57c00',
                       fontSize: 28
                     }} 
-                  />
-                  <Typography 
+                  /><Typography 
                     variant="h6" 
                     sx={{
-                      color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : '#ed6c02',
+                      color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : '#1a237e',
                       fontWeight: 600
                     }}
                   >
@@ -159,11 +139,9 @@ export default function Transactions() {
                   sx={{ mb: 2 }}
                 >
                   Transactions that are currently pending confirmation on the network.
-                </Typography>
-
-                {/* Pending Transactions Table */}
+                </Typography>                {/* Pending Transactions Table */}
                 <TableContainer sx={{ 
-                  maxHeight: 200,
+                  height: 200,
                   background: isDarkMode ? 'rgba(10, 25, 41, 0.5)' : 'rgba(0, 0, 0, 0.02)',
                   borderRadius: 1
                 }}>
@@ -238,11 +216,11 @@ export default function Transactions() {
                   </Table>
                 </TableContainer>
               </CardContent>
-            </Card>
-            
-            {/* Transaction Summary Card */}
+            </Card>            {/* Transaction Summary Card */}
             <Card sx={{
-              ...cardStyle
+              ...cardStyle,
+              display: 'flex',
+              flexDirection: 'column'
             }}>
               <CardContent>
                 <Stack direction="row" spacing={1} alignItems="center" mb={1}>
@@ -268,11 +246,9 @@ export default function Transactions() {
                   sx={{ mb: 2 }}
                 >
                   Overview of your Bitcoin transaction history and balances.
-                </Typography>
-
-                {/* Transaction Summary Table */}
+                </Typography>                {/* Transaction Summary Table */}
                 <TableContainer sx={{ 
-                  maxHeight: 200,
+                  height: 200,
                   background: isDarkMode ? 'rgba(10, 25, 41, 0.5)' : 'rgba(0, 0, 0, 0.02)',
                   borderRadius: 1
                 }}>
@@ -348,24 +324,27 @@ export default function Transactions() {
                 </TableContainer>
               </CardContent>
             </Card>
-          </Stack>
-        </Grid>
-        
-        {/* Right column - Transaction Analytics */}
-        <Grid sx={{ gridColumn: { xs: "span 12", md: "span 6" } }}>
-          <Paper sx={{ 
+          </Stack>        </Grid>
+          {/* Right column - Transaction Analytics */}
+        <Grid item xs={12} md={6}>          <Paper sx={{ 
             p: 2,
-            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
             ...(isDarkMode ? {
               background: 'rgba(19, 47, 76, 0.6)',
               backdropFilter: 'blur(10px)',
               boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
               border: '1px solid rgba(255, 255, 255, 0.1)'
             } : {
-              background: 'white',
+              background: 'linear-gradient(180deg, #ffffff 0%, #f5f7fa 100%)',
               boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
               border: '1px solid rgba(0, 0, 0, 0.08)',
-              borderRadius: '8px'
+              borderRadius: '8px',
+              transition: 'transform 0.2s ease-in-out',
+              '&:hover': {
+                transform: 'translateY(-4px)',
+                boxShadow: '0 6px 25px rgba(0, 0, 0, 0.2)',
+              }
             })
           }}>
             <Stack direction="row" spacing={1} alignItems="center" mb={1}>
@@ -385,12 +364,12 @@ export default function Transactions() {
                 Transaction Analytics
               </Typography>
             </Stack>
-            
-            <Tabs
+              <Tabs
               value={chartTab}
               onChange={handleTabChange}
               variant="fullWidth"
               sx={{
+                mt: 1,
                 mb: 2,
                 '& .MuiTabs-indicator': {
                   backgroundColor: isDarkMode ? '#90caf9' : '#1a237e',
@@ -407,10 +386,8 @@ export default function Transactions() {
             >
               <Tab icon={<BarChartIcon />} label="Monthly Activity" iconPosition="start" />
               <Tab icon={<PieChartIcon />} label="Transaction Types" iconPosition="start" />
-            </Tabs>
-            
-            <Box sx={{ 
-              height: 300, 
+            </Tabs>            <Box sx={{ 
+              height: 240,
               background: isDarkMode ? 'rgba(10, 25, 41, 0.5)' : 'rgba(26, 35, 126, 0.03)',
               borderRadius: 1,
               p: 2,
@@ -448,7 +425,7 @@ export default function Transactions() {
                       }} 
                     />
                     <Bar dataKey="incoming" name="Incoming (BTC)" barSize={20} fill={isDarkMode ? "#8884d8" : "#3f51b5"} />
-                    <Bar dataKey="outgoing" name="Outgoing (BTC)" barSize={20} fill={isDarkMode ? "#ff7300" : "#f44336"} />
+                    <Bar dataKey="outgoing" name="Outgoing (BTC)" barSize={20} fill={isDarkMode ? "#ff5722" : "#f44336"} />
                     <Line type="monotone" dataKey="total" name="Net Flow (BTC)" stroke={isDarkMode ? "#64b5f6" : "#1565c0"} strokeWidth={2} />
                   </ComposedChart>
                 </ResponsiveContainer>

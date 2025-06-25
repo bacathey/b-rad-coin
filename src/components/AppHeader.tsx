@@ -111,20 +111,24 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
               <>
                 {currentWallet.name}
                 {/* Show lock icon based on wallet security status */}
-                {isWalletOpen && (
-                  isWalletSecured ? (
+                {isWalletOpen && (                  isWalletSecured ? (
                     <Tooltip title="This wallet is secured">
                       <Box component="span" sx={{ display: 'inline-flex', ml: 1 }}>
-                        <LockIcon color="warning" fontSize="small" />
+                        <LockIcon color="success" fontSize="small" />
                       </Box>
                     </Tooltip>
-                  ) : (
-                    <Tooltip title="Click to add password protection">
+                  ) : (                    <Tooltip title="Click to add password protection">
                       <IconButton
                         size="small"
-                        color="success"
                         onClick={handleOpenSecureDialog}
-                        sx={{ ml: 0.5, p: 0.5 }}
+                        sx={{ 
+                          ml: 0.5, 
+                          p: 0.5,
+                          color: mode === 'dark' ? '#ffeb3b' : '#f57c00',
+                          '&:hover': {
+                            backgroundColor: mode === 'dark' ? 'rgba(255, 235, 59, 0.1)' : 'rgba(245, 124, 0, 0.1)'
+                          }
+                        }}
                       >
                         <LockOpenIcon fontSize="small" />
                       </IconButton>
@@ -133,23 +137,30 @@ export default function AppHeader({ mode, toggleColorMode, handleDrawerToggle }:
                 )}
               </>
             ) : 'B-Rad Coin'}
-          </Typography>
-          
-          {/* Version number from Tauri backend */}
-          <Typography 
-            variant="caption" 
-            sx={{ 
-              mr: 2, 
-              opacity: 0.8,
-              fontSize: '0.75rem',
-              fontWeight: 500,
-              display: 'flex',
-              alignItems: 'center',
-              transition: transitions.all
-            }}
-          >
-            v{appVersion}
-          </Typography>
+          </Typography>          {/* Version number from Tauri backend - clickable link to About page */}
+          <Tooltip title="About B-Rad Coin">
+            <Typography 
+              variant="caption" 
+              component="div"
+              onClick={() => navigate('/about')}
+              sx={{ 
+                mr: 2, 
+                opacity: 0.8,
+                fontSize: '0.75rem',
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                transition: transitions.all,
+                cursor: 'pointer',
+                '&:hover': {
+                  opacity: 1,
+                  textDecoration: 'underline'
+                }
+              }}
+            >
+              v{appVersion}
+            </Typography>
+          </Tooltip>
           
           <Tooltip title={mode === 'dark' ? "Light mode" : "Dark mode"}>
             <IconButton 

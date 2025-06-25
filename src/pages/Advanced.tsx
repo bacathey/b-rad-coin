@@ -6,8 +6,29 @@ import {
   useTheme, 
   Paper, 
   Grid, 
-  Button 
+  Button,
+  CircularProgress,
+  Tooltip,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  TextField,
+  Alert,
+  Snackbar,
+  Fade // Add Fade import
 } from '@mui/material';
+import { useState, useEffect } from 'react';
+import { useWallet } from '../context/WalletContext';
+import LockIcon from '@mui/icons-material/Lock';
+import LockOpenIcon from '@mui/icons-material/LockOpen';
+import DeleteIcon from '@mui/icons-material/Delete';
+import SecurityIcon from '@mui/icons-material/Security';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import SecureWalletDialog from '../components/SecureWalletDialog';
+import { invoke } from '@tauri-apps/api/core';
 
 export default function Advanced() {
   const theme = useTheme();
@@ -51,8 +72,7 @@ export default function Advanced() {
       </Typography>
       
       {/* Container with fixed maximum width and full width */}
-      <Box sx={{ width: '100%', maxWidth: 1200, mx: 'auto' }}>
-        {/* Wallet Recovery - Moved from Settings */}
+      <Box sx={{ width: '100%', maxWidth: 1200, mx: 'auto' }}>        {/* Wallet File Location Card */}
         <Grid item xs={12} sx={{ mb: 3 }}>
           <Paper sx={{ 
             p: 3, 
@@ -67,24 +87,7 @@ export default function Advanced() {
               border: '1px solid rgba(0, 0, 0, 0.08)'
             }) 
           }}>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} sm={8}>
-                <Typography variant="h6" gutterBottom fontWeight={600}>
-                  Wallet Recovery
-                </Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
-                  Make sure to back up your wallet recovery phrase. Your recovery phrase is the only way to restore your wallet if you lose access to this device.
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={4} sx={{ display: 'flex', justifyContent: { xs: 'flex-start', sm: 'flex-end' } }}>
-                <Button variant="contained" color="primary">
-                  Backup Wallet
-                </Button>
-                <Button variant="outlined" color="primary" sx={{ ml: 1 }}>
-                  View Phrase
-                </Button>
-              </Grid>
-            </Grid>
+            <WalletLocationSection />
           </Paper>
         </Grid>
         
@@ -103,5 +106,456 @@ export default function Advanced() {
         </Box>
       </Box>
     </Box>
+  );
+}
+
+// Wallet file component
+function WalletLocationSection() {  const { 
+    currentWallet, 
+    isWalletOpen, 
+    isWalletSecured, 
+    getCurrentWalletPath, 
+    deleteWallet,
+    refreshWalletDetails  } = useWallet();
+  
+  const [displayPath, setDisplayPath] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showErrorAlert, setShowErrorAlert] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [confirmWalletName, setConfirmWalletName] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);  const [isDeleting, setIsDeleting] = useState(false);  const [secureDialogOpen, setSecureDialogOpen] = useState(false);
+  const [privateKey, setPrivateKey] = useState('');
+  const [privateKeyLoading, setPrivateKeyLoading] = useState(false);
+  const [showCopySuccess, setShowCopySuccess] = useState(false);
+  const theme = useTheme(); // Add this line to get the theme object
+  const isDarkMode = theme.palette.mode === 'dark'; // Add this line
+    useEffect(() => {
+    if (isWalletOpen && currentWallet) {
+      fetchWalletPath();
+    } else {
+      setDisplayPath(null);
+    }
+  }, [isWalletOpen, currentWallet]);
+  const fetchWalletPath = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      // Get the path from the backend
+      const path = await getCurrentWalletPath();
+      
+      // Log the received path with detailed info
+      console.log(`Retrieved wallet path: "${path}"`);
+      if (path) {
+        console.log(`Path type: ${typeof path}`);
+        console.log(`Path length: ${path.length}`);
+        console.log('Path characters:');
+        for (let i = 0; i < path.length; i++) {
+          const char = path.charAt(i);
+          const code = path.charCodeAt(i);
+          console.log(`  Position ${i}: "${char}" (char code: ${code})`);
+        }
+      }
+        if (path) {
+        // Create a normalized path for display, ensuring Windows-style backslashes
+        const normalizedPath = path.replace(/\//g, '\\');
+        setDisplayPath(normalizedPath);
+        
+        console.log(`Original path: ${path}`);
+        console.log(`Display path: ${normalizedPath}`);
+      } else {
+        setDisplayPath(null);
+      }
+    } catch (error) {
+      console.error('Failed to get wallet path:', error);
+      setError('Failed to get wallet path. Please check if the wallet still exists.');
+      setShowErrorAlert(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };    // Compare paths and handle folder opening more directly
+  
+  const handleOpenDeleteDialog = () => {
+    setDeleteDialogOpen(true);
+    setConfirmWalletName("");
+    setDeleteError(null);
+  };
+
+  const handleCloseDeleteDialog = () => {
+    setDeleteDialogOpen(false);
+    setDeleteError(null);
+  };
+
+  const handleDeleteWallet = async () => {
+    if (!currentWallet) return;
+    
+    // Check if the wallet name matches
+    if (confirmWalletName !== currentWallet.name) {
+      setDeleteError("The wallet name doesn't match. Please type the exact name.");
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await deleteWallet(currentWallet.name);
+      setDeleteDialogOpen(false);
+    } catch (error) {
+      console.error('Error deleting wallet:', error);
+      setDeleteError(`Failed to delete wallet: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+  
+  const handleCloseErrorAlert = () => {
+    setShowErrorAlert(false);
+  };
+
+  const handleOpenSecureDialog = () => {
+    setSecureDialogOpen(true);
+  };
+  
+  const handleCloseSecureDialog = () => {
+    setSecureDialogOpen(false);
+  };
+    const handleSuccessfulSecurity = async () => {
+    // Refresh wallet details to update the security status
+    await refreshWalletDetails();
+  };  const handleShowPrivateKey = async () => {
+    if (!currentWallet) return;
+    
+    // Reset previous state
+    setPrivateKey('');
+    
+    // Since the wallet data is already decrypted in memory when opened, 
+    // we can directly get the private key without asking for password again
+    await fetchPrivateKey();
+  };  const fetchPrivateKey = async () => {
+    if (!currentWallet) return;
+    
+    setPrivateKeyLoading(true);
+    
+    try {
+      const key = await invoke<string>('get_wallet_private_key');
+      setPrivateKey(key);
+    } catch (error) {
+      console.error('Failed to get private key:', error);
+    } finally {
+      setPrivateKeyLoading(false);
+    }
+  };  const handleClosePrivateKeyDisplay = () => {
+    setPrivateKey('');
+  };
+  
+  if (!isWalletOpen || !currentWallet) {
+    return (
+      <Grid container spacing={2} alignItems="center">
+        <Grid item xs={12}>
+          <Typography variant="h6" gutterBottom fontWeight={600}>
+            Wallet File
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            No wallet is currently open. Open a wallet to view its location.
+          </Typography>
+        </Grid>
+      </Grid>
+    );
+  }
+  
+  return (
+    <>
+      <Grid container spacing={2} alignItems="center">
+        <Grid item xs={12} md={8}>
+          <Typography variant="h6" gutterBottom fontWeight={600}>
+            Wallet File
+          </Typography>
+          
+          {isLoading ? (
+            <CircularProgress size={20} sx={{ mt: 1, mb: 1 }} />
+          ) : (
+            <>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <Typography variant="body2" fontWeight={500}>
+                  Current Wallet:
+                </Typography>
+                <Typography variant="body2" sx={{ ml: 1 }}>
+                  {currentWallet.name}
+                </Typography>                <Chip
+                  icon={isWalletSecured ? <LockIcon /> : <LockOpenIcon />}
+                  label={isWalletSecured ? "Password Protected" : "No Password"}
+                  size="small"
+                  color={isWalletSecured ? "success" : "warning"}
+                  variant="outlined"
+                  sx={{ ml: 2 }}
+                />
+              </Box>                <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
+                <strong>Path:</strong> {displayPath || "Path not available"}
+              </Typography>
+            </>
+          )}
+          
+          {error && (
+            <Alert 
+              severity="error" 
+              sx={{ mt: 2, maxWidth: "100%" }}
+              onClose={() => setError(null)}
+            >
+              {error}
+            </Alert>
+          )}
+        </Grid>        <Grid item xs={12} md={4} sx={{ 
+          display: 'flex', 
+          gap: 2,
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: { xs: 'flex-start', md: 'flex-end' }
+        }}>          <Tooltip title="Show the private key for this wallet">
+            <Button 
+              variant="outlined" 
+              color="primary" 
+              startIcon={privateKeyLoading ? <CircularProgress size={20} /> : <VisibilityIcon />} 
+              onClick={handleShowPrivateKey}
+              disabled={isLoading || privateKeyLoading}
+            >
+              {privateKeyLoading ? 'Loading...' : 'Show Private Key'}
+            </Button>
+          </Tooltip>
+          
+          <Tooltip title="Delete this wallet">
+            <Button 
+              variant="outlined" 
+              color="error" 
+              startIcon={<DeleteIcon />} 
+              onClick={handleOpenDeleteDialog}
+              disabled={isLoading}            >
+              Delete Wallet
+            </Button>
+          </Tooltip>
+          {!isWalletSecured && (
+            <Tooltip title="Secure this wallet with a password">
+              <Button
+                variant="outlined" 
+                startIcon={<SecurityIcon />}
+                onClick={handleOpenSecureDialog}
+                disabled={isLoading}
+                sx={{
+                  borderColor: isDarkMode ? '#81c784' : '#2e7d32',
+                  color: isDarkMode ? '#81c784' : '#2e7d32',
+                  '&:hover': {
+                    borderColor: isDarkMode ? '#66bb6a' : '#1b5e20',
+                    backgroundColor: isDarkMode ? 'rgba(129, 199, 132, 0.1)' : 'rgba(46, 125, 50, 0.1)'
+                  }
+                }}
+              >
+                Secure Wallet
+              </Button>
+            </Tooltip>
+          )}
+        </Grid>
+      </Grid>
+      
+      {/* Delete Wallet Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={handleCloseDeleteDialog}
+        aria-labelledby="delete-wallet-dialog-title"
+        TransitionComponent={Fade} // Added TransitionComponent
+        TransitionProps={{ timeout: 500 }} // Added TransitionProps
+        PaperProps={{
+          sx: {
+            background: isDarkMode 
+              ? 'linear-gradient(145deg, #0a1929 0%, #132f4c 100%)' 
+              : 'linear-gradient(145deg, #ffffff 0%, #f5f7fa 100%)',
+            borderRadius: '12px',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+            border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.08)',
+            minWidth: { xs: '90%', sm: '500px' }, // Ensure a decent minimum width
+          }
+        }}
+      >
+        <DialogTitle id="delete-wallet-dialog-title" sx={{ pb: 1, display: 'flex', alignItems: 'center' }}>
+          <DeleteIcon color="error" sx={{ mr: 1 }} />
+          <Typography variant="h6" component="div" fontWeight={600}>
+            Delete Wallet
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Are you sure you want to permanently delete the wallet "<strong>{currentWallet?.name}</strong>"? 
+            This action cannot be undone and will remove all associated data.
+          </DialogContentText>
+          <DialogContentText sx={{ mb: 2, fontWeight: 'bold', color: 'error.main' }}>
+            To confirm, please type the full wallet name below:
+          </DialogContentText>
+          {deleteError && (
+            <Alert severity="error" sx={{ mb: 2 }} variant="filled">
+              {deleteError}
+            </Alert>
+          )}
+          <TextField
+            autoFocus
+            margin="dense"
+            id="confirm-wallet-name-delete"
+            label={`Type "${currentWallet?.name || ''}" to confirm`}
+            fullWidth
+            variant="outlined"
+            value={confirmWalletName}
+            onChange={(e) => setConfirmWalletName(e.target.value)}
+            error={!!deleteError && confirmWalletName !== currentWallet?.name} // Highlight if error and name doesn't match
+            sx={{
+              mb: 2,
+              '& .MuiOutlinedInput-root': {
+                '&.Mui-focused fieldset': {
+                  borderColor: 'error.main',
+                },
+              },
+            }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={handleCloseDeleteDialog} variant="outlined" sx={{ mr: 1 }}>Cancel</Button>
+          <Button 
+            onClick={handleDeleteWallet} 
+            color="error"
+            variant="contained"
+            disabled={confirmWalletName !== currentWallet?.name || isDeleting}
+            startIcon={isDeleting ? <CircularProgress size={20} color="inherit" /> : null}
+            sx={{ minWidth: '180px' }}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete Permanently'}
+          </Button>
+        </DialogActions>      </Dialog>
+      
+      {/* Private Key Display Dialog */}
+      <Dialog
+        open={!!privateKey}
+        onClose={handleClosePrivateKeyDisplay}
+        aria-labelledby="private-key-display-dialog-title"
+        maxWidth="md"
+        fullWidth
+        TransitionComponent={Fade}
+        TransitionProps={{ timeout: 500 }}
+        PaperProps={{
+          sx: {
+            background: isDarkMode 
+              ? 'linear-gradient(145deg, #0a1929 0%, #132f4c 100%)' 
+              : 'linear-gradient(145deg, #ffffff 0%, #f5f7fa 100%)',
+            borderRadius: '12px',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+            border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.08)',
+          }
+        }}
+      >
+        <DialogTitle id="private-key-display-dialog-title" sx={{ pb: 1, display: 'flex', alignItems: 'center' }}>
+          <VisibilityIcon color="primary" sx={{ mr: 1 }} />
+          <Typography variant="h6" component="div" fontWeight={600}>
+            Private Key for "{currentWallet?.name}"
+          </Typography>
+        </DialogTitle>        <DialogContent>
+          <Box 
+            sx={{ 
+              mb: 3,
+              p: 2,
+              borderRadius: 1,
+              backgroundColor: isDarkMode ? 'rgba(229, 115, 115, 0.1)' : 'rgba(211, 47, 47, 0.08)',
+              border: '1px solid',
+              borderColor: isDarkMode ? 'rgba(229, 115, 115, 0.3)' : 'rgba(211, 47, 47, 0.2)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1
+            }}
+          >
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                fontWeight: 700,
+                color: isDarkMode ? '#ffcdd2' : '#c62828',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5
+              }}
+            >
+              ⚠️ KEEP THIS PRIVATE KEY SECURE
+            </Typography>
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                color: isDarkMode ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.7)',
+                fontSize: '0.9rem'
+              }}
+            >
+              Never share this private key with anyone. Anyone with access to this key can control your wallet and funds.
+            </Typography>
+          </Box>
+          
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Master Private Key:
+          </Typography>
+          
+          <Box 
+            sx={{ 
+              p: 2,
+              bgcolor: isDarkMode ? 'rgba(0, 0, 0, 0.3)' : 'rgba(0, 0, 0, 0.05)',
+              borderRadius: 1,
+              fontFamily: 'monospace',
+              fontSize: '0.9rem',
+              wordBreak: 'break-all',
+              border: '1px solid',
+              borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+              maxHeight: '200px',
+              overflowY: 'auto'
+            }}
+          >
+            {privateKey}
+          </Box>
+        </DialogContent>        <DialogActions sx={{ px: 3, pb: 2 }}>          <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+            <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>              <Button 
+                onClick={() => {
+                  navigator.clipboard.writeText(privateKey);
+                  setShowCopySuccess(true);
+                  // Auto-hide after 1.5 seconds (faster)
+                  setTimeout(() => setShowCopySuccess(false), 1500);
+                }}
+                variant="outlined"
+                color={showCopySuccess ? "success" : "primary"}
+                sx={{ 
+                  minWidth: '160px', // Fixed width to prevent resizing
+                  borderColor: showCopySuccess ? 'success.main' : undefined,
+                  color: showCopySuccess ? 'success.main' : undefined,
+                  '&:hover': {
+                    borderColor: showCopySuccess ? 'success.dark' : undefined,
+                    // Remove backgroundColor to prevent green fill
+                  }
+                }}
+              >
+                {showCopySuccess ? "Copied!" : "Copy to Clipboard"}
+              </Button>
+              <Button onClick={handleClosePrivateKeyDisplay} variant="contained" color="primary">
+                Close
+              </Button>
+            </Box>
+          </Box>        </DialogActions>
+      </Dialog>
+      
+      <Snackbar 
+        open={showErrorAlert} 
+        autoHideDuration={6000} 
+        onClose={handleCloseErrorAlert}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={handleCloseErrorAlert} 
+          severity="error"
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {error}        </Alert>
+      </Snackbar>{/* Secure Wallet Dialog */}
+      <SecureWalletDialog 
+        open={secureDialogOpen}
+        onClose={handleCloseSecureDialog}
+        walletName={currentWallet?.name || ""}
+        onSuccess={handleSuccessfulSecurity}
+      />
+    </>
   );
 }

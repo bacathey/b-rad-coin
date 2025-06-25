@@ -151,9 +151,7 @@ impl Server {
             .unwrap()
             .known_nodes
             .insert(String::from(addr));
-    }
-
-    fn get_known_nodes(&self) -> HashSet<String> {
+    }    pub fn get_known_nodes(&self) -> HashSet<String> {
         self.inner.lock().unwrap().known_nodes.clone()
     }
 
@@ -187,9 +185,7 @@ impl Server {
 
     fn clear_mempool(&self) {
         self.inner.lock().unwrap().mempool.clear()
-    }
-
-    fn get_best_height(&self) -> Result<i32> {
+    }    pub fn get_best_height(&self) -> Result<i32> {
         self.inner.lock().unwrap().utxo.blockchain.get_best_height()
     }
 

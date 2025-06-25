@@ -20,7 +20,8 @@ static LOGGER_INIT: Once = Once::new();
 
 impl log::Log for AppLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Info
+        // Check against the globally set maximum log level
+        metadata.level() <= log::max_level()
     }
 
     fn log(&self, record: &Record) {
