@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 
 // Material UI imports
@@ -18,6 +19,7 @@ import {
 import Sidebar from "./components/Sidebar";
 import AppHeader from "./components/AppHeader";
 import OpenCreateWalletDialog from "./components/OpenCreateWalletDialog";
+import { BlockchainSetupDialog } from "./components/BlockchainSetupDialog";
 
 // Page components
 import Account from "./pages/Account";
@@ -46,6 +48,94 @@ function App() {
   
   // Add state for sidebar visibility on mobile
   const [mobileOpen, setMobileOpen] = useState(false);
+  
+  // Add state for blockchain setup
+  const [blockchainSetupOpen, setBlockchainSetupOpen] = useState(false);
+  const [blockchainReady, setBlockchainReady] = useState(false); // Start as false, wait for backend to confirm
+  const [appError, setAppError] = useState<string | null>(null);
+
+  // Debug logging for dialog states
+  useEffect(() => {
+    console.log('Dialog states:', {
+      blockchainSetupOpen,
+      blockchainReady,
+      appError: !!appError
+    });
+  }, [blockchainSetupOpen, blockchainReady, appError]);
+
+  // Listen for blockchain setup events from backend
+  useEffect(() => {
+    const setupListeners = async () => {
+      console.log('Setting up blockchain event listeners');
+      
+      // Listen for blockchain setup required event
+      const unlistenSetupRequired = await listen('blockchain-setup-required', () => {
+        console.log('Frontend: Received blockchain-setup-required event');
+        setBlockchainSetupOpen(true);
+        setBlockchainReady(false);
+      });
+
+      // Listen for blockchain setup error event
+      const unlistenSetupError = await listen<string>('blockchain-setup-error', (event) => {
+        console.error('Frontend: Received blockchain-setup-error event:', event.payload);
+        setAppError(event.payload);
+        setBlockchainReady(false);
+      });
+
+      // Listen for app initialization error event
+      const unlistenInitError = await listen<string>('app-initialization-error', (event) => {
+        console.error('Frontend: Received app-initialization-error event:', event.payload);
+        setAppError(event.payload);
+      });
+
+      // Listen for blockchain services ready event
+      const unlistenServicesReady = await listen('blockchain-services-ready', () => {
+        console.log('Frontend: Received blockchain-services-ready event');
+        setBlockchainReady(true);
+        setBlockchainSetupOpen(false);
+      });
+
+      // After setting up listeners, check the current blockchain status
+      try {
+        console.log('Frontend: Checking blockchain status after setting up listeners');
+        const isReady = await invoke<boolean>('is_blockchain_ready');
+        console.log('Frontend: Blockchain ready status:', isReady);
+        
+        if (isReady) {
+          setBlockchainReady(true);
+          setBlockchainSetupOpen(false);
+        } else {
+          setBlockchainReady(false);
+          setBlockchainSetupOpen(true);
+        }
+      } catch (err) {
+        console.error('Frontend: Failed to check blockchain status:', err);
+        setBlockchainSetupOpen(true);
+        setBlockchainReady(false);
+      }
+
+      return () => {
+        unlistenSetupRequired();
+        unlistenSetupError();
+        unlistenInitError();
+        unlistenServicesReady();
+      };
+    };
+
+    setupListeners();
+  }, []);
+
+  const handleBlockchainSetupComplete = () => {
+    console.log('Blockchain setup completed');
+    setBlockchainSetupOpen(false);
+    setBlockchainReady(true);
+    setAppError(null);
+  };
+
+  const handleBlockchainSetupError = (error: string) => {
+    console.error('Blockchain setup error:', error);
+    setAppError(error);
+  };
   
   // Create a theme instance based on the mode
   const theme = useMemo(() => 
@@ -186,6 +276,9 @@ function App() {
     setMobileOpen(!mobileOpen);
   };
 
+  // Debug logging for dialog states
+  console.log('App render - blockchainReady:', blockchainReady, 'blockchainSetupOpen:', blockchainSetupOpen);
+
   async function greet() {
     // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
     setGreetMsg(await invoke("greet", { name }));
@@ -205,8 +298,44 @@ function App() {
                 name={name}
                 setName={setName}
                 greet={greet}
+                blockchainReady={blockchainReady}
               />
-              <OpenCreateWalletDialog />
+              <OpenCreateWalletDialog blockchainReady={blockchainReady} />
+              <BlockchainSetupDialog
+                isOpen={blockchainSetupOpen}
+                onSetupComplete={handleBlockchainSetupComplete}
+                onError={handleBlockchainSetupError}
+              />
+              {appError && (
+                <div style={{
+                  position: 'fixed',
+                  top: '20px',
+                  right: '20px',
+                  backgroundColor: '#f44336',
+                  color: 'white',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  maxWidth: '400px',
+                  zIndex: 9999
+                }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>Application Error</div>
+                  <div>{appError}</div>
+                  <button
+                    onClick={() => setAppError(null)}
+                    style={{
+                      marginTop: '8px',
+                      backgroundColor: 'transparent',
+                      border: '1px solid white',
+                      color: 'white',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
             </WalletDialogProvider>
           </BrowserRouter>
         </ThemeProvider>
@@ -224,12 +353,22 @@ function AppContentWrapper(props: {
   greetMsg: string,
   name: string,
   setName: (name: string) => void,
-  greet: () => void
+  greet: () => void,
+  blockchainReady: boolean
 }) {
   const { isWalletOpen } = useWallet();
 
-  // Only render the AppContent if wallet is open
-  return isWalletOpen ? <AppContent {...props} /> : null;
+  // Debug logging
+  useEffect(() => {
+    console.log('AppContentWrapper state:', {
+      isWalletOpen,
+      blockchainReady: props.blockchainReady,
+      shouldShowContent: isWalletOpen && props.blockchainReady
+    });
+  }, [isWalletOpen, props.blockchainReady]);
+
+  // Only render the AppContent if wallet is open and blockchain is ready
+  return isWalletOpen && props.blockchainReady ? <AppContent {...props} /> : null;
 }
 
 // Add interface for AppContent props

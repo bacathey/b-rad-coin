@@ -47,9 +47,13 @@ pub struct AppSettings {
     /// Log level setting
     pub log_level: String,
     /// Developer mode enabled
-    pub developer_mode: bool,    /// Whether to skip seed phrase dialogs during wallet creation
+    pub developer_mode: bool,
+    /// Whether to skip seed phrase dialogs during wallet creation
     #[serde(default = "default_skip_seed_phrase_dialogs")]
     pub skip_seed_phrase_dialogs: bool,
+    /// Custom location for the blockchain database file
+    #[serde(default)]
+    pub local_blockchain_file_location: Option<String>,
 }
 
 /// Default implementation for Config
@@ -77,6 +81,7 @@ impl Default for AppSettings {    fn default() -> Self {
             log_level: "info".to_string(),
             developer_mode: false,
             skip_seed_phrase_dialogs: false,
+            local_blockchain_file_location: None,
         }
     }
 }
@@ -598,5 +603,19 @@ impl ConfigManager {
     pub fn get_wallet_info(&self, wallet_name: &str) -> Option<WalletInfo> {
         let config = self.config.lock().unwrap();
         config.wallets.iter().find(|w| w.name == wallet_name).cloned()
+    }
+
+    /// Reload configuration from disk
+    pub async fn reload_config(&self) -> Result<(), ConfigError> {
+        info!("Reloading configuration from disk");
+        let (new_config, _) = Self::load_config().await?;
+        
+        {
+            let mut config = self.config.lock().unwrap();
+            *config = new_config;
+        }
+        
+        info!("Configuration reloaded successfully");
+        Ok(())
     }
 }

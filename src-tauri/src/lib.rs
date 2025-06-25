@@ -1,7 +1,7 @@
 mod bip39_words;
 
 // B-Rad Coin Application
-use log::{debug, error, info, LevelFilter};
+use log::{debug, error, info, warn, LevelFilter};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{generate_context, generate_handler, Manager, Emitter};
@@ -89,6 +89,17 @@ pub fn run() {
             is_network_connected,
             get_peer_count,
             force_sync,
+            // Blockchain setup commands
+            check_blockchain_database_exists,
+            get_blockchain_database_path,
+            get_default_blockchain_database_path,
+            get_blockchain_database_size,
+            open_folder_picker,
+            create_blockchain_database_at_location,
+            set_blockchain_database_location,
+            start_blockchain_services,
+            stop_blockchain_services,
+            move_blockchain_database,
             // Wallet sync commands
             start_wallet_sync,
             stop_wallet_sync,
@@ -107,62 +118,72 @@ pub fn run() {
             delete_all_wallets,
             get_wallet_private_key
         ])        .setup(|app| {
-            info!("Setting up application - DELAYED INIT");
+            info!("Setting up application");
             
             // Create system tray
             setup_system_tray(app)?;
             
-            // Initialize app components immediately to start services
+            // Initialize basic app components without blockchain services
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                info!("Initializing application components immediately");
-                match initialize_app().await {
-                    Ok(app_state) => {
-                        info!("Application components initialized successfully");
+                info!("Initializing basic application components");
+                match initialize_basic_app().await {
+                    Ok(basic_state) => {
+                        info!("Basic application components initialized successfully");
                         
-                        // Store blockchain db reference for cleanup
-                        let blockchain_db_for_cleanup = app_state.blockchain_db.clone();
+                        // Add basic components to Tauri state
+                        app_handle.manage(basic_state.wallet_manager);
+                        app_handle.manage(basic_state.security_manager);
+                        app_handle.manage(basic_state.config_manager);
                         
-                        // Add all components to Tauri state
-                        app_handle.manage(app_state.wallet_manager);
-                        app_handle.manage(app_state.security_manager);
-                        app_handle.manage(app_state.config_manager);
-                        app_handle.manage(app_state.blockchain_sync);
-                        app_handle.manage(app_state.blockchain_db);
-                        app_handle.manage(app_state.wallet_sync);
-                        app_handle.manage(app_state.mining_service);
-                        app_handle.manage(app_state.network_service);
+                        // Check if blockchain database exists
+                        info!("Checking for blockchain database");
+                        let config_manager = app_handle.state::<Arc<ConfigManager>>();
+                        let blockchain_exists = check_blockchain_exists(&config_manager).await;
                         
-                        // Immediately start network service
-                        info!("Starting network service immediately");
-                        let network_service = app_handle.state::<AsyncNetworkService>();
-                        if let Err(e) = network_service.start().await {
-                            error!("Failed to start network service: {}", e);
+                        if blockchain_exists {
+                            info!("Blockchain database found, starting all services");
+                            // Start blockchain services since database exists
+                            match commands::start_blockchain_services(app_handle.clone()).await {
+                                Ok(_) => {
+                                    info!("All blockchain services started successfully");
+                                    // Notify frontend that blockchain services are ready
+                                    if let Some(window) = app_handle.get_webview_window("main") {
+                                        let _ = window.emit("blockchain-services-ready", ());
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to start blockchain services: {}", e);
+                                    // Notify frontend about the error
+                                    if let Some(window) = app_handle.get_webview_window("main") {
+                                        let _ = window.emit("blockchain-setup-error", e);
+                                    }
+                                }
+                            }
                         } else {
-                            info!("Network service started successfully");
-                        }
-                        
-                        // Immediately initialize and start blockchain sync
-                        info!("Starting blockchain sync service immediately");
-                        let blockchain_sync = app_handle.state::<AsyncBlockchainSyncService>();
-                        
-                        if let Err(e) = blockchain_sync.initialize(app_handle.clone()).await {
-                            error!("Failed to initialize blockchain sync service: {}", e);
-                        } else {
-                            info!("Blockchain sync service initialized successfully");
-                            
-                            if let Err(e) = blockchain_sync.start_sync().await {
-                                error!("Failed to start blockchain sync: {}", e);
+                            info!("Blockchain database not found, waiting for user setup");
+                            // Notify frontend that blockchain setup is needed
+                            info!("Emitting blockchain-setup-required event to frontend");
+                            if let Some(window) = app_handle.get_webview_window("main") {
+                                info!("Main window found, emitting blockchain-setup-required event to frontend");
+                                match window.emit("blockchain-setup-required", ()) {
+                                    Ok(_) => info!("Successfully emitted blockchain-setup-required event"),
+                                    Err(e) => error!("Failed to emit blockchain-setup-required event: {}", e),
+                                }
                             } else {
-                                info!("Blockchain sync started successfully");
+                                warn!("Main window not found, cannot emit blockchain-setup-required event");
+                                // Try to list all windows for debugging
+                                let windows = app_handle.webview_windows();
+                                info!("Available windows: {:?}", windows.keys().collect::<Vec<_>>());
                             }
                         }
-                        
-                        // Set up resource cleanup handler for application shutdown
-                        setup_resource_cleanup_handler(app_handle.clone(), blockchain_db_for_cleanup);
                     }
                     Err(e) => {
-                        error!("Failed to initialize application components: {}", e);
+                        error!("Failed to initialize basic application components: {}", e);
+                        // Notify frontend about the error
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.emit("app-initialization-error", e.to_string());
+                        }
                     }
                 }
             });
@@ -222,6 +243,13 @@ struct AppState {
     wallet_sync: AsyncWalletSyncService,
     mining_service: AsyncMiningService,
     network_service: AsyncNetworkService,
+}
+
+/// Basic application state container (without blockchain services)
+struct BasicAppState {
+    config_manager: Arc<ConfigManager>,
+    wallet_manager: AsyncWalletManager,
+    security_manager: AsyncSecurityManager,
 }
 
 /// Set up application logging
@@ -298,6 +326,67 @@ async fn initialize_app() -> AppResult<AppState> {
         mining_service,
         network_service,
     })
+}
+
+/// Initialize basic application components (config, wallet, security - no blockchain services)
+async fn initialize_basic_app() -> AppResult<BasicAppState> {
+    debug!("Initializing basic application components");
+
+    // Initialize configuration manager
+    debug!("Initializing configuration manager");
+    let config_manager = Arc::new(ConfigManager::new().await?);
+
+    // Initialize security manager
+    debug!("Initializing security manager");
+    let security_manager = SecurityManager::new(AUTH_TIMEOUT_SECONDS);
+    let async_security_manager = AsyncSecurityManager::new(security_manager);
+
+    // Initialize wallet manager with config
+    debug!("Initializing wallet manager");
+    let wallet_manager = WalletManager::new(config_manager.get_config().clone());
+    let async_wallet_manager = AsyncWalletManager::new(wallet_manager);
+    
+    // Connect the wallet manager to the config manager for persistence
+    debug!("Connecting wallet manager to config manager for persistence");
+    async_wallet_manager
+        .set_config_manager(config_manager.clone())
+        .await;
+
+    info!("Basic application components initialized successfully");
+
+    // Return the basic application state
+    Ok(BasicAppState {
+        config_manager,
+        wallet_manager: async_wallet_manager,
+        security_manager: async_security_manager,
+    })
+}
+
+/// Check if blockchain database exists at configured or default location
+async fn check_blockchain_exists(config_manager: &Arc<ConfigManager>) -> bool {
+    let config = config_manager.get_config();
+    
+    // Check if there's a custom location configured
+    if let Some(custom_location) = &config.app_settings.local_blockchain_file_location {
+        let custom_path = std::path::Path::new(custom_location);
+        let exists = custom_path.exists() && custom_path.is_dir();
+        info!("Checking custom blockchain location: {:?}, exists: {}", custom_path, exists);
+        return exists;
+    }
+    
+    // Check default location
+    let blockchain_data_dir = match dirs::data_dir() {
+        Some(dir) => dir.join("com.b-rad-coin.app").join("blockchain"),
+        None => {
+            error!("Failed to determine blockchain data directory");
+            return false;
+        }
+    };
+    
+    let exists = blockchain_data_dir.exists() && blockchain_data_dir.is_dir();
+    
+    info!("Checking default blockchain location: {:?}, exists: {}", blockchain_data_dir, exists);
+    exists
 }
 
 /// Setup system tray with menu and event handlers
@@ -438,7 +527,6 @@ fn setup_resource_cleanup_handler(app_handle: tauri::AppHandle, blockchain_db: A
     let cleanup_db = blockchain_db.clone();
     
     // Register cleanup to be called on various exit scenarios
-    let app_handle_clone = app_handle.clone();
     tauri::async_runtime::spawn(async move {
         // Wait for shutdown signal
         tokio::signal::ctrl_c().await.ok();

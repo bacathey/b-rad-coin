@@ -82,7 +82,7 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
-export default function OpenCreateWalletDialog() {
+export default function OpenCreateWalletDialog({ blockchainReady = true }: { blockchainReady?: boolean }) {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
   const { isWalletOpen, setIsWalletOpen, setCurrentWallet, refreshWalletDetails, availableWallets } = useWallet();
@@ -594,9 +594,9 @@ export default function OpenCreateWalletDialog() {
 
   return (
     <>
-      {/* Backdrop that covers the entire app when wallet is not open */}      
+      {/* Backdrop that covers the entire app when wallet is not open and blockchain is ready */}      
       <Backdrop 
-        open={!isWalletOpen} 
+        open={!isWalletOpen && blockchainReady} 
         sx={{ 
           zIndex: theme.zIndex.drawer + 2,
           background: isDarkMode 
@@ -646,7 +646,7 @@ export default function OpenCreateWalletDialog() {
       />
       
       <Dialog 
-        open={!isWalletOpen}
+        open={!isWalletOpen && blockchainReady}
         maxWidth="sm" 
         fullWidth 
         disableEscapeKeyDown

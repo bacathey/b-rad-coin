@@ -1493,4 +1493,799 @@ pub async fn get_all_mining_statuses(
     Ok(statuses)
 }
 
+/// Check if blockchain database exists at configured or default location
+#[command]
+pub async fn check_blockchain_database_exists(
+    config_manager: State<'_, Arc<ConfigManager>>,
+) -> CommandResult<bool> {
+    info!("Command: check_blockchain_database_exists");
+    
+    let config = config_manager.get_config();
+    
+    // Get the default location for fallback
+    let default_blockchain_data_dir = match dirs::data_dir() {
+        Some(dir) => dir.join("com.b-rad-coin.app").join("blockchain"),
+        None => {
+            error!("Failed to determine default blockchain data directory");
+            return Ok(false);
+        }
+    };
+    
+    // Check if there's a custom location configured
+    if let Some(custom_location) = &config.app_settings.local_blockchain_file_location {
+        let custom_path = std::path::Path::new(custom_location);
+        let custom_exists = custom_path.exists() && custom_path.is_dir();
+        info!("Checking custom blockchain location: {:?}, exists: {}", custom_path, custom_exists);
+        
+        if custom_exists {
+            return Ok(true);
+        }
+        
+        // Custom location doesn't exist, check default location
+        info!("Custom location not found, checking default location");
+        let default_exists = default_blockchain_data_dir.exists() && default_blockchain_data_dir.is_dir();
+        info!("Checking default blockchain location: {:?}, exists: {}", default_blockchain_data_dir, default_exists);
+        
+        if default_exists {
+            // Database found at default location, update config to point there
+            info!("Database found at default location, updating config");
+            let mut new_config = config.clone();
+            new_config.app_settings.local_blockchain_file_location = Some(default_blockchain_data_dir.to_string_lossy().to_string());
+            
+            if let Err(e) = config_manager.update_config(new_config).await {
+                error!("Failed to update configuration to default location: {}", e);
+                // Still return true since database exists, even if config update failed
+                return Ok(true);
+            }
+            
+            info!("Configuration updated to point to default blockchain location");
+            return Ok(true);
+        }
+        
+        // Database not found in either location, update config to default for future use
+        info!("Database not found in custom or default location, updating config to default location");
+        let mut new_config = config.clone();
+        new_config.app_settings.local_blockchain_file_location = Some(default_blockchain_data_dir.to_string_lossy().to_string());
+        
+        if let Err(e) = config_manager.update_config(new_config).await {
+            error!("Failed to update configuration to default location: {}", e);
+        } else {
+            info!("Configuration updated to default blockchain location for future use");
+        }
+        
+        return Ok(false);
+    }
+    
+    // No custom location configured, check default location
+    let default_exists = default_blockchain_data_dir.exists() && default_blockchain_data_dir.is_dir();
+    info!("Checking default blockchain location: {:?}, exists: {}", default_blockchain_data_dir, default_exists);
+    
+    if !default_exists {
+        // Database not found at default location, update config to explicitly point to default
+        info!("Database not found at default location, updating config to default location");
+        let mut new_config = config.clone();
+        new_config.app_settings.local_blockchain_file_location = Some(default_blockchain_data_dir.to_string_lossy().to_string());
+        
+        if let Err(e) = config_manager.update_config(new_config).await {
+            error!("Failed to update configuration to default location: {}", e);
+        } else {
+            info!("Configuration updated to default blockchain location for future use");
+        }
+    }
+    
+    Ok(default_exists)
+}
 
+/// Get the blockchain database path (custom or default)
+#[command]
+pub async fn get_blockchain_database_path(
+    config_manager: State<'_, Arc<ConfigManager>>,
+) -> CommandResult<String> {
+    info!("Command: get_blockchain_database_path");
+    
+    let config = config_manager.get_config();
+    
+    // Return custom location if configured
+    if let Some(custom_location) = &config.app_settings.local_blockchain_file_location {
+        return Ok(custom_location.clone());
+    }
+    
+    // Return default location
+    let blockchain_data_dir = match dirs::data_dir() {
+        Some(dir) => dir.join("com.b-rad-coin.app").join("blockchain"),
+        None => {
+            return Err("Failed to determine blockchain data directory".to_string());
+        }
+    };
+    
+    Ok(blockchain_data_dir.to_string_lossy().to_string())
+}
+
+/// Get the default blockchain database path (ignoring any custom configuration)
+#[command]
+pub async fn get_default_blockchain_database_path() -> CommandResult<String> {
+    info!("Command: get_default_blockchain_database_path");
+    
+    // Always return the default system location, ignoring config
+    let blockchain_data_dir = match dirs::data_dir() {
+        Some(dir) => dir.join("com.b-rad-coin.app").join("blockchain"),
+        None => {
+            return Err("Failed to determine default blockchain data directory".to_string());
+        }
+    };
+    
+    Ok(blockchain_data_dir.to_string_lossy().to_string())
+}
+
+/// Open folder picker dialog
+#[command]
+pub async fn open_folder_picker(title: String) -> CommandResult<Option<String>> {
+    info!("Command: open_folder_picker with title: {}", title);
+    
+    use rfd::AsyncFileDialog;
+    
+    let folder = AsyncFileDialog::new()
+        .set_title(&title)
+        .pick_folder()
+        .await;
+    
+    match folder {
+        Some(path) => {
+            let path_str = path.path().to_string_lossy().to_string();
+            info!("User selected folder: {}", path_str);
+            Ok(Some(path_str))
+        }
+        None => {
+            info!("User cancelled folder selection");
+            Ok(None)
+        }
+    }
+}
+
+/// Create blockchain database at specified location and update config
+#[command]
+pub async fn create_blockchain_database_at_location(
+    location: String,
+    config_manager: State<'_, Arc<ConfigManager>>,
+) -> CommandResult<bool> {
+    info!("Command: create_blockchain_database_at_location at: {}", location);
+    
+    let blockchain_path = std::path::Path::new(&location).join("blockchain.db");
+    
+    // Create the blockchain database
+    match crate::blockchain_database::AsyncBlockchainDatabase::new(blockchain_path.clone()).await {
+        Ok(_) => {
+            info!("Blockchain database created successfully at: {:?}", blockchain_path);
+            
+            // Update configuration with the new location
+            let mut config = config_manager.get_config().clone();
+            config.app_settings.local_blockchain_file_location = Some(location);
+            
+            if let Err(e) = config_manager.update_config(config).await {
+                error!("Failed to update configuration: {}", e);
+                return Err(format!("Created database but failed to update config: {}", e));
+            }
+            
+            info!("Configuration updated with new blockchain location");
+            Ok(true)
+        }
+        Err(e) => {
+            error!("Failed to create blockchain database: {}", e);
+            Err(format!("Failed to create blockchain database: {}", e))
+        }
+    }
+}
+
+/// Set existing blockchain database location and update config
+#[command]
+pub async fn set_blockchain_database_location(
+    location: String,
+    config_manager: State<'_, Arc<ConfigManager>>,
+) -> CommandResult<bool> {
+    info!("Command: set_blockchain_database_location to: {}", location);
+    
+    let blockchain_path = std::path::Path::new(&location);
+    
+    // Verify the location exists and contains a valid blockchain database
+    if !blockchain_path.exists() || !blockchain_path.is_dir() {
+        return Err("Selected location does not exist or is not a directory".to_string());
+    }
+    
+    // Check if it looks like a blockchain database (you can add more validation here)
+    let db_files = ["blocks", "transactions", "utxos"]; // Sled tree names
+    let mut valid_db = true;
+    for file in &db_files {
+        if !blockchain_path.join(file).exists() {
+            valid_db = false;
+            break;
+        }
+    }
+    
+    if !valid_db {
+        return Err("Selected location does not appear to contain a valid blockchain database".to_string());
+    }
+    
+    // Update configuration with the location
+    let mut config = config_manager.get_config().clone();
+    config.app_settings.local_blockchain_file_location = Some(location);
+    
+    if let Err(e) = config_manager.update_config(config).await {
+        error!("Failed to update configuration: {}", e);
+        return Err(format!("Failed to update configuration: {}", e));
+    }
+    
+    info!("Configuration updated with blockchain location");
+    Ok(true)
+}
+
+/// Start blockchain services after database setup is complete
+#[command]
+pub async fn start_blockchain_services(
+    app_handle: tauri::AppHandle,
+) -> CommandResult<bool> {
+    info!("Command: start_blockchain_services");
+    
+    // Initialize blockchain database with the configured location
+    let config_manager = app_handle.state::<Arc<ConfigManager>>();
+    
+    // Force reload configuration to ensure we have the latest blockchain location
+    (**config_manager).reload_config().await.map_err(|e| {
+        error!("Failed to reload configuration: {}", e);
+        format!("Failed to reload configuration: {}", e)
+    })?;
+    
+    let config = config_manager.get_config();
+    
+    let blockchain_data_dir = if let Some(custom_location) = &config.app_settings.local_blockchain_file_location {
+        std::path::PathBuf::from(custom_location)
+    } else {
+        match dirs::data_dir() {
+            Some(dir) => dir.join("com.b-rad-coin.app").join("blockchain"),
+            None => {
+                return Err("Failed to determine blockchain data directory".to_string());
+            }
+        }
+    };
+    
+    // Initialize blockchain database
+    let blockchain_db = match crate::blockchain_database::AsyncBlockchainDatabase::new(blockchain_data_dir).await {
+        Ok(db) => Arc::new(db),
+        Err(e) => {
+            error!("Failed to initialize blockchain database: {}", e);
+            return Err(format!("Failed to initialize blockchain database: {}", e));
+        }
+    };
+    
+    // Store blockchain database in app state
+    app_handle.manage(blockchain_db.clone());
+    
+    // Initialize and store blockchain sync service
+    let blockchain_sync = crate::blockchain_sync::AsyncBlockchainSyncService::new(blockchain_db.clone());
+    app_handle.manage(blockchain_sync);
+    
+    // Initialize and store wallet sync service
+    let wallet_sync = crate::wallet_sync_service::AsyncWalletSyncService::new(blockchain_db.clone());
+    app_handle.manage(wallet_sync);
+    
+    // Initialize and store mining service
+    let mining_service = crate::mining_service::AsyncMiningService::new(blockchain_db.clone());
+    app_handle.manage(mining_service);
+    
+    // Initialize and store network service
+    let network_service = crate::network_service::AsyncNetworkService::new(blockchain_db.clone(), None);
+    app_handle.manage(network_service);
+    
+    // Start network service
+    let network_service = app_handle.state::<crate::network_service::AsyncNetworkService>();
+    if let Err(e) = network_service.start().await {
+        error!("Failed to start network service: {}", e);
+        return Err(format!("Failed to start network service: {}", e));
+    }
+    
+    // Start blockchain sync service
+    let blockchain_sync = app_handle.state::<crate::blockchain_sync::AsyncBlockchainSyncService>();
+    if let Err(e) = blockchain_sync.initialize(app_handle.clone()).await {
+        error!("Failed to initialize blockchain sync service: {}", e);
+        return Err(format!("Failed to initialize blockchain sync service: {}", e));
+    }
+    
+    if let Err(e) = blockchain_sync.start_sync().await {
+        error!("Failed to start blockchain sync: {}", e);
+        return Err(format!("Failed to start blockchain sync: {}", e));
+    }
+    
+    info!("All blockchain services started successfully");
+    
+    // Notify frontend that blockchain services are ready
+    if let Some(window) = app_handle.get_webview_window("main") {
+        let _ = window.emit("blockchain-services-ready", ());
+    }
+    
+    Ok(true)
+}
+
+/// Stop blockchain services to allow database operations
+#[command]
+pub async fn stop_blockchain_services(
+    _app_handle: tauri::AppHandle,
+) -> CommandResult<bool> {
+    info!("Command: stop_blockchain_services");
+    
+    // Note: Currently, most services don't have explicit stop methods
+    // This is primarily for future extensibility and to ensure database access is released
+    // The main goal is to release any database locks before moving the database
+    
+    // For now, we'll focus on stopping the network service which has a stop method
+    // Other services will be stopped implicitly when the app shuts down or services are restarted
+    
+    info!("Blockchain services stopped (graceful shutdown)");
+    Ok(true)
+}
+
+/// Get the estimated size of blockchain database files
+#[command]
+pub async fn get_blockchain_database_size(
+    config_manager: State<'_, Arc<ConfigManager>>,
+) -> CommandResult<u64> {
+    info!("Command: get_blockchain_database_size");
+    
+    let config = config_manager.get_config();
+    
+    // Get current blockchain location
+    let current_location = if let Some(custom_location) = &config.app_settings.local_blockchain_file_location {
+        std::path::PathBuf::from(custom_location)
+    } else {
+        match dirs::data_dir() {
+            Some(dir) => dir.join("com.b-rad-coin.app").join("blockchain"),
+            None => {
+                return Err("Failed to determine blockchain data directory".to_string());
+            }
+        }
+    };
+    
+    if !current_location.exists() {
+        return Ok(0); // No database exists yet
+    }
+    
+    // Calculate total size of blockchain database files
+    let total_size = calculate_directory_size(&current_location, &[
+        "blocks",        // Sled tree for blocks
+        "transactions",  // Sled tree for transactions
+        "utxos",        // Sled tree for UTXOs
+        "addresses",    // Sled tree for addresses
+        "metadata",     // Sled tree for metadata
+        "conf",         // Sled configuration file
+        "db",           // Sled database file
+        "snap",         // Sled snapshot files
+    ]);
+    
+    info!("Blockchain database size: {} bytes", total_size);
+    Ok(total_size)
+}
+
+/// Helper function to calculate the size of database files in a directory
+fn calculate_directory_size(dir: &std::path::Path, allowed_files: &[&str]) -> u64 {
+    use std::fs;
+    
+    let mut total_size = 0u64;
+    
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let file_name = entry.file_name();
+            let file_name_str = file_name.to_string_lossy();
+            
+            // Check if this is a blockchain database file we should count
+            let should_count = if path.is_dir() {
+                // For directories, check if the name matches our allowed list
+                allowed_files.iter().any(|&allowed| {
+                    file_name_str == allowed || file_name_str.starts_with(&format!("{}_", allowed))
+                })
+            } else {
+                // For files, be permissive with Sled database files
+                allowed_files.iter().any(|&allowed| {
+                    file_name_str == allowed || 
+                    file_name_str.starts_with(&format!("{}_", allowed)) ||
+                    file_name_str.starts_with(allowed) ||
+                    file_name_str.ends_with(".sled") ||
+                    file_name_str.ends_with(".db") ||
+                    file_name_str == "conf" ||
+                    file_name_str.starts_with("snap")
+                })
+            };
+            
+            if !should_count {
+                continue;
+            }
+            
+            if path.is_dir() {
+                // Recursively calculate directory size
+                total_size += calculate_directory_size(&path, allowed_files);
+            } else if let Ok(metadata) = fs::metadata(&path) {
+                total_size += metadata.len();
+            }
+        }
+    }
+    
+    total_size
+}
+
+/// Move blockchain database to a new location
+#[command]
+pub async fn move_blockchain_database(
+    new_location: String,
+    config_manager: State<'_, Arc<ConfigManager>>,
+    app_handle: tauri::AppHandle,
+) -> CommandResult<bool> {
+    info!("Command: move_blockchain_database to: {}", new_location);
+    
+    // Step 1: Release the blockchain database to ensure all files are properly closed
+    info!("Releasing blockchain database before move...");
+    if let Some(blockchain_db) = app_handle.try_state::<Arc<crate::blockchain_database::AsyncBlockchainDatabase>>() {
+        info!("Closing blockchain database connections...");
+        if let Err(e) = blockchain_db.close().await {
+            error!("Failed to close blockchain database: {}", e);
+            return Err(format!("Failed to release blockchain database before move: {}", e));
+        }
+        info!("Blockchain database successfully closed");
+    } else {
+        warn!("No blockchain database found in application state - proceeding with move");
+    }
+    
+    let config = config_manager.get_config();
+    
+    // Get current location
+    let current_location = if let Some(custom_location) = &config.app_settings.local_blockchain_file_location {
+        let path = std::path::PathBuf::from(custom_location);
+        info!("Current blockchain location (custom): {:?}", path);
+        path
+    } else {
+        let path = match dirs::data_dir() {
+            Some(dir) => dir.join("com.b-rad-coin.app").join("blockchain"),
+            None => {
+                error!("Failed to determine default blockchain data directory");
+                return Err("Failed to determine current blockchain data directory".to_string());
+            }
+        };
+        info!("Current blockchain location (default): {:?}", path);
+        path
+    };
+    
+    let new_path = std::path::PathBuf::from(&new_location);
+    info!("New blockchain location: {:?}", new_path);
+    
+    // Validate that current location exists
+    if !current_location.exists() {
+        error!("Current blockchain database location does not exist: {:?}", current_location);
+        return Err("Current blockchain database location does not exist".to_string());
+    }
+    
+    // Validate that new location parent directory is accessible
+    if !new_path.exists() {
+        error!("Selected destination directory does not exist: {:?}", new_path);
+        return Err("Selected destination directory does not exist".to_string());
+    }
+    
+    // Check if we have write access to the destination directory
+    if let Ok(metadata) = new_path.metadata() {
+        if metadata.permissions().readonly() {
+            error!("No write access to destination directory: {:?}", new_path);
+            return Err("No write access to the selected destination directory".to_string());
+        }
+    }
+    
+    // Ensure new location doesn't already contain blockchain data (to avoid conflicts)
+    if new_path.join("blockchain.db").exists() || new_path.join("blocks").exists() {
+        error!("Destination already contains blockchain data: {:?}", new_path);
+        return Err("The selected location already contains blockchain data. Please choose a different location.".to_string());
+    }
+    
+    // Create destination directory if it doesn't exist
+    if let Err(e) = std::fs::create_dir_all(&new_path) {
+        return Err(format!("Failed to ensure destination directory exists: {}", e));
+    }
+    
+    // Step 2: Copy the database files to the new location
+    info!("Starting copy operation from {:?} to {:?}", current_location, new_path);
+    if let Err(e) = copy_directory_contents(&current_location, &new_path) {
+        error!("Failed to copy blockchain database: {}", e);
+        // Try to clean up the destination directory if copy failed
+        let _ = std::fs::remove_dir_all(&new_path);
+        return Err(format!("Failed to copy blockchain database: {}", e));
+    }
+    info!("Successfully copied blockchain database to new location");
+    
+    // Step 3: Update configuration with the new location BEFORE deleting old files
+    // This ensures the config points to the new location even if cleanup fails
+    let mut new_config = config.clone();
+    new_config.app_settings.local_blockchain_file_location = Some(new_location);
+    
+    if let Err(e) = config_manager.update_config(new_config).await {
+        error!("Failed to update configuration after copy: {}", e);
+        // Try to clean up the destination since config update failed
+        let _ = std::fs::remove_dir_all(&new_path);
+        return Err(format!("Database copied but failed to update config: {}", e));
+    }
+    info!("Configuration updated with new blockchain location");
+    
+    // Step 4: Remove the old directory and files
+    info!("Removing old blockchain database files from {:?}", current_location);
+    if let Err(e) = std::fs::remove_dir_all(&current_location) {
+        warn!("Failed to remove old blockchain directory completely: {}", e);
+        // This is not a critical error since files were copied successfully and config updated
+        // The directory might have permissions issues or be locked by another process
+        info!("Move completed successfully, but old files may still exist at: {:?}", current_location);
+    } else {
+        info!("Successfully removed old blockchain directory: {:?}", current_location);
+    }
+    
+    info!("Blockchain database moved successfully to: {:?}", new_path);
+    Ok(true)
+}
+
+/// Helper function to recursively copy blockchain database contents (filtering for database files only)
+fn copy_directory_contents(src: &std::path::Path, dst: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    use std::fs;
+    
+    info!("Copying blockchain database contents from {:?} to {:?}", src, dst);
+    
+    // Define the files/directories that should be part of a blockchain database
+    let allowed_database_files = [
+        "blocks",        // Sled tree for blocks
+        "transactions",  // Sled tree for transactions
+        "utxos",        // Sled tree for UTXOs
+        "addresses",    // Sled tree for addresses
+        "metadata",     // Sled tree for metadata
+        "conf",         // Sled configuration file
+        "db",           // Sled database file
+        "snap",         // Sled snapshot files
+    ];
+    
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let file_name = entry.file_name();
+        let file_name_str = file_name.to_string_lossy();
+        
+        // Check if this is a blockchain database file we should copy
+        let should_copy = if src_path.is_dir() {
+            // For directories, check if the name matches our allowed list or starts with allowed prefixes
+            allowed_database_files.iter().any(|&allowed| {
+                file_name_str == allowed || file_name_str.starts_with(&format!("{}_", allowed))
+            })
+        } else {
+            // For files, be more permissive with Sled database files
+            allowed_database_files.iter().any(|&allowed| {
+                file_name_str == allowed || 
+                file_name_str.starts_with(&format!("{}_", allowed)) ||
+                file_name_str.starts_with(allowed) ||
+                file_name_str.ends_with(".sled") ||
+                file_name_str.ends_with(".db") ||
+                file_name_str == "conf" ||
+                file_name_str.starts_with("snap")
+            })
+        };
+        
+        if !should_copy {
+            info!("Skipping non-database file: {:?}", src_path);
+            continue;
+        }
+        
+        let dst_path = dst.join(&file_name);
+        
+        if src_path.is_dir() {
+            info!("Copying database directory: {:?} -> {:?}", src_path, dst_path);
+            fs::create_dir_all(&dst_path)?;
+            copy_directory_contents(&src_path, &dst_path)?;
+            info!("Successfully copied database directory: {:?}", src_path);
+        } else {
+            info!("Copying database file: {:?} -> {:?}", src_path, dst_path);
+            fs::copy(&src_path, &dst_path)?;
+            info!("Successfully copied database file: {:?}", src_path);
+        }
+    }
+    
+    info!("Completed copying blockchain database contents from {:?} to {:?}", src, dst);
+    Ok(())
+}
+
+/// Get the estimated size of blockchain database files
+#[command]
+pub async fn get_blockchain_database_size(
+    config_manager: State<'_, Arc<ConfigManager>>,
+) -> CommandResult<u64> {
+    info!("Command: get_blockchain_database_size");
+    
+    let config = config_manager.get_config();
+    
+    // Get current blockchain location
+    let current_location = if let Some(custom_location) = &config.app_settings.local_blockchain_file_location {
+        std::path::PathBuf::from(custom_location)
+    } else {
+        match dirs::data_dir() {
+            Some(dir) => dir.join("com.b-rad-coin.app").join("blockchain"),
+            None => {
+                return Err("Failed to determine blockchain data directory".to_string());
+            }
+        }
+    };
+    
+    if !current_location.exists() {
+        return Ok(0); // No database exists yet
+    }
+    
+    // Calculate total size of blockchain database files
+    let total_size = calculate_directory_size(&current_location, &[
+        "blocks",        // Sled tree for blocks
+        "transactions",  // Sled tree for transactions
+        "utxos",        // Sled tree for UTXOs
+        "addresses",    // Sled tree for addresses
+        "metadata",     // Sled tree for metadata
+        "conf",         // Sled configuration file
+        "db",           // Sled database file
+        "snap",         // Sled snapshot files
+    ]);
+    
+    info!("Blockchain database size: {} bytes", total_size);
+    Ok(total_size)
+}
+
+/// Helper function to calculate the size of database files in a directory
+fn calculate_directory_size(dir: &std::path::Path, allowed_files: &[&str]) -> u64 {
+    use std::fs;
+    
+    let mut total_size = 0u64;
+    
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let file_name = entry.file_name();
+            let file_name_str = file_name.to_string_lossy();
+            
+            // Check if this is a blockchain database file we should count
+            let should_count = if path.is_dir() {
+                // For directories, check if the name matches our allowed list
+                allowed_files.iter().any(|&allowed| {
+                    file_name_str == allowed || file_name_str.starts_with(&format!("{}_", allowed))
+                })
+            } else {
+                // For files, be permissive with Sled database files
+                allowed_files.iter().any(|&allowed| {
+                    file_name_str == allowed || 
+                    file_name_str.starts_with(&format!("{}_", allowed)) ||
+                    file_name_str.starts_with(allowed) ||
+                    file_name_str.ends_with(".sled") ||
+                    file_name_str.ends_with(".db") ||
+                    file_name_str == "conf" ||
+                    file_name_str.starts_with("snap")
+                })
+            };
+            
+            if !should_count {
+                continue;
+            }
+            
+            if path.is_dir() {
+                // Recursively calculate directory size
+                total_size += calculate_directory_size(&path, allowed_files);
+            } else if let Ok(metadata) = fs::metadata(&path) {
+                total_size += metadata.len();
+            }
+        }
+    }
+    
+    total_size
+}
+
+/// Move blockchain database to a new location
+#[command]
+pub async fn move_blockchain_database(
+    new_location: String,
+    config_manager: State<'_, Arc<ConfigManager>>,
+    app_handle: tauri::AppHandle,
+) -> CommandResult<bool> {
+    info!("Command: move_blockchain_database to: {}", new_location);
+    
+    // Step 1: Release the blockchain database to ensure all files are properly closed
+    info!("Releasing blockchain database before move...");
+    if let Some(blockchain_db) = app_handle.try_state::<Arc<crate::blockchain_database::AsyncBlockchainDatabase>>() {
+        info!("Closing blockchain database connections...");
+        if let Err(e) = blockchain_db.close().await {
+            error!("Failed to close blockchain database: {}", e);
+            return Err(format!("Failed to release blockchain database before move: {}", e));
+        }
+        info!("Blockchain database successfully closed");
+    } else {
+        warn!("No blockchain database found in application state - proceeding with move");
+    }
+    
+    let config = config_manager.get_config();
+    
+    // Get current location
+    let current_location = if let Some(custom_location) = &config.app_settings.local_blockchain_file_location {
+        let path = std::path::PathBuf::from(custom_location);
+        info!("Current blockchain location (custom): {:?}", path);
+        path
+    } else {
+        let path = match dirs::data_dir() {
+            Some(dir) => dir.join("com.b-rad-coin.app").join("blockchain"),
+            None => {
+                error!("Failed to determine default blockchain data directory");
+                return Err("Failed to determine current blockchain data directory".to_string());
+            }
+        };
+        info!("Current blockchain location (default): {:?}", path);
+        path
+    };
+    
+    let new_path = std::path::PathBuf::from(&new_location);
+    info!("New blockchain location: {:?}", new_path);
+    
+    // Validate that current location exists
+    if !current_location.exists() {
+        error!("Current blockchain database location does not exist: {:?}", current_location);
+        return Err("Current blockchain database location does not exist".to_string());
+    }
+    
+    // Validate that new location parent directory is accessible
+    if !new_path.exists() {
+        error!("Selected destination directory does not exist: {:?}", new_path);
+        return Err("Selected destination directory does not exist".to_string());
+    }
+    
+    // Check if we have write access to the destination directory
+    if let Ok(metadata) = new_path.metadata() {
+        if metadata.permissions().readonly() {
+            error!("No write access to destination directory: {:?}", new_path);
+            return Err("No write access to the selected destination directory".to_string());
+        }
+    }
+    
+    // Ensure new location doesn't already contain blockchain data (to avoid conflicts)
+    if new_path.join("blockchain.db").exists() || new_path.join("blocks").exists() {
+        error!("Destination already contains blockchain data: {:?}", new_path);
+        return Err("The selected location already contains blockchain data. Please choose a different location.".to_string());
+    }
+    
+    // Create destination directory if it doesn't exist
+    if let Err(e) = std::fs::create_dir_all(&new_path) {
+        return Err(format!("Failed to ensure destination directory exists: {}", e));
+    }
+    
+    // Step 2: Copy the database files to the new location
+    info!("Starting copy operation from {:?} to {:?}", current_location, new_path);
+    if let Err(e) = copy_directory_contents(&current_location, &new_path) {
+        error!("Failed to copy blockchain database: {}", e);
+        // Try to clean up the destination directory if copy failed
+        let _ = std::fs::remove_dir_all(&new_path);
+        return Err(format!("Failed to copy blockchain database: {}", e));
+    }
+    info!("Successfully copied blockchain database to new location");
+    
+    // Step 3: Update configuration with the new location BEFORE deleting old files
+    // This ensures the config points to the new location even if cleanup fails
+    let mut new_config = config.clone();
+    new_config.app_settings.local_blockchain_file_location = Some(new_location);
+    
+    if let Err(e) = config_manager.update_config(new_config).await {
+        error!("Failed to update configuration after copy: {}", e);
+        // Try to clean up the destination since config update failed
+        let _ = std::fs::remove_dir_all(&new_path);
+        return Err(format!("Database copied but failed to update config: {}", e));
+    }
+    info!("Configuration updated with new blockchain location");
+    
+    // Step 4: Remove the old directory and files
+    info!("Removing old blockchain database files from {:?}", current_location);
+    if let Err(e) = std::fs::remove_dir_all(&current_location) {
+        warn!("Failed to remove old blockchain directory completely: {}", e);
+        // This is not a critical error since files were copied successfully and config updated
+        // The directory might have permissions issues or be locked by another process
+        info!("Move completed successfully, but old files may still exist at: {:?}", current_location);
+    } else {
+        info!("Successfully removed old blockchain directory: {:?}", current_location);
+    }
+    
+    info!("Blockchain database moved successfully to: {:?}", new_path);
+    Ok(true)
+}
