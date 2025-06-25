@@ -99,7 +99,6 @@ pub fn run() {
             set_blockchain_database_location,
             start_blockchain_services,
             stop_blockchain_services,
-            move_blockchain_database,
             // Wallet sync commands
             start_wallet_sync,
             stop_wallet_sync,
