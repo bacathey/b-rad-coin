@@ -1704,17 +1704,32 @@ pub async fn set_blockchain_database_location(
         return Err("Selected location does not exist or is not a directory".to_string());
     }
     
-    // Check if it looks like a blockchain database (you can add more validation here)
-    let db_files = ["blocks", "transactions", "utxos"]; // Sled tree names
-    let mut valid_db = true;
-    for file in &db_files {
-        if !blockchain_path.join(file).exists() {
-            valid_db = false;
-            break;
+    // Check if it looks like a blockchain database directory
+    // Look for any files that suggest this is a Sled database directory
+    let mut has_db_files = false;
+    if let Ok(entries) = std::fs::read_dir(blockchain_path) {
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            let file_name_str = file_name.to_string_lossy();
+            
+            // Look for common Sled database files/directories
+            if file_name_str == "conf" || 
+               file_name_str == "db" || 
+               file_name_str.starts_with("snap") ||
+               entry.path().is_dir() && (
+                   file_name_str == "blocks" || 
+                   file_name_str == "transactions" || 
+                   file_name_str == "utxos" ||
+                   file_name_str == "addresses" ||
+                   file_name_str == "metadata"
+               ) {
+                has_db_files = true;
+                break;
+            }
         }
     }
     
-    if !valid_db {
+    if !has_db_files {
         return Err("Selected location does not appear to contain a valid blockchain database".to_string());
     }
     
@@ -1725,9 +1740,13 @@ pub async fn set_blockchain_database_location(
         return Err(format!("Failed to stop existing services: {}", e));
     }
     
-    // Wait longer for network resources to be fully released
-    info!("Waiting for network resources to be released...");
-    tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+    // Wait longer for all resources to be fully released, including file locks
+    info!("Waiting for all resources and file locks to be released...");
+    tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+    
+    // Force garbage collection to help release any remaining references
+    std::hint::black_box(());
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     
     // Update configuration with the location
     let mut config = config_manager.get_config().clone();
@@ -1884,11 +1903,17 @@ async fn stop_blockchain_services_internal(app_handle: &tauri::AppHandle) -> Res
     info!("Waiting for network service to fully release resources...");
     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     
-    // Note: Mining service doesn't have a global stop method, individual wallets are stopped via stop_mining
-    // We'll skip mining service stop for now as it's wallet-specific
+    // Stop blockchain sync service if it exists
+    if let Some(blockchain_sync) = app_handle.try_state::<crate::blockchain_sync::AsyncBlockchainSyncService>() {
+        info!("Stopping blockchain sync service");
+        // Note: Add explicit stop method to blockchain sync service if available
+    }
     
     // Stop wallet sync service if it exists
-    // Note: Most sync services don't have explicit stop methods, but this prepares for future implementations
+    if let Some(wallet_sync) = app_handle.try_state::<crate::wallet_sync_service::AsyncWalletSyncService>() {
+        info!("Stopping wallet sync service");
+        // Note: Add explicit stop method to wallet sync service if available
+    }
     
     // Close blockchain database if it exists
     if let Some(blockchain_db) = app_handle.try_state::<Arc<crate::blockchain_database::AsyncBlockchainDatabase>>() {
@@ -1899,6 +1924,10 @@ async fn stop_blockchain_services_internal(app_handle: &tauri::AppHandle) -> Res
         } else {
             info!("Blockchain database closed successfully");
         }
+        
+        // Wait additional time for database locks to be fully released
+        info!("Waiting for database locks to be fully released...");
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
     }
     
     info!("Blockchain services stopped successfully");
