@@ -1725,6 +1725,12 @@ pub async fn start_blockchain_services(
 ) -> CommandResult<bool> {
     info!("Command: start_blockchain_services");
     
+    // Check if blockchain services are already running
+    if app_handle.try_state::<Arc<crate::blockchain_database::AsyncBlockchainDatabase>>().is_some() {
+        warn!("Blockchain services are already running, skipping initialization");
+        return Ok(true);
+    }
+    
     // Initialize blockchain database with the configured location
     let config_manager = app_handle.state::<Arc<ConfigManager>>();
     
@@ -1807,18 +1813,37 @@ pub async fn start_blockchain_services(
 /// Stop blockchain services to allow database operations
 #[command]
 pub async fn stop_blockchain_services(
-    _app_handle: tauri::AppHandle,
+    app_handle: tauri::AppHandle,
 ) -> CommandResult<bool> {
     info!("Command: stop_blockchain_services");
     
-    // Note: Currently, most services don't have explicit stop methods
-    // This is primarily for future extensibility and to ensure database access is released
-    // The main goal is to release any database locks before moving the database
+    // Stop network service if it exists
+    if let Some(network_service) = app_handle.try_state::<crate::network_service::AsyncNetworkService>() {
+        info!("Stopping network service");
+        if let Err(e) = network_service.stop().await {
+            error!("Failed to stop network service: {}", e);
+        } else {
+            info!("Network service stopped successfully");
+        }
+    }
     
-    // For now, we'll focus on stopping the network service which has a stop method
-    // Other services will be stopped implicitly when the app shuts down or services are restarted
+    // Note: Mining service doesn't have a global stop method, individual wallets are stopped via stop_mining
+    // We'll skip mining service stop for now as it's wallet-specific
     
-    info!("Blockchain services stopped (graceful shutdown)");
+    // Stop wallet sync service if it exists
+    // Note: Most sync services don't have explicit stop methods, but this prepares for future implementations
+    
+    // Close blockchain database if it exists
+    if let Some(blockchain_db) = app_handle.try_state::<Arc<crate::blockchain_database::AsyncBlockchainDatabase>>() {
+        info!("Closing blockchain database");
+        if let Err(e) = blockchain_db.close().await {
+            error!("Failed to close blockchain database: {}", e);
+        } else {
+            info!("Blockchain database closed successfully");
+        }
+    }
+    
+    info!("Blockchain services stopped successfully");
     Ok(true)
 }
 

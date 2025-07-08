@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sled::{Db, Tree};
 use tokio::sync::RwLock;
-use log::info;
+use log::{info, error, warn};
 
 use bincode::{Decode, Encode};
 
@@ -100,6 +100,19 @@ impl BlockchainDatabase {    /// Create new blockchain database
                 println!("Attempted path: {:?}", db_path);
                 println!("Path exists: {}", db_path.exists());
                 println!("Parent exists: {}", db_path.parent().map(|p| p.exists()).unwrap_or(false));
+                
+                // Check if this looks like a database lock error
+                let error_msg = e.to_string().to_lowercase();
+                if error_msg.contains("lock") || 
+                   error_msg.contains("in use") || 
+                   error_msg.contains("already") ||
+                   error_msg.contains("resource busy") ||
+                   error_msg.contains("cannot acquire") {
+                    return Err(anyhow::anyhow!(
+                        "Database is currently in use by another process. Please ensure no other instances of B-Rad Coin are running and try again."
+                    ));
+                }
+                
                 return Err(anyhow::anyhow!("Failed to open blockchain database: {}", e));
             }
         };
@@ -313,6 +326,12 @@ impl BlockchainDatabase {    /// Create new blockchain database
         self.db.flush()
             .context("Failed to flush database before closing")?;
         
+        // Force a checkpoint and close the database cleanly
+        // This ensures all data is written to disk and file locks are released
+        if let Err(e) = self.db.flush() {
+            error!("Failed to perform final flush: {}", e);
+        }
+        
         info!("Blockchain database resources released successfully");
         Ok(())
     }
@@ -393,8 +412,41 @@ impl AsyncBlockchainDatabase {
     }    /// Close the database and release all resources
     pub async fn close(&self) -> Result<()> {
         info!("Closing async blockchain database and releasing resources");
-        let db = self.inner.read().await;
-        db.close()
+        
+        // Get exclusive write access to force closure
+        let mut db = self.inner.write().await;
+        
+        // Close the database first
+        if let Err(e) = db.close() {
+            error!("Error during database close: {}", e);
+        }
+        
+        // Create a temporary database path for a dummy replacement
+        // This forces the old database to be dropped and releases file locks
+        let temp_dir = std::env::temp_dir().join("bradcoin_shutdown_temp");
+        if let Err(e) = std::fs::create_dir_all(&temp_dir) {
+            warn!("Failed to create temp directory for shutdown: {}", e);
+        }
+        
+        // Replace the database with a temporary one to force resource release
+        match BlockchainDatabase::new(temp_dir.clone()) {
+            Ok(temp_db) => {
+                info!("Successfully replaced database with temporary instance for shutdown");
+                *db = temp_db;
+                
+                // Clean up the temp directory
+                if let Err(e) = std::fs::remove_dir_all(&temp_dir) {
+                    warn!("Failed to clean up temp shutdown directory: {}", e);
+                }
+            }
+            Err(e) => {
+                warn!("Failed to create temporary database for shutdown: {}", e);
+                // Continue anyway, the close() call above should have helped
+            }
+        }
+        
+        info!("Async blockchain database shutdown complete");
+        Ok(())
     }
 
     /// Populate blockchain with test data using wallet addresses

@@ -208,20 +208,47 @@ pub fn run() {
             // Set shutdown flag
             SHUTDOWN_IN_PROGRESS.store(true, Ordering::SeqCst);
             
-            // Perform cleanup
-            if let Some(blockchain_db) = app_handle.try_state::<Arc<AsyncBlockchainDatabase>>() {
-                let db_clone = blockchain_db.inner().clone();
-                tauri::async_runtime::spawn(async move {
-                    flush_and_release_database(db_clone).await;
-                });
-            }
-            
-            // Allow the exit after cleanup
+            // Prevent the default exit to allow cleanup
             api.prevent_exit();
             
-            // Give cleanup a moment to complete, then exit
-            std::thread::spawn(|| {
-                std::thread::sleep(std::time::Duration::from_millis(500));
+            // Perform cleanup in a blocking manner to ensure completion
+            let app_handle_clone = app_handle.clone();
+            let cleanup_task = tauri::async_runtime::spawn(async move {
+                info!("Starting shutdown cleanup process");
+                
+                // Stop all services first
+                if let Err(e) = commands::stop_blockchain_services(app_handle_clone.clone()).await {
+                    error!("Error stopping blockchain services during shutdown: {}", e);
+                }
+                
+                // Close database if it exists
+                if let Some(blockchain_db) = app_handle_clone.try_state::<Arc<AsyncBlockchainDatabase>>() {
+                    info!("Closing blockchain database during shutdown");
+                    if let Err(e) = flush_and_release_database(blockchain_db.inner().clone()).await {
+                        error!("Error closing blockchain database during shutdown: {}", e);
+                    }
+                }
+                
+                info!("Shutdown cleanup completed");
+            });
+            
+            // Wait for cleanup to complete with a reasonable timeout
+            tauri::async_runtime::spawn(async move {
+                let timeout_duration = std::time::Duration::from_secs(5); // 5 second timeout
+                
+                match tokio::time::timeout(timeout_duration, cleanup_task).await {
+                    Ok(Ok(())) => {
+                        info!("Cleanup completed successfully, exiting application");
+                    }
+                    Ok(Err(e)) => {
+                        error!("Cleanup task panicked: {:?}", e);
+                    }
+                    Err(_) => {
+                        error!("Cleanup timed out after 5 seconds, forcing exit");
+                    }
+                }
+                
+                // Exit the application after cleanup
                 std::process::exit(0);
             });
         }
@@ -530,7 +557,7 @@ fn setup_resource_cleanup_handler(app_handle: tauri::AppHandle, blockchain_db: A
         // Wait for shutdown signal
         tokio::signal::ctrl_c().await.ok();
         info!("Received shutdown signal, flushing database to disk and releasing resources");
-        flush_and_release_database(cleanup_db).await;
+        let _ = flush_and_release_database(cleanup_db).await;
         std::process::exit(0);
     });
     
@@ -543,7 +570,7 @@ fn setup_resource_cleanup_handler(app_handle: tauri::AppHandle, blockchain_db: A
         let rt = tokio::runtime::Runtime::new();
         if let Ok(runtime) = rt {
             runtime.block_on(async {
-                flush_and_release_database(panic_cleanup_db.clone()).await;
+                let _ = flush_and_release_database(panic_cleanup_db.clone()).await;
             });
         }
         
@@ -553,14 +580,20 @@ fn setup_resource_cleanup_handler(app_handle: tauri::AppHandle, blockchain_db: A
 }
 
 /// Flush blockchain database to disk and release resources
-async fn flush_and_release_database(blockchain_db: Arc<AsyncBlockchainDatabase>) {
+async fn flush_and_release_database(blockchain_db: Arc<AsyncBlockchainDatabase>) -> Result<(), String> {
     info!("Flushing blockchain database to disk and releasing resources...");
     
     // Flush all data to disk and release database resources
-    if let Err(e) = blockchain_db.close().await {
-        error!("Failed to flush and release blockchain database resources: {}", e);
-    } else {
-        info!("Blockchain database successfully flushed to disk and resources released");
+    match blockchain_db.close().await {
+        Ok(_) => {
+            info!("Blockchain database successfully flushed to disk and resources released");
+            Ok(())
+        }
+        Err(e) => {
+            let error_msg = format!("Failed to flush and release blockchain database resources: {}", e);
+            error!("{}", error_msg);
+            Err(error_msg)
+        }
     }
 }
 
