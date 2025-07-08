@@ -157,9 +157,9 @@ pub fn run() {
                         let is_developer_mode = config.app_settings.developer_mode;
                         info!("Developer mode enabled: {}", is_developer_mode);
                         
-                        // TEMPORARY: Skip automatic startup to force blockchain setup dialog for development
-                        if false && blockchain_exists && !is_developer_mode {
-                            info!("Blockchain database found and not in developer mode, starting all services");
+                        // Start blockchain services if database exists
+                        if blockchain_exists {
+                            info!("Blockchain database found, starting all services");
                             // Start blockchain services since database exists
                             match commands::start_blockchain_services(app_handle.clone()).await {
                                 Ok(_) => {
@@ -178,11 +178,7 @@ pub fn run() {
                                 }
                             }
                         } else {
-                            if is_developer_mode {
-                                info!("Developer mode enabled, skipping automatic blockchain service startup");
-                            } else {
-                                info!("Blockchain database not found, waiting for user setup");
-                            }
+                            info!("Blockchain database not found, waiting for user setup");
                             // Notify frontend that blockchain setup is needed
                             info!("Emitting blockchain-setup-required event to frontend");
                             if let Some(window) = app_handle.get_webview_window("main") {

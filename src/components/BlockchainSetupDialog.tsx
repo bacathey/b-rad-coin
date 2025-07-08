@@ -49,8 +49,6 @@ export const BlockchainSetupDialog: React.FC<BlockchainSetupDialogProps> = ({
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   // Helper function to complete blockchain setup
   const completeSetup = async () => {
     try {

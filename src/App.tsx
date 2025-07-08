@@ -95,24 +95,10 @@ function App() {
         setBlockchainSetupOpen(false);
       });
 
-      // After setting up listeners, check the current blockchain status
-      try {
-        console.log('Frontend: Checking blockchain status after setting up listeners');
-        const isReady = await invoke<boolean>('is_blockchain_ready');
-        console.log('Frontend: Blockchain ready status:', isReady);
-        
-        if (isReady) {
-          setBlockchainReady(true);
-          setBlockchainSetupOpen(false);
-        } else {
-          setBlockchainReady(false);
-          setBlockchainSetupOpen(true);
-        }
-      } catch (err) {
-        console.error('Frontend: Failed to check blockchain status:', err);
-        setBlockchainSetupOpen(true);
-        setBlockchainReady(false);
-      }
+      // Do NOT check blockchain status immediately - wait for backend events
+      // The backend will emit either 'blockchain-setup-required' or 'blockchain-services-ready'
+      // based on whether the database exists and services can start
+      console.log('Frontend: Event listeners set up, waiting for backend to indicate status');
 
       return () => {
         unlistenSetupRequired();
@@ -301,11 +287,13 @@ function App() {
                 blockchainReady={blockchainReady}
               />
               <OpenCreateWalletDialog blockchainReady={blockchainReady} />
-              <BlockchainSetupDialog
-                isOpen={blockchainSetupOpen}
-                onSetupComplete={handleBlockchainSetupComplete}
-                onError={handleBlockchainSetupError}
-              />
+              {blockchainSetupOpen && (
+                <BlockchainSetupDialog
+                  isOpen={blockchainSetupOpen}
+                  onSetupComplete={handleBlockchainSetupComplete}
+                  onError={handleBlockchainSetupError}
+                />
+              )}
               {appError && (
                 <div style={{
                   position: 'fixed',
