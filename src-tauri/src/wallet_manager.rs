@@ -2,7 +2,7 @@ use crate::config::{Config, ConfigManager, WalletInfo};
 use crate::errors::WalletError;
 // Import KeyType and remove unused AddressInfo
 use crate::wallet_data::{WalletData, WalletDataError, KeyPair, KeyType};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -378,6 +378,19 @@ impl WalletManager {
             debug!("No ConfigManager available, wallet will not persist across sessions");
         }
 
+        // Automatically open the newly created wallet
+        info!("Opening newly created wallet: {}", name);
+        let password_option = if is_secured { Some(password) } else { None };
+        match self.open_wallet(name, password_option) {
+            Ok(_) => {
+                info!("Newly created wallet opened successfully: {}", name);
+            }
+            Err(e) => {
+                warn!("Failed to open newly created wallet, but creation was successful: {}", e);
+                // Continue anyway since the wallet was created successfully
+            }
+        }
+
         info!("Successfully created wallet: {}", name);
         Ok(())
     }    /// Create a wallet with a seed phrase
@@ -481,7 +494,22 @@ impl WalletManager {
             }
         } else {
             debug!("No ConfigManager available, wallet config will not persist across sessions");
-        }        info!("Successfully created wallet with seed phrase: {}", name);
+        }
+
+        // Automatically open the newly created wallet
+        info!("Opening newly created wallet: {}", name);
+        let password_option = if is_secured { Some(password) } else { None };
+        match self.open_wallet(name, password_option) {
+            Ok(_) => {
+                info!("Newly created wallet opened successfully: {}", name);
+            }
+            Err(e) => {
+                warn!("Failed to open newly created wallet, but creation was successful: {}", e);
+                // Continue anyway since the wallet was created successfully
+            }
+        }
+
+        info!("Successfully created wallet with seed phrase: {}", name);
         Ok(())
     }    /// Generate keys for developer mode (random keys)
     fn generate_dev_mode_keys(&self, name: &str) -> Result<(String, String, KeyPair), WalletError> {
