@@ -9,8 +9,11 @@ import {
   Box,
   Alert,
   CircularProgress,
-  Stack
+  Stack,
+  useTheme,
+  Fade
 } from '@mui/material';
+import DatabaseIcon from '@mui/icons-material/Storage';
 
 interface BlockchainSetupDialogProps {
   isOpen: boolean;
@@ -26,6 +29,8 @@ export const BlockchainSetupDialog: React.FC<BlockchainSetupDialogProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [defaultPath, setDefaultPath] = useState<string>('');
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
 
   // Fetch the default path when the dialog opens
   useEffect(() => {
@@ -200,19 +205,46 @@ export const BlockchainSetupDialog: React.FC<BlockchainSetupDialogProps> = ({
       maxWidth="sm"
       fullWidth
       disableEscapeKeyDown
+      TransitionComponent={Fade}
+      TransitionProps={{ timeout: 500 }}
+      PaperProps={{
+        sx: {
+          background: isDarkMode 
+            ? 'linear-gradient(145deg, #0a1929 0%, #132f4c 100%)' 
+            : 'linear-gradient(145deg, #ffffff 0%, #f5f7fa 100%)',
+          borderRadius: '12px',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+          border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.08)',
+        }
+      }}
     >
-      <DialogTitle>
-        <Typography variant="h6" component="h2">
-          B-Rad Coin Blockchain Database Setup
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          No local blockchain database was found. Please choose an option to continue:
-        </Typography>
+      <DialogTitle sx={{ pb: 1, display: 'flex', alignItems: 'center' }}>
+        <DatabaseIcon color="primary" sx={{ mr: 1 }} />
+        <Box>
+          <Typography variant="h6" component="div" fontWeight={600}>
+            B-Rad Coin Blockchain Database Setup
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            No local blockchain database was found. Please choose an option to continue:
+          </Typography>
+        </Box>
       </DialogTitle>
 
       <DialogContent>
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert 
+            severity="error" 
+            sx={{ 
+              mb: 2,
+              backgroundColor: isDarkMode ? 'rgba(229, 115, 115, 0.1)' : 'rgba(211, 47, 47, 0.08)',
+              border: '1px solid',
+              borderColor: isDarkMode ? 'rgba(229, 115, 115, 0.3)' : 'rgba(211, 47, 47, 0.2)',
+              color: isDarkMode ? '#ffcdd2' : '#c62828',
+              '& .MuiAlert-icon': {
+                color: isDarkMode ? '#ef5350' : '#d32f2f'
+              }
+            }}
+          >
             {error}
           </Alert>
         )}
@@ -231,7 +263,15 @@ export const BlockchainSetupDialog: React.FC<BlockchainSetupDialogProps> = ({
               p: 2,
               flexDirection: 'column',
               alignItems: 'flex-start',
-              minHeight: '80px'
+              minHeight: '80px',
+              background: isDarkMode
+                ? 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)'
+                : 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)',
+              '&:hover': {
+                background: isDarkMode
+                  ? 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)'
+                  : 'linear-gradient(135deg, #1565c0 0%, #0d47a1 100%)',
+              }
             }}
           >
             <Typography variant="subtitle1" fontWeight="bold">
@@ -255,7 +295,12 @@ export const BlockchainSetupDialog: React.FC<BlockchainSetupDialogProps> = ({
               p: 2,
               flexDirection: 'column',
               alignItems: 'flex-start',
-              minHeight: '80px'
+              minHeight: '80px',
+              borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.23)' : 'rgba(0, 0, 0, 0.23)',
+              '&:hover': {
+                borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+                backgroundColor: isDarkMode ? 'rgba(25, 118, 210, 0.08)' : 'rgba(25, 118, 210, 0.04)',
+              }
             }}
           >
             <Typography variant="subtitle1" fontWeight="bold">
@@ -279,7 +324,12 @@ export const BlockchainSetupDialog: React.FC<BlockchainSetupDialogProps> = ({
               p: 2,
               flexDirection: 'column',
               alignItems: 'flex-start',
-              minHeight: '80px'
+              minHeight: '80px',
+              borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.23)' : 'rgba(0, 0, 0, 0.23)',
+              '&:hover': {
+                borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)',
+                backgroundColor: isDarkMode ? 'rgba(156, 39, 176, 0.08)' : 'rgba(156, 39, 176, 0.04)',
+              }
             }}
           >
             <Typography variant="subtitle1" fontWeight="bold">
@@ -292,9 +342,33 @@ export const BlockchainSetupDialog: React.FC<BlockchainSetupDialogProps> = ({
         </Stack>
 
         {isLoading && (
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mt: 3 }}>
-            <CircularProgress size={24} sx={{ mr: 2 }} />
-            <Typography variant="body2" color="text.secondary">
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              mt: 3,
+              p: 2,
+              borderRadius: 1,
+              backgroundColor: isDarkMode ? 'rgba(25, 118, 210, 0.08)' : 'rgba(25, 118, 210, 0.04)',
+              border: '1px solid',
+              borderColor: isDarkMode ? 'rgba(25, 118, 210, 0.3)' : 'rgba(25, 118, 210, 0.2)',
+            }}
+          >
+            <CircularProgress 
+              size={24} 
+              sx={{ 
+                mr: 2,
+                color: isDarkMode ? '#90caf9' : '#1976d2'
+              }} 
+            />
+            <Typography 
+              variant="body2" 
+              sx={{
+                color: isDarkMode ? '#90caf9' : '#1976d2',
+                fontWeight: 500
+              }}
+            >
               Setting up blockchain database...
             </Typography>
           </Box>

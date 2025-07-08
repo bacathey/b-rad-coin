@@ -75,7 +75,7 @@ impl From<String> for AppError {
 }
 
 /// Wallet-specific error types
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum WalletError {
     NotFound(String),
     AccessDenied(String),
@@ -119,7 +119,7 @@ impl From<crate::wallet_data::WalletDataError> for WalletError {
 }
 
 /// Configuration-specific error types
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ConfigError {
     LoadError(String),
     SaveError(String),
@@ -143,7 +143,7 @@ impl fmt::Display for ConfigError {
 impl Error for ConfigError {}
 
 /// Security-specific error types
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SecurityError {
     AuthenticationFailed(String),
     InvalidCredentials(String),

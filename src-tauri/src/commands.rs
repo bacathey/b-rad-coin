@@ -1647,8 +1647,20 @@ pub async fn open_folder_picker(title: String) -> CommandResult<Option<String>> 
 pub async fn create_blockchain_database_at_location(
     location: String,
     config_manager: State<'_, Arc<ConfigManager>>,
+    app_handle: tauri::AppHandle,
 ) -> CommandResult<bool> {
     info!("Command: create_blockchain_database_at_location at: {}", location);
+    
+    // First, stop all existing blockchain services to release database locks
+    info!("Stopping existing blockchain services before creating new database");
+    if let Err(e) = stop_blockchain_services_internal(&app_handle).await {
+        error!("Failed to stop blockchain services: {}", e);
+        return Err(format!("Failed to stop existing services: {}", e));
+    }
+    
+    // Wait longer for network resources to be fully released
+    info!("Waiting for network resources to be released...");
+    tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
     
     let blockchain_path = std::path::Path::new(&location).join("blockchain.db");
     
@@ -1681,6 +1693,7 @@ pub async fn create_blockchain_database_at_location(
 pub async fn set_blockchain_database_location(
     location: String,
     config_manager: State<'_, Arc<ConfigManager>>,
+    app_handle: tauri::AppHandle,
 ) -> CommandResult<bool> {
     info!("Command: set_blockchain_database_location to: {}", location);
     
@@ -1705,6 +1718,17 @@ pub async fn set_blockchain_database_location(
         return Err("Selected location does not appear to contain a valid blockchain database".to_string());
     }
     
+    // First, stop all existing blockchain services to release database locks
+    info!("Stopping existing blockchain services before switching database location");
+    if let Err(e) = stop_blockchain_services_internal(&app_handle).await {
+        error!("Failed to stop blockchain services: {}", e);
+        return Err(format!("Failed to stop existing services: {}", e));
+    }
+    
+    // Wait longer for network resources to be fully released
+    info!("Waiting for network resources to be released...");
+    tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+    
     // Update configuration with the location
     let mut config = config_manager.get_config().clone();
     config.app_settings.local_blockchain_file_location = Some(location);
@@ -1725,11 +1749,14 @@ pub async fn start_blockchain_services(
 ) -> CommandResult<bool> {
     info!("Command: start_blockchain_services");
     
-    // Check if blockchain services are already running
-    if app_handle.try_state::<Arc<crate::blockchain_database::AsyncBlockchainDatabase>>().is_some() {
-        warn!("Blockchain services are already running, skipping initialization");
-        return Ok(true);
+    // First, ensure any existing services are properly stopped
+    // This is important when switching database locations
+    if let Err(e) = stop_blockchain_services_internal(&app_handle).await {
+        warn!("Failed to stop existing services (this might be normal): {}", e);
     }
+    
+    // Wait a moment for resources to be fully released
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
     
     // Initialize blockchain database with the configured location
     let config_manager = app_handle.state::<Arc<ConfigManager>>();
@@ -1781,11 +1808,40 @@ pub async fn start_blockchain_services(
     let network_service = crate::network_service::AsyncNetworkService::new(blockchain_db.clone(), None);
     app_handle.manage(network_service);
     
-    // Start network service
+    // Start network service with retry logic for port binding
     let network_service = app_handle.state::<crate::network_service::AsyncNetworkService>();
-    if let Err(e) = network_service.start().await {
-        error!("Failed to start network service: {}", e);
-        return Err(format!("Failed to start network service: {}", e));
+    let mut retries = 3;
+    let mut last_error_msg = None;
+    
+    while retries > 0 {
+        match network_service.start().await {
+            Ok(()) => {
+                info!("Network service started successfully");
+                break;
+            }
+            Err(e) => {
+                let error_str = e.to_string();
+                last_error_msg = Some(error_str.clone());
+                if error_str.contains("Only one usage of each socket address") || error_str.contains("10048") {
+                    retries -= 1;
+                    if retries > 0 {
+                        warn!("Port 8333 still in use, waiting and retrying... ({} attempts left)", retries);
+                        tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+                    }
+                } else {
+                    // For other errors, don't retry
+                    error!("Failed to start network service: {}", e);
+                    return Err(format!("Failed to start network service: {}", e));
+                }
+            }
+        }
+    }
+    
+    if retries == 0 {
+        if let Some(err_msg) = last_error_msg {
+            error!("Failed to start network service after retries: {}", err_msg);
+            return Err(format!("Failed to start network service after retries: {}. The network port (8333) may still be in use by another process or a previous instance. Please wait a few moments and try again.", err_msg));
+        }
     }
     
     // Start blockchain sync service
@@ -1810,12 +1866,9 @@ pub async fn start_blockchain_services(
     Ok(true)
 }
 
-/// Stop blockchain services to allow database operations
-#[command]
-pub async fn stop_blockchain_services(
-    app_handle: tauri::AppHandle,
-) -> CommandResult<bool> {
-    info!("Command: stop_blockchain_services");
+/// Internal function to stop blockchain services (used by other functions)
+async fn stop_blockchain_services_internal(app_handle: &tauri::AppHandle) -> Result<(), String> {
+    info!("Stopping blockchain services internally");
     
     // Stop network service if it exists
     if let Some(network_service) = app_handle.try_state::<crate::network_service::AsyncNetworkService>() {
@@ -1826,6 +1879,10 @@ pub async fn stop_blockchain_services(
             info!("Network service stopped successfully");
         }
     }
+    
+    // Wait for network service to fully stop and release the port
+    info!("Waiting for network service to fully release resources...");
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     
     // Note: Mining service doesn't have a global stop method, individual wallets are stopped via stop_mining
     // We'll skip mining service stop for now as it's wallet-specific
@@ -1838,13 +1895,51 @@ pub async fn stop_blockchain_services(
         info!("Closing blockchain database");
         if let Err(e) = blockchain_db.close().await {
             error!("Failed to close blockchain database: {}", e);
+            return Err(format!("Failed to close blockchain database: {}", e));
         } else {
             info!("Blockchain database closed successfully");
         }
     }
     
     info!("Blockchain services stopped successfully");
-    Ok(true)
+    Ok(())
+}
+
+/// Stop blockchain services to allow database operations
+#[command]
+pub async fn stop_blockchain_services(
+    app_handle: tauri::AppHandle,
+) -> CommandResult<bool> {
+    info!("Command: stop_blockchain_services");
+    
+    match stop_blockchain_services_internal(&app_handle).await {
+        Ok(()) => Ok(true),
+        Err(e) => Err(e),
+    }
+}
+
+/// Check if blockchain services are ready
+#[command]
+pub async fn is_blockchain_ready(
+    app_handle: tauri::AppHandle,
+) -> CommandResult<bool> {
+    info!("Command: is_blockchain_ready");
+    
+    // Check if blockchain database service exists and is initialized
+    let blockchain_db_exists = app_handle.try_state::<Arc<crate::blockchain_database::AsyncBlockchainDatabase>>().is_some();
+    
+    // Check if blockchain sync service exists and is initialized
+    let blockchain_sync_exists = app_handle.try_state::<crate::blockchain_sync::AsyncBlockchainSyncService>().is_some();
+    
+    // Check if network service exists and is running
+    let network_service_exists = app_handle.try_state::<crate::network_service::AsyncNetworkService>().is_some();
+    
+    let is_ready = blockchain_db_exists && blockchain_sync_exists && network_service_exists;
+    
+    info!("Blockchain ready check: db={}, sync={}, network={}, ready={}", 
+          blockchain_db_exists, blockchain_sync_exists, network_service_exists, is_ready);
+    
+    Ok(is_ready)
 }
 
 /// Get the estimated size of blockchain database files
