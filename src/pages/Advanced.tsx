@@ -18,15 +18,20 @@ import {
   TextField,
   Alert,
   Snackbar,
-  Fade // Add Fade import
+  Fade, // Add Fade import
+  Switch,
+  FormControlLabel,
+  FormGroup
 } from '@mui/material';
 import { useState, useEffect } from 'react';
 import { useWallet } from '../context/WalletContext';
+import { useAppSettings } from '../context/AppSettingsContext';
 import LockIcon from '@mui/icons-material/Lock';
 import LockOpenIcon from '@mui/icons-material/LockOpen';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SecurityIcon from '@mui/icons-material/Security';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import MinimizeIcon from '@mui/icons-material/Minimize';
 import SecureWalletDialog from '../components/SecureWalletDialog';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -72,7 +77,8 @@ export default function Advanced() {
       </Typography>
       
       {/* Container with fixed maximum width and full width */}
-      <Box sx={{ width: '100%', maxWidth: 1200, mx: 'auto' }}>        {/* Wallet File Location Card */}
+      <Box sx={{ width: '100%', maxWidth: 1200, mx: 'auto' }}>
+        {/* Wallet File Location Card */}
         <Grid item xs={12} sx={{ mb: 3 }}>
           <Paper sx={{ 
             p: 3, 
@@ -91,6 +97,25 @@ export default function Advanced() {
           </Paper>
         </Grid>
         
+        {/* System Tray Settings Card */}
+        <Grid item xs={12} sx={{ mb: 3 }}>
+          <Paper sx={{ 
+            p: 3, 
+            ...(isDarkMode ? {
+              background: 'rgba(19, 47, 76, 0.6)',
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+              border: '1px solid rgba(255, 255, 255, 0.1)'
+            } : {
+              background: 'linear-gradient(90deg, #f5f7fa 0%, #ffffff 100%)',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+              border: '1px solid rgba(0, 0, 0, 0.08)'
+            }) 
+          }}>
+            <SystemTraySettingsSection />
+          </Paper>
+        </Grid>
+        
         {/* Mining Card */}
         <Box>
           <Card sx={{ ...cardStyle }}>
@@ -106,6 +131,119 @@ export default function Advanced() {
         </Box>
       </Box>
     </Box>
+  );
+}
+
+// System Tray Settings Component
+function SystemTraySettingsSection() {
+  const { appSettings, updateMinimizeToSystemTray } = useAppSettings();
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
+
+  const handleToggleMinimizeToTray = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const enabled = event.target.checked;
+    setIsUpdating(true);
+    setError(null);
+
+    try {
+      await updateMinimizeToSystemTray(enabled);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update setting');
+      console.error('Error updating minimize to system tray setting:', err);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  return (
+    <>
+      <Typography variant="h6" gutterBottom fontWeight={600}>
+        System Tray Settings
+      </Typography>
+      
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        Configure how the application behaves with the system tray. This is especially useful for mining scenarios.
+      </Typography>
+      
+      {error && (
+        <Alert 
+          severity="error" 
+          sx={{ mb: 2 }}
+          onClose={() => setError(null)}
+        >
+          {error}
+        </Alert>
+      )}
+      
+      <FormGroup>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={appSettings?.minimize_to_system_tray ?? false}
+              onChange={handleToggleMinimizeToTray}
+              disabled={isUpdating}
+              color="primary"
+            />
+          }
+          label={
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <MinimizeIcon sx={{ mr: 1, fontSize: '1.2rem' }} />
+              <Box>
+                <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                  Minimize to System Tray
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  When enabled, the application will minimize to the system tray instead of closing when the window is closed. 
+                  Enable this for mining scenarios where you want the mining process to continue running in the background.
+                </Typography>
+              </Box>
+              {isUpdating && <CircularProgress size={20} sx={{ ml: 2 }} />}
+            </Box>
+          }
+          sx={{ 
+            alignItems: 'flex-start',
+            mb: 1,
+            '& .MuiFormControlLabel-label': {
+              ml: 1
+            }
+          }}
+        />
+      </FormGroup>
+      
+      <Box 
+        sx={{ 
+          mt: 2,
+          p: 2,
+          borderRadius: 1,
+          backgroundColor: isDarkMode ? 'rgba(33, 150, 243, 0.1)' : 'rgba(25, 118, 210, 0.08)',
+          border: '1px solid',
+          borderColor: isDarkMode ? 'rgba(33, 150, 243, 0.3)' : 'rgba(25, 118, 210, 0.2)',
+        }}
+      >
+        <Typography 
+          variant="body2" 
+          sx={{ 
+            fontWeight: 600,
+            color: isDarkMode ? '#64b5f6' : '#1565c0',
+            mb: 0.5
+          }}
+        >
+          💡 Mining Tip
+        </Typography>
+        <Typography 
+          variant="body2" 
+          sx={{ 
+            color: isDarkMode ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.7)',
+            fontSize: '0.875rem'
+          }}
+        >
+          For mining operations, it's recommended to enable this setting so the mining process can continue running 
+          in the background while the UI is minimized to the system tray.
+        </Typography>
+      </Box>
+    </>
   );
 }
 

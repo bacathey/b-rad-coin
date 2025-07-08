@@ -120,10 +120,7 @@ pub fn run() {
         ])        .setup(|app| {
             info!("Setting up application");
             
-            // Create system tray
-            setup_system_tray(app)?;
-            
-            // Initialize basic app components without blockchain services
+            // Initialize basic app components first to access configuration
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 info!("Initializing basic application components");
@@ -131,10 +128,24 @@ pub fn run() {
                     Ok(basic_state) => {
                         info!("Basic application components initialized successfully");
                         
+                        // Check if system tray should be enabled from configuration
+                        let should_enable_tray = basic_state.config_manager.get_config().app_settings.minimize_to_system_tray;
+                        info!("System tray setting: {}", should_enable_tray);
+                        
                         // Add basic components to Tauri state
                         app_handle.manage(basic_state.wallet_manager);
                         app_handle.manage(basic_state.security_manager);
                         app_handle.manage(basic_state.config_manager);
+                        
+                        // Create system tray if enabled in settings
+                        if should_enable_tray {
+                            info!("Setting up system tray (enabled in settings)");
+                            if let Err(e) = setup_system_tray_after_init(&app_handle) {
+                                error!("Failed to setup system tray: {}", e);
+                            }
+                        } else {
+                            info!("System tray disabled in settings, skipping initialization");
+                        }
                         
                         // Check if blockchain database exists
                         info!("Checking for blockchain database");
@@ -201,12 +212,27 @@ pub fn run() {
             Ok(())
         }).on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                debug!("Window close requested - minimizing to tray");
-                
-                // Hide the window instead of closing the app
-                let _ = window.hide();
-                // Prevent the default close behavior
-                api.prevent_close();
+                // Check if system tray is enabled before deciding what to do
+                let app_handle = window.app_handle();
+                if let Some(config_manager) = app_handle.try_state::<Arc<ConfigManager>>() {
+                    let config = config_manager.get_config();
+                    if config.app_settings.minimize_to_system_tray {
+                        debug!("Window close requested - minimizing to tray (tray enabled)");
+                        // Hide the window instead of closing the app
+                        let _ = window.hide();
+                        // Prevent the default close behavior
+                        api.prevent_close();
+                    } else {
+                        debug!("Window close requested - closing application (tray disabled)");
+                        // Allow the window to close normally, which will exit the app
+                        // No need to call api.prevent_close()
+                    }
+                } else {
+                    // Fallback: if we can't access config, use default behavior (minimize to tray)
+                    debug!("Window close requested - minimizing to tray (config not available)");
+                    let _ = window.hide();
+                    api.prevent_close();
+                }
             }
         })
         .build(generate_context!())
@@ -555,6 +581,147 @@ fn setup_system_tray(app: &tauri::App) -> tauri::Result<()> {
         .build(app)?;
     
     info!("System tray created successfully");
+    Ok(())
+}
+
+/// Setup system tray after application initialization (when we have access to AppHandle)
+fn setup_system_tray_after_init(app_handle: &tauri::AppHandle) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+    
+    info!("Setting up system tray after initialization");
+    
+    // Create tray menu items
+    let wallet_status_item = MenuItem::with_id(app_handle, "wallet_status", "No wallet open", false, None::<&str>)?;
+    let network_status_item = MenuItem::with_id(app_handle, "network_status", "Network: Disconnected", false, None::<&str>)?;
+    let separator1 = PredefinedMenuItem::separator(app_handle)?;
+    
+    let show_item = MenuItem::with_id(app_handle, "show", "Show Window", true, None::<&str>)?;
+    let hide_item = MenuItem::with_id(app_handle, "hide", "Hide Window", true, None::<&str>)?;
+    let separator2 = PredefinedMenuItem::separator(app_handle)?;
+    
+    let open_wallet_item = MenuItem::with_id(app_handle, "open_wallet", "Open Wallet...", true, None::<&str>)?;
+    let create_wallet_item = MenuItem::with_id(app_handle, "create_wallet", "Create Wallet...", true, None::<&str>)?;
+    let close_wallet_item = MenuItem::with_id(app_handle, "close_wallet", "Close Wallet", false, None::<&str>)?;
+    let separator3 = PredefinedMenuItem::separator(app_handle)?;
+    
+    let quit_item = MenuItem::with_id(app_handle, "quit", "Quit", true, None::<&str>)?;
+    
+    let menu = Menu::with_items(app_handle, &[
+        &wallet_status_item,
+        &network_status_item,
+        &separator1,
+        &show_item,
+        &hide_item,
+        &separator2,
+        &open_wallet_item,
+        &create_wallet_item,
+        &close_wallet_item,
+        &separator3,
+        &quit_item,
+    ])?;
+    
+    // Get the default icon (we need to handle this differently for AppHandle)
+    let icon = app_handle.default_window_icon().cloned().unwrap_or_else(|| {
+        // Fallback: create a simple default icon
+        let rgba_data: &[u8] = &[0; 32 * 32 * 4]; // 32x32 RGBA pixels (all transparent)
+        tauri::image::Image::new(rgba_data, 32, 32)
+    });
+    
+    // Create tray icon
+    let _tray = tauri::tray::TrayIconBuilder::with_id("main-tray")
+        .tooltip("B-Rad Coin Wallet")
+        .icon(icon)
+        .menu(&menu)
+        .on_tray_icon_event(|tray, event| {
+            match event {
+                tauri::tray::TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, button_state: tauri::tray::MouseButtonState::Up, .. } => {
+                    debug!("Tray icon left clicked - showing window");
+                    let app = tray.app_handle();
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                tauri::tray::TrayIconEvent::DoubleClick { button: tauri::tray::MouseButton::Left, .. } => {
+                    debug!("Tray icon double clicked - showing window");
+                    let app = tray.app_handle();
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                _ => {}
+            }
+        })
+        .on_menu_event(|app, event| {
+            match event.id.as_ref() {
+                "quit" => {
+                    info!("Quit selected from tray menu");
+                    // Set shutdown flag and exit the application
+                    SHUTDOWN_IN_PROGRESS.store(true, std::sync::atomic::Ordering::SeqCst);
+                    
+                    let app_handle = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        match commands::shutdown_application(app_handle).await {
+                            Ok(_) => debug!("Shutdown completed successfully from tray menu"),
+                            Err(e) => error!("Failed to shutdown from tray menu: {}", e),
+                        }
+                    });
+                }
+                "show" => {
+                    debug!("Show selected from tray menu");
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                "hide" => {
+                    debug!("Hide selected from tray menu");
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                }
+                "open_wallet" => {
+                    debug!("Open wallet selected from tray menu");
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        // Emit event to frontend to open wallet dialog
+                        let _ = window.emit("tray-open-wallet", ());
+                    }
+                }
+                "create_wallet" => {
+                    debug!("Create wallet selected from tray menu");
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        // Emit event to frontend to open create wallet dialog
+                        let _ = window.emit("tray-create-wallet", ());
+                    }
+                }
+                "close_wallet" => {
+                    debug!("Close wallet selected from tray menu");
+                    let app_handle = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let wallet_manager = app_handle.state::<AsyncWalletManager>();
+                        match commands::close_wallet(wallet_manager).await {
+                            Ok(_) => {
+                                debug!("Wallet closed successfully from tray menu");
+                                // Update tray menu to reflect wallet closed
+                                if let Some(window) = app_handle.get_webview_window("main") {
+                                    let _ = window.emit("wallet-closed", ());
+                                }
+                            },
+                            Err(e) => error!("Failed to close wallet from tray menu: {}", e),
+                        }
+                    });
+                }
+                _ => {}
+            }
+        })
+        .build(app_handle)?;
+    
+    info!("System tray created successfully after initialization");
     Ok(())
 }
 

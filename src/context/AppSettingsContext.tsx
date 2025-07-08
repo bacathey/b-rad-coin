@@ -7,6 +7,7 @@ interface AppSettingsContextType {
   appSettings: AppSettings | null;
   updateDeveloperMode: (enabled: boolean) => Promise<void>;
   updateSkipSeedPhraseDialogs: (skip: boolean) => Promise<void>;
+  updateMinimizeToSystemTray: (enabled: boolean) => Promise<void>;
   refreshSettings: () => Promise<AppSettings | null>;
 }
 
@@ -15,6 +16,7 @@ const AppSettingsContext = createContext<AppSettingsContextType>({
   appSettings: null,
   updateDeveloperMode: async () => {},
   updateSkipSeedPhraseDialogs: async () => {},
+  updateMinimizeToSystemTray: async () => {},
   refreshSettings: async () => null
 });
 
@@ -96,6 +98,35 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Update minimize to system tray setting
+  const updateMinimizeToSystemTray = async (enabled: boolean) => {
+    try {
+      console.log('Updating minimize to system tray setting to:', enabled);
+      
+      // Use snake_case to match the Rust backend expectations
+      const result = await invoke<boolean>('update_app_settings', {
+        minimize_to_system_tray: enabled
+      });
+      
+      if (result) {
+        console.log('Minimize to system tray setting updated successfully in backend');
+        // On success, update local state directly
+        setAppSettings(prev => {
+          if (!prev) return null;
+          return {...prev, minimize_to_system_tray: enabled};
+        });
+      } else {
+        console.error('Failed to update minimize to system tray setting in backend');
+        throw new Error('Failed to update minimize to system tray setting');
+      }
+    } catch (err) {
+      console.error('Failed to update minimize to system tray setting:', err);
+      // On error, refresh to get the actual state from backend
+      await refreshSettings();
+      throw err;
+    }
+  };
+
   // Load app settings on initial render
   useEffect(() => {
     refreshSettings();
@@ -105,6 +136,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       appSettings,
       updateDeveloperMode,
       updateSkipSeedPhraseDialogs,
+      updateMinimizeToSystemTray,
       refreshSettings
     }}>
       {children}

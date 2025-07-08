@@ -51,6 +51,9 @@ pub struct AppSettings {
     /// Whether to skip seed phrase dialogs during wallet creation
     #[serde(default = "default_skip_seed_phrase_dialogs")]
     pub skip_seed_phrase_dialogs: bool,
+    /// Whether to minimize to system tray (enables system tray functionality)
+    #[serde(default = "default_minimize_to_system_tray")]
+    pub minimize_to_system_tray: bool,
     /// Custom location for the blockchain database file
     #[serde(default)]
     pub local_blockchain_file_location: Option<String>,
@@ -72,6 +75,11 @@ fn default_skip_seed_phrase_dialogs() -> bool {
     false
 }
 
+/// Default value for minimize_to_system_tray
+fn default_minimize_to_system_tray() -> bool {
+    false
+}
+
 /// Default implementation for AppSettings
 impl Default for AppSettings {    fn default() -> Self {
         Self {
@@ -81,6 +89,7 @@ impl Default for AppSettings {    fn default() -> Self {
             log_level: "info".to_string(),
             developer_mode: false,
             skip_seed_phrase_dialogs: false,
+            minimize_to_system_tray: false,
             local_blockchain_file_location: None,
         }
     }

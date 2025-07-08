@@ -301,6 +301,7 @@ pub async fn update_app_settings(
     log_level: Option<String>,
     developer_mode: Option<bool>,
     skip_seed_phrase_dialogs: Option<bool>,
+    minimize_to_system_tray: Option<bool>,
     config_manager_arc: State<'_, Arc<ConfigManager>>,
 ) -> CommandResult<bool> {
     info!("Command: update_app_settings");
@@ -353,6 +354,17 @@ pub async fn update_app_settings(
         
         info!("Updating skip_seed_phrase_dialogs to: {}", skip_dialogs);
         config.app_settings.skip_seed_phrase_dialogs = skip_dialogs;
+    }
+
+    if let Some(minimize_to_tray) = minimize_to_system_tray {
+        info!("Updating minimize_to_system_tray to: {}", minimize_to_tray);
+        config.app_settings.minimize_to_system_tray = minimize_to_tray;
+        // Note: System tray changes will take effect on next application restart
+        if minimize_to_tray {
+            info!("System tray will be enabled on next application restart");
+        } else {
+            info!("System tray will be disabled on next application restart");
+        }
     }
 
     // Save the updated config using the inner ConfigManager
