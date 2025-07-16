@@ -9,7 +9,7 @@ use tokio::sync::Mutex;
 use bip39::Mnemonic;
 use bitcoin::secp256k1::{Secp256k1, PublicKey};
 use bitcoin::bip32::{Xpriv, Xpub, DerivationPath};
-use bitcoin::{Network, CompressedPublicKey};
+use bitcoin::{Network, CompressedPublicKey, KnownHrp};
 use std::str::FromStr;
 
 /// Wallet type representing an open wallet
@@ -548,7 +548,8 @@ impl WalletManager {
         let compressed_pubkey = CompressedPublicKey::from_private_key(&secp, &bitcoin_private_key)
             .map_err(|e| WalletError::KeyDerivationError(format!("Failed to create compressed public key: {}", e)))?;
         
-        let address = Address::p2wpkh(&compressed_pubkey, Network::Bitcoin);
+        // Generate P2WPKH address
+        let address = Address::p2wpkh(&compressed_pubkey, KnownHrp::Mainnet);
         
         // Format keys as strings
         let master_private_key = master_xpriv.to_string();

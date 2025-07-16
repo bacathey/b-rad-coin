@@ -313,9 +313,12 @@ export default function OpenCreateWalletDialog({ blockchainReady = true }: { blo
       let seedPhraseToUse: string | undefined;
       
       if (isDeveloperMode && !showSeedPhraseDialogs) {
-        // Developer mode with skip enabled - let backend handle with placeholder
-        console.log('Developer mode with skip dialogs: using backend placeholder');
-        seedPhraseToUse = undefined;
+        // Developer mode with skip enabled - generate a real seed phrase but skip the UI dialogs
+        console.log('Developer mode with skip dialogs: generating seed phrase without showing dialogs');
+        seedPhraseToUse = await invoke<string>('generate_seed_phrase');
+        if (!seedPhraseToUse) {
+          throw new Error('Failed to generate seed phrase for developer mode');
+        }
       } else {
         // Normal mode or developer mode without skip - generate real seed phrase
         console.log('Generating seed phrase for direct wallet creation');
@@ -352,11 +355,17 @@ export default function OpenCreateWalletDialog({ blockchainReady = true }: { blo
       }
     } catch (error) {
       console.error('Failed to create wallet directly:', error);
+      let errorMessage = 'Unknown error occurred during wallet creation';
+      
       if (error instanceof Error) {
-        setErrorMessage(`Error: ${error.message}`);
-      } else {
-        setErrorMessage('Unknown error occurred during wallet creation');
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = String((error as any).message);
       }
+      
+      setErrorMessage(`Error: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -430,11 +439,17 @@ export default function OpenCreateWalletDialog({ blockchainReady = true }: { blo
       }
     } catch (error) {
       console.error('Failed to start wallet creation:', error);
+      let errorMessage = 'Unknown error occurred during wallet creation';
+      
       if (error instanceof Error) {
-        setErrorMessage(`Error: ${error.message}`);
-      } else {
-        setErrorMessage('Unknown error occurred during wallet creation');
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = String((error as any).message);
       }
+      
+      setErrorMessage(`Error: ${errorMessage}`);
       setIsLoading(false);
     }
   };
@@ -483,11 +498,17 @@ export default function OpenCreateWalletDialog({ blockchainReady = true }: { blo
       }
     } catch (error) {
       console.error('Failed to finalize wallet creation:', error);
+      let errorMessage = 'Unknown error occurred during wallet creation';
+      
       if (error instanceof Error) {
-        setErrorMessage(`Error: ${error.message}`);
-      } else {
-        setErrorMessage('Unknown error occurred during wallet creation');
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = String((error as any).message);
       }
+      
+      setErrorMessage(`Error: ${errorMessage}`);
       setTempWalletData(null); 
       setGeneratedSeedPhrase('');
     } finally {
