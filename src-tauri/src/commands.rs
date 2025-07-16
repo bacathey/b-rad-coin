@@ -49,6 +49,19 @@ pub async fn check_wallet_status(
     Ok(result)
 }
 
+/// Command to get the number of available CPU cores
+#[command]
+pub async fn get_cpu_cores() -> CommandResult<u32> {
+    debug!("Command: get_cpu_cores");
+    
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get() as u32)
+        .unwrap_or(1);
+    
+    debug!("Available CPU cores: {}", cores);
+    Ok(cores)
+}
+
 /// Command to close the currently open wallet
 #[command]
 pub async fn close_wallet(wallet_manager: State<'_, AsyncWalletManager>) -> CommandResult<bool> {
@@ -302,6 +315,7 @@ pub async fn update_app_settings(
     developer_mode: Option<bool>,
     skip_seed_phrase_dialogs: Option<bool>,
     minimize_to_system_tray: Option<bool>,
+    mining_threads: Option<u32>,
     config_manager_arc: State<'_, Arc<ConfigManager>>,
 ) -> CommandResult<bool> {
     info!("Command: update_app_settings");
@@ -365,6 +379,26 @@ pub async fn update_app_settings(
         } else {
             info!("System tray will be disabled on next application restart");
         }
+    }
+
+    if let Some(threads) = mining_threads {
+        // Validate thread count (should be 1 to available CPU cores)
+        let max_cores = std::thread::available_parallelism()
+            .map(|n| n.get() as u32)
+            .unwrap_or(1);
+        
+        if threads == 0 {
+            error!("Mining threads cannot be 0");
+            return Err("Mining threads must be at least 1".to_string());
+        }
+        
+        if threads > max_cores {
+            error!("Mining threads {} exceeds available CPU cores {}", threads, max_cores);
+            return Err(format!("Mining threads cannot exceed {} (available CPU cores)", max_cores));
+        }
+        
+        info!("Updating mining_threads to: {}", threads);
+        config.app_settings.mining_threads = threads;
     }
 
     // Save the updated config using the inner ConfigManager

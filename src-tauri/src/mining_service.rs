@@ -11,6 +11,15 @@ use sha2::{Sha256, Digest};
 use crate::blockchain_database::{AsyncBlockchainDatabase, Block, Transaction, TransactionOutput};
 use crate::errors::*;
 
+// Bitcoin-compatible constants
+const MAX_BLOCK_SIZE: usize = 1_000_000; // 1MB like Bitcoin
+const MAX_BLOCK_WEIGHT: usize = 4_000_000; // 4MB weight units like Bitcoin
+const TARGET_BLOCK_TIME: u64 = 60; // 1 minute instead of Bitcoin's 10 minutes
+const DIFFICULTY_ADJUSTMENT_INTERVAL: u64 = 144; // Adjust every 144 blocks (2.4 hours at 1 min/block)
+const INITIAL_DIFFICULTY_TARGET: u64 = 0x00000000FFFF0000; // Simplified target that fits in u64
+const COINBASE_REWARD: u64 = 5000000000; // 50 BTC in satoshis (will halve every 210,000 blocks)
+const HALVING_INTERVAL: u64 = 210000; // Halve reward every 210,000 blocks
+
 /// Mining status for a wallet
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MiningStatus {
@@ -21,6 +30,8 @@ pub struct MiningStatus {
     pub last_block_time: Option<u64>,
     pub mining_address: String,
     pub current_difficulty: u64,
+    pub current_target: String,
+    pub network_hash_rate: f64,
 }
 
 /// Mining service for individual wallet mining
@@ -37,7 +48,7 @@ impl MiningService {    /// Create new mining service
             blockchain_db,
             active_miners: Arc::new(RwLock::new(HashMap::new())),
             app_handle: None,
-            target_block_time: Duration::from_secs(30), // 30 second target block time
+            target_block_time: Duration::from_secs(TARGET_BLOCK_TIME), // 1 minute target block time
         }
     }
 
@@ -62,8 +73,8 @@ impl MiningService {    /// Create new mining service
             }
         }
 
-        // Get current difficulty
-        let current_difficulty = self.calculate_difficulty().await?;
+        // Get current difficulty and target
+        let (current_difficulty, current_target) = self.calculate_current_difficulty().await?;
 
         // Initialize mining status
         let mining_status = MiningStatus {
@@ -74,6 +85,8 @@ impl MiningService {    /// Create new mining service
             last_block_time: None,
             mining_address: mining_address.clone(),
             current_difficulty,
+            current_target: format!("{:064x}", current_target),
+            network_hash_rate: 0.0,
         };
 
         {
@@ -133,18 +146,115 @@ impl MiningService {    /// Create new mining service
         active_miners.clone()
     }
 
-    /// Calculate current mining difficulty
-    async fn calculate_difficulty(&self) -> AppResult<u64> {
-        // Simple difficulty adjustment based on block height
-        // In a real implementation, this would be based on block times
+    /// Calculate current mining difficulty using Bitcoin-style algorithm
+    async fn calculate_current_difficulty(&self) -> AppResult<(u64, u64)> {
         let current_height = self.blockchain_db.get_block_height().await
             .map_err(|e| AppError::Generic(format!("Failed to get block height: {}", e)))?;
 
-        // Start with base difficulty and increase every 100 blocks
-        let base_difficulty = 1000u64;
-        let difficulty_adjustment = current_height / 100;
+        // For the first block, use initial difficulty
+        if current_height == 0 {
+            return Ok((bits_to_difficulty(0x1d00ffff), INITIAL_DIFFICULTY_TARGET));
+        }
+
+        // Check if we need to adjust difficulty
+        if current_height % DIFFICULTY_ADJUSTMENT_INTERVAL == 0 && current_height > 0 {
+            self.adjust_difficulty(current_height).await
+        } else {
+            // Use previous block's difficulty
+            if let Some(previous_block) = self.blockchain_db.get_block_by_height(current_height).await
+                .map_err(|e| AppError::Generic(format!("Failed to get previous block: {}", e)))? {
+                let target = difficulty_to_target(previous_block.difficulty);
+                Ok((previous_block.difficulty, target))
+            } else {
+                // Fallback to initial difficulty
+                Ok((bits_to_difficulty(0x1d00ffff), INITIAL_DIFFICULTY_TARGET))
+            }
+        }
+    }
+
+    /// Adjust difficulty based on block times (Bitcoin-style difficulty adjustment)
+    async fn adjust_difficulty(&self, current_height: u64) -> AppResult<(u64, u64)> {
+        let adjustment_start_height = current_height - DIFFICULTY_ADJUSTMENT_INTERVAL;
         
-        Ok(base_difficulty + (difficulty_adjustment * 100))
+        // Get the first block of the adjustment period
+        let first_block = self.blockchain_db.get_block_by_height(adjustment_start_height).await
+            .map_err(|e| AppError::Generic(format!("Failed to get adjustment start block: {}", e)))?
+            .ok_or_else(|| AppError::Generic("Adjustment start block not found".to_string()))?;
+
+        // Get the last block (previous block)
+        let last_block = self.blockchain_db.get_block_by_height(current_height - 1).await
+            .map_err(|e| AppError::Generic(format!("Failed to get last block: {}", e)))?
+            .ok_or_else(|| AppError::Generic("Last block not found".to_string()))?;
+
+        // Calculate actual time taken for the adjustment period
+        let actual_timespan = last_block.timestamp - first_block.timestamp;
+        let target_timespan = DIFFICULTY_ADJUSTMENT_INTERVAL * TARGET_BLOCK_TIME;
+
+        // Limit adjustment to 4x increase or 1/4 decrease (Bitcoin rule)
+        let adjusted_timespan = actual_timespan.max(target_timespan / 4).min(target_timespan * 4);
+
+        // Calculate new difficulty
+        let old_target = difficulty_to_target(last_block.difficulty);
+        let new_target = (old_target as u128 * adjusted_timespan as u128 / target_timespan as u128) as u64;
+        
+        // Ensure target doesn't exceed the maximum (minimum difficulty)
+        let new_target = new_target.min(INITIAL_DIFFICULTY_TARGET);
+        let new_difficulty = target_to_difficulty(new_target);
+
+        info!(
+            "Difficulty adjustment at height {}: actual_timespan={}s, target_timespan={}s, old_difficulty={}, new_difficulty={}",
+            current_height, actual_timespan, target_timespan, last_block.difficulty, new_difficulty
+        );
+
+        Ok((new_difficulty, new_target))
+    }
+
+    /// Calculate mining reward based on block height (with halving)
+    fn calculate_block_reward(height: u64) -> u64 {
+        let halvings = height / HALVING_INTERVAL;
+        if halvings >= 64 {
+            0 // After 64 halvings, reward becomes 0
+        } else {
+            COINBASE_REWARD >> halvings
+        }
+    }
+
+    /// Calculate network hash rate estimate
+    async fn estimate_network_hash_rate(&self) -> AppResult<f64> {
+        let current_height = self.blockchain_db.get_block_height().await
+            .map_err(|e| AppError::Generic(format!("Failed to get block height: {}", e)))?;
+
+        if current_height < 10 {
+            return Ok(0.0);
+        }
+
+        // Look at last 10 blocks to estimate hash rate
+        let mut total_work = 0.0;
+        let mut time_span = 0u64;
+
+        if let Some(latest_block) = self.blockchain_db.get_block_by_height(current_height).await
+            .map_err(|e| AppError::Generic(format!("Failed to get latest block: {}", e)))? {
+            
+            if let Some(older_block) = self.blockchain_db.get_block_by_height(current_height.saturating_sub(10)).await
+                .map_err(|e| AppError::Generic(format!("Failed to get older block: {}", e)))? {
+                
+                time_span = latest_block.timestamp - older_block.timestamp;
+                
+                // Estimate work done (simplified)
+                for height in (current_height.saturating_sub(10))..=current_height {
+                    if let Some(block) = self.blockchain_db.get_block_by_height(height).await
+                        .map_err(|e| AppError::Generic(format!("Failed to get block: {}", e)))? {
+                        total_work += block.difficulty as f64;
+                    }
+                }
+            }
+        }
+
+        if time_span > 0 {
+            Ok(total_work / time_span as f64)
+        } else {
+            Ok(0.0)
+        }
     }
 
     /// Perform the actual mining
@@ -243,13 +353,14 @@ impl MiningService {    /// Create new mining service
         Ok(())
     }
 
-    /// Try to mine a single block
+    /// Try to mine a single block using Bitcoin-style Proof of Work
     async fn try_mine_block(
         wallet_id: &str,
         mining_address: &str,
         blockchain_db: &Arc<AsyncBlockchainDatabase>,
         active_miners: &Arc<RwLock<HashMap<String, MiningStatus>>>,
-    ) -> AppResult<bool> {        // Get current block height and last block hash
+    ) -> AppResult<bool> {
+        // Get current block height and last block hash
         let current_height = blockchain_db.get_block_height().await
             .map_err(|e| AppError::Generic(format!("Failed to get block height: {}", e)))?;
 
@@ -261,18 +372,30 @@ impl MiningService {    /// Create new mining service
             "0".repeat(64)
         };
 
-        // Get current difficulty
-        let difficulty = {
+        // Get current difficulty and target
+        let (difficulty, target) = {
             let miners = active_miners.read().await;
-            miners.get(wallet_id)
-                .map(|status| status.current_difficulty)
-                .unwrap_or(1000)
-        };        // Create coinbase transaction (mining reward)
+            if let Some(status) = miners.get(wallet_id) {
+                let target = if let Ok(target_val) = u64::from_str_radix(&status.current_target, 16) {
+                    target_val
+                } else {
+                    INITIAL_DIFFICULTY_TARGET
+                };
+                (status.current_difficulty, target)
+            } else {
+                (bits_to_difficulty(0x1d00ffff), INITIAL_DIFFICULTY_TARGET)
+            }
+        };
+
+        // Calculate mining reward with halving
+        let block_reward = Self::calculate_block_reward(current_height + 1);
+
+        // Create coinbase transaction (mining reward)
         let coinbase_tx = Transaction {
             txid: format!("coinbase_{}", current_height + 1),
             inputs: vec![],
             outputs: vec![TransactionOutput {
-                value: 50000000, // 0.5 coin reward
+                value: block_reward,
                 script_pubkey: format!("OP_DUP OP_HASH160 {} OP_EQUALVERIFY OP_CHECKSIG", mining_address),
                 address: mining_address.to_string(),
             }],
@@ -281,47 +404,71 @@ impl MiningService {    /// Create new mining service
             fee: 0,
         };
 
-        // Create block candidate
+        // Get pending transactions (in a real implementation, this would come from mempool)
+        let transactions = vec![coinbase_tx.clone()];
+        
+        // TODO: Add pending transactions from mempool while respecting size limits
+        // For now, we'll just mine with the coinbase transaction
+        
+        // Calculate merkle root
+        let merkle_root = calculate_merkle_root(&transactions);
+
+        // Create block header for mining
         let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
             .unwrap_or_default().as_secs();
 
-        let nonce = rand::random::<u64>();
+        // Start mining with random nonce
+        let mut nonce = rand::random::<u64>();
 
-        // Create block data for hashing
-        let block_data = format!(
-            "{}{}{}{}{}",
-            current_height + 1,
-            previous_hash,
-            timestamp,
-            serde_json::to_string(&vec![coinbase_tx.clone()]).unwrap_or_default(),
-            nonce
-        );
-
-        // Hash the block
-        let mut hasher = Sha256::new();
-        hasher.update(block_data.as_bytes());
-        let hash_result = hasher.finalize();
-        let hash_hex = format!("{:x}", hash_result);        // Check if hash meets difficulty (simple leading zeros check)
-        let leading_zeros = hash_hex.chars().take_while(|&c| c == '0').count();
-        let required_zeros = (difficulty / 1000) as usize; // Scale difficulty to leading zeros
-
-        if leading_zeros >= required_zeros {
-            // Block found! Add to blockchain
-            let new_block = Block {
-                height: current_height + 1,
-                hash: hash_hex,
-                previous_hash,
+        // Try a few nonces before yielding control (to prevent blocking)
+        for _ in 0..1000 {
+            // Create block header data
+            let block_header = create_block_header(
+                current_height + 1,
+                &previous_hash,
+                &merkle_root,
                 timestamp,
-                transactions: vec![coinbase_tx],                nonce,
-                difficulty,
-                merkle_root: "0".repeat(64), // Simplified merkle root
-            };
+                target_to_bits(target),
+                nonce,
+            );
 
-            blockchain_db.store_block(&new_block).await
-                .map_err(|e| AppError::Generic(format!("Failed to store mined block: {}", e)))?;
+            // Calculate double SHA256 hash (Bitcoin-style)
+            let hash_bytes = double_sha256(&block_header);
+            let hash_hex = format_hash(&hash_bytes);
 
-            info!("Block {} mined with hash: {}", new_block.height, new_block.hash);
-            return Ok(true);
+            // Check if hash meets target (Bitcoin-style difficulty check)
+            if hash_meets_target(&hash_hex, target) {
+                // Block found! Create the complete block
+                let new_block = Block {
+                    height: current_height + 1,
+                    hash: hash_hex,
+                    previous_hash,
+                    timestamp,
+                    transactions,
+                    nonce,
+                    difficulty,
+                    merkle_root,
+                };
+
+                // Verify block size constraints
+                let block_json = serde_json::to_string(&new_block).unwrap_or_default();
+                if block_json.len() > MAX_BLOCK_SIZE {
+                    warn!("Block exceeds maximum size limit: {} > {}", block_json.len(), MAX_BLOCK_SIZE);
+                    return Ok(false);
+                }
+
+                // Store the mined block
+                blockchain_db.store_block(&new_block).await
+                    .map_err(|e| AppError::Generic(format!("Failed to store mined block: {}", e)))?;
+
+                info!(
+                    "Block {} mined successfully! Hash: {}, Difficulty: {}, Reward: {} satoshis",
+                    new_block.height, new_block.hash, difficulty, block_reward
+                );
+                return Ok(true);
+            }
+
+            nonce = nonce.wrapping_add(1);
         }
 
         Ok(false)
@@ -382,4 +529,126 @@ impl AsyncMiningService {
         let service = self.inner.lock().await;
         service.get_all_mining_statuses().await
     }
+}
+
+// Bitcoin-style difficulty conversion functions
+
+/// Convert Bitcoin compact bits representation to difficulty value
+fn bits_to_difficulty(bits: u32) -> u64 {
+    let max_target = INITIAL_DIFFICULTY_TARGET;
+    let target = bits_to_target(bits);
+    if target == 0 {
+        return u64::MAX;
+    }
+    (max_target / target).max(1)
+}
+
+/// Convert difficulty to target value
+fn difficulty_to_target(difficulty: u64) -> u64 {
+    if difficulty == 0 {
+        return INITIAL_DIFFICULTY_TARGET;
+    }
+    INITIAL_DIFFICULTY_TARGET / difficulty
+}
+
+/// Convert target to difficulty value
+fn target_to_difficulty(target: u64) -> u64 {
+    if target == 0 {
+        return u64::MAX;
+    }
+    INITIAL_DIFFICULTY_TARGET / target
+}
+
+/// Convert Bitcoin compact bits to target value
+fn bits_to_target(bits: u32) -> u64 {
+    let exponent = ((bits >> 24) & 0xff) as u32;
+    let mantissa = bits & 0x00ffffff;
+    
+    if exponent <= 3 {
+        mantissa as u64 >> (8 * (3 - exponent))
+    } else {
+        (mantissa as u64) << (8 * (exponent - 3))
+    }
+}
+
+/// Convert target to Bitcoin compact bits representation
+fn target_to_bits(target: u64) -> u32 {
+    if target == 0 {
+        return 0;
+    }
+    
+    let target_bytes = target.to_be_bytes();
+    let mut exponent = 8;
+    
+    // Find the most significant byte
+    while exponent > 0 && target_bytes[8 - exponent] == 0 {
+        exponent -= 1;
+    }
+    
+    if exponent <= 3 {
+        let mantissa = (target as u32) << (8 * (3 - exponent));
+        mantissa | (exponent as u32) << 24
+    } else {
+        let mantissa = (target >> (8 * (exponent - 3))) as u32;
+        (mantissa & 0x00ffffff) | (exponent as u32) << 24
+    }
+}
+
+/// Check if a hash meets the target difficulty
+fn hash_meets_target(hash: &str, target: u64) -> bool {
+    // Convert hash to numeric value for comparison
+    if let Ok(hash_value) = u64::from_str_radix(&hash[0..16], 16) {
+        hash_value <= target
+    } else {
+        false
+    }
+}
+
+/// Calculate double SHA256 hash (Bitcoin-style)
+fn double_sha256(data: &[u8]) -> [u8; 32] {
+    let first_hash = Sha256::digest(data);
+    let second_hash = Sha256::digest(&first_hash);
+    second_hash.into()
+}
+
+/// Create Bitcoin-style block header for hashing
+fn create_block_header(
+    height: u64,
+    previous_hash: &str,
+    merkle_root: &str,
+    timestamp: u64,
+    bits: u32,
+    nonce: u64,
+) -> Vec<u8> {
+    let header_data = format!(
+        "{}{}{}{}{}{}",
+        height,
+        previous_hash,
+        merkle_root,
+        timestamp,
+        bits,
+        nonce
+    );
+    header_data.into_bytes()
+}
+
+/// Calculate merkle root from transactions (simplified implementation)
+fn calculate_merkle_root(transactions: &[Transaction]) -> String {
+    if transactions.is_empty() {
+        return "0".repeat(64);
+    }
+
+    // For now, use a simple hash of all transaction IDs
+    // In a full implementation, this would build a proper merkle tree
+    let mut hasher = Sha256::new();
+    for tx in transactions {
+        hasher.update(tx.txid.as_bytes());
+    }
+    let result = hasher.finalize();
+    format!("{:x}", result)
+}
+
+/// Format hash as hex string
+fn format_hash(hash: &[u8]) -> String {
+    hash.iter().map(|b| format!("{:02x}", b)).collect()
 }

@@ -19,6 +19,9 @@ import {
   Alert,
   Snackbar,
   Fade, // Add Fade import
+  Slider,
+  FormControl,
+  FormLabel,
   Switch,
   FormControlLabel,
   FormGroup
@@ -123,9 +126,10 @@ export default function Advanced() {
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
                 Mining
               </Typography>
-              <Typography variant="body2" sx={{ mt: 1 }}>
-                Manage your mining operations and settings.
+              <Typography variant="body2" sx={{ mt: 1, mb: 3 }}>
+                Configure mining thread count and other mining settings.
               </Typography>
+              <MiningThreadsSection />
             </CardContent>
           </Card>
         </Box>
@@ -687,7 +691,9 @@ function WalletLocationSection() {  const {
           sx={{ width: '100%' }}
         >
           {error}        </Alert>
-      </Snackbar>{/* Secure Wallet Dialog */}
+      </Snackbar>
+      
+      {/* Secure Wallet Dialog */}
       <SecureWalletDialog 
         open={secureDialogOpen}
         onClose={handleCloseSecureDialog}
@@ -695,5 +701,112 @@ function WalletLocationSection() {  const {
         onSuccess={handleSuccessfulSecurity}
       />
     </>
+  );
+}
+
+// Mining Threads Settings Component
+function MiningThreadsSection() {
+  const { appSettings, updateMiningThreads } = useAppSettings();
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [maxCores, setMaxCores] = useState<number>(1);
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
+
+  // Get available CPU cores on component mount
+  useEffect(() => {
+    const getCpuCores = async () => {
+      try {
+        const cores = await invoke<number>('get_cpu_cores');
+        setMaxCores(cores);
+      } catch (err) {
+        console.error('Failed to get CPU cores:', err);
+        setMaxCores(1); // fallback to 1 core
+      }
+    };
+    getCpuCores();
+  }, []);
+
+  const handleThreadsChange = async (_event: Event, newValue: number | number[]) => {
+    const threads = typeof newValue === 'number' ? newValue : newValue[0];
+    setIsUpdating(true);
+    setError(null);
+
+    try {
+      await updateMiningThreads(threads);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update mining threads');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const currentThreads = appSettings?.mining_threads || 1;
+
+  return (
+    <Box>
+      <FormControl component="fieldset" sx={{ width: '100%' }}>
+        <FormLabel component="legend" sx={{ 
+          mb: 2, 
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.87)',
+          fontWeight: 600
+        }}>
+          Mining Threads
+        </FormLabel>
+        
+        <Typography variant="body2" sx={{ 
+          mb: 2, 
+          color: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)' 
+        }}>
+          Number of CPU threads to use for mining operations. Higher values may improve mining performance but increase CPU usage.
+        </Typography>
+
+        <Box sx={{ px: 2, mb: 2 }}>
+          <Slider
+            value={currentThreads}
+            onChange={handleThreadsChange}
+            disabled={isUpdating}
+            min={1}
+            max={maxCores}
+            step={1}
+            marks={Array.from({length: maxCores}, (_, i) => ({
+              value: i + 1,
+              label: i + 1 === 1 ? '1' : i + 1 === maxCores ? `${maxCores}` : ''
+            }))}
+            valueLabelDisplay="on"
+            sx={{
+              color: isDarkMode ? '#90caf9' : '#1976d2',
+              '& .MuiSlider-thumb': {
+                backgroundColor: isDarkMode ? '#90caf9' : '#1976d2',
+              },
+              '& .MuiSlider-track': {
+                backgroundColor: isDarkMode ? '#90caf9' : '#1976d2',
+              },
+              '& .MuiSlider-rail': {
+                backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.26)',
+              }
+            }}
+          />
+        </Box>
+
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+          <Typography variant="body2" sx={{ 
+            color: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)' 
+          }}>
+            Current: {currentThreads} thread{currentThreads !== 1 ? 's' : ''} / {maxCores} available
+          </Typography>
+          
+          {isUpdating && (
+            <CircularProgress size={16} sx={{ color: isDarkMode ? '#90caf9' : '#1976d2' }} />
+          )}
+        </Box>
+
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        )}
+      </FormControl>
+    </Box>
   );
 }

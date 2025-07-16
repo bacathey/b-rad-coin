@@ -1,8 +1,11 @@
 //! BradCoin Network Service
 //! Handles peer discovery, block propagation, and network communication
+//! Implements Bitcoin protocol for real network connectivity
 
 use crate::blockchain_database::{AsyncBlockchainDatabase, Block, Transaction, TransactionInput, TransactionOutput};
 use crate::errors::*;
+use crate::network_constants::*;
+use crate::dns_seeder::{discover_network_peers, DnsSeeder};
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -295,28 +298,79 @@ impl NetworkService {
 
     /// Add bootstrap nodes for initial peer discovery
     async fn add_bootstrap_nodes(&self) {
-        let bootstrap_nodes = vec![
-            // In a real implementation, these would be reliable bootstrap nodes
-            PeerAddress {
-                ip: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-                port: DEFAULT_P2P_PORT + 1,
-                last_seen: Self::current_timestamp(),
-                services: 1, // Full node
-            },
-            PeerAddress {
-                ip: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-                port: DEFAULT_P2P_PORT + 2,
-                last_seen: Self::current_timestamp(),
-                services: 1,
-            },
-        ];
-
+        info!("Starting peer discovery process...");
+        
+        // First, try DNS-based peer discovery for Bitcoin network connectivity
+        let dns_peers = discover_network_peers(true).await;
+        if !dns_peers.is_empty() {
+            info!("Discovered {} peers via DNS seeding", dns_peers.len());
+            let mut known_addresses = self.known_addresses.write().await;
+            for peer in dns_peers.into_iter().take(50) { // Limit to first 50 for initial connection
+                known_addresses.insert(peer);
+            }
+        } else {
+            warn!("DNS peer discovery failed, falling back to hardcoded seed nodes");
+        }
+        
+        // Add hardcoded seed nodes as fallback
+        let seed_nodes = get_seed_nodes(true); // Use Bitcoin network nodes
         let mut known_addresses = self.known_addresses.write().await;
-        for addr in bootstrap_nodes {
+        for addr in seed_nodes {
             known_addresses.insert(addr);
         }
         
-        info!("Added {} bootstrap nodes", known_addresses.len());
+        // Add BradCoin development nodes for testing
+        let bradcoin_nodes = get_seed_nodes(false);
+        for addr in bradcoin_nodes {
+            known_addresses.insert(addr);
+        }
+        
+        let total_nodes = known_addresses.len();
+        drop(known_addresses); // Release the lock
+        
+        info!("Added {} total seed nodes for peer discovery", total_nodes);
+        
+        // Start background peer discovery task
+        self.start_peer_discovery_task().await;
+    }
+
+    /// Start background task for continuous peer discovery
+    async fn start_peer_discovery_task(&self) {
+        let known_addresses = Arc::clone(&self.known_addresses);
+        let stats = Arc::clone(&self.stats);
+        
+        tokio::spawn(async move {
+            let mut discovery_interval = interval(Duration::from_secs(PEER_DISCOVERY_INTERVAL_SECS));
+            let dns_seeder = DnsSeeder::new(true);
+            
+            loop {
+                discovery_interval.tick().await;
+                
+                debug!("Running periodic peer discovery...");
+                
+                // Discover new peers via DNS
+                let new_peers = dns_seeder.discover_peers().await;
+                let filtered_peers = dns_seeder.filter_valid_peers(new_peers);
+                
+                if !filtered_peers.is_empty() {
+                    let mut known = known_addresses.write().await;
+                    let initial_count = known.len();
+                    
+                    for peer in filtered_peers {
+                        known.insert(peer);
+                    }
+                    
+                    let new_count = known.len() - initial_count;
+                    if new_count > 0 {
+                        info!("Discovered {} new peers via periodic DNS discovery", new_count);
+                        
+                        // Update stats
+                        let mut stats_guard = stats.write().await;
+                        stats_guard.total_known_peers = known.len() as u32;
+                    }
+                }
+            }
+        });
     }
 
     /// Accept incoming connections
@@ -803,7 +857,42 @@ impl NetworkService {
     pub async fn broadcast_transaction(&self, transaction: Transaction) -> AppResult<()> {
         info!("Broadcasting new transaction {} to network", transaction.txid);
         self.broadcast_message(NetworkMessage::NewTransaction { transaction }).await
-    }    /// Request blocks using Bitcoin-style getblocks message
+    }
+
+    /// Announce this node to the network
+    pub async fn announce_self(&self) -> AppResult<()> {
+        info!("Announcing node to the network...");
+        
+        // Get our listening address
+        let our_address = PeerAddress {
+            ip: "0.0.0.0".parse().unwrap(), // Will be replaced by peers with their view of our IP
+            port: BITCOIN_DEFAULT_PORT,
+            last_seen: Self::current_timestamp(),
+            services: NODE_NETWORK, // We support full node services
+        };
+
+        // Create addr message to announce ourselves
+        let message = NetworkMessage::Addr {
+            addresses: vec![our_address],
+        };
+
+        // Broadcast to all connected peers
+        self.broadcast_message(message).await?;
+        
+        Ok(())
+    }
+
+    /// Request addresses from peers for network discovery
+    pub async fn request_peer_addresses(&self) -> AppResult<()> {
+        info!("Requesting peer addresses from network...");
+        
+        let message = NetworkMessage::GetAddr;
+        self.broadcast_message(message).await?;
+        
+        Ok(())
+    }
+
+    /// Request blocks using Bitcoin-style getblocks message
     pub async fn request_blocks(&self, start_height: u64, _end_height: Option<u64>) -> AppResult<()> {
         info!("Requesting blocks starting from height {}", start_height);
         

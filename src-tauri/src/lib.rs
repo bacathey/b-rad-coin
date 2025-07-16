@@ -26,6 +26,8 @@ pub mod blockchain_database;
 pub mod wallet_sync_service;
 pub mod mining_service;
 pub mod network_service;
+pub mod network_constants;
+pub mod dns_seeder;
 
 use commands::*;
 use developer_commands::*;
@@ -116,7 +118,8 @@ pub fn run() {
             get_config_directory,
             cleanup_orphaned_wallets,
             delete_all_wallets,
-            get_wallet_private_key
+            get_wallet_private_key,
+            get_cpu_cores
         ])        .setup(|app| {
             info!("Setting up application");
             

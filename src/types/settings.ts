@@ -12,4 +12,6 @@ export interface AppSettings {
   skip_seed_phrase_dialogs: boolean;
   /** Whether to minimize to system tray (enables system tray functionality) */
   minimize_to_system_tray: boolean;
+  /** Number of threads to use for mining (1 to available CPU cores) */
+  mining_threads: number;
 }

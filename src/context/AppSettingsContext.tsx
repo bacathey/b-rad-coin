@@ -8,6 +8,7 @@ interface AppSettingsContextType {
   updateDeveloperMode: (enabled: boolean) => Promise<void>;
   updateSkipSeedPhraseDialogs: (skip: boolean) => Promise<void>;
   updateMinimizeToSystemTray: (enabled: boolean) => Promise<void>;
+  updateMiningThreads: (threads: number) => Promise<void>;
   refreshSettings: () => Promise<AppSettings | null>;
 }
 
@@ -17,6 +18,7 @@ const AppSettingsContext = createContext<AppSettingsContextType>({
   updateDeveloperMode: async () => {},
   updateSkipSeedPhraseDialogs: async () => {},
   updateMinimizeToSystemTray: async () => {},
+  updateMiningThreads: async () => {},
   refreshSettings: async () => null
 });
 
@@ -127,6 +129,35 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Update mining threads setting  
+  const updateMiningThreads = async (threads: number) => {
+    try {
+      console.log('Updating mining threads setting to:', threads);
+      
+      // Use snake_case to match the Rust backend expectations
+      const result = await invoke<boolean>('update_app_settings', {
+        mining_threads: threads
+      });
+      
+      if (result) {
+        console.log('Mining threads setting updated successfully in backend');
+        // On success, update local state directly
+        setAppSettings(prev => {
+          if (!prev) return null;
+          return {...prev, mining_threads: threads};
+        });
+      } else {
+        console.error('Failed to update mining threads setting in backend');
+        throw new Error('Failed to update mining threads setting');
+      }
+    } catch (err) {
+      console.error('Failed to update mining threads setting:', err);
+      // On error, refresh to get the actual state from backend
+      await refreshSettings();
+      throw err;
+    }
+  };
+
   // Load app settings on initial render
   useEffect(() => {
     refreshSettings();
@@ -137,6 +168,7 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       updateDeveloperMode,
       updateSkipSeedPhraseDialogs,
       updateMinimizeToSystemTray,
+      updateMiningThreads,
       refreshSettings
     }}>
       {children}

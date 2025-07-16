@@ -54,6 +54,9 @@ pub struct AppSettings {
     /// Whether to minimize to system tray (enables system tray functionality)
     #[serde(default = "default_minimize_to_system_tray")]
     pub minimize_to_system_tray: bool,
+    /// Number of threads to use for mining (1 to number of CPU cores)
+    #[serde(default = "default_mining_threads")]
+    pub mining_threads: u32,
     /// Custom location for the blockchain database file
     #[serde(default)]
     pub local_blockchain_file_location: Option<String>,
@@ -80,6 +83,14 @@ fn default_minimize_to_system_tray() -> bool {
     false
 }
 
+/// Default value for mining_threads
+fn default_mining_threads() -> u32 {
+    // Default to number of CPU cores, but at least 1
+    std::thread::available_parallelism()
+        .map(|n| n.get() as u32)
+        .unwrap_or(1)
+}
+
 /// Default implementation for AppSettings
 impl Default for AppSettings {    fn default() -> Self {
         Self {
@@ -90,6 +101,7 @@ impl Default for AppSettings {    fn default() -> Self {
             developer_mode: false,
             skip_seed_phrase_dialogs: false,
             minimize_to_system_tray: false,
+            mining_threads: default_mining_threads(),
             local_blockchain_file_location: None,
         }
     }
