@@ -36,7 +36,9 @@ import SecurityIcon from '@mui/icons-material/Security';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import MinimizeIcon from '@mui/icons-material/Minimize';
 import SecureWalletDialog from '../components/SecureWalletDialog';
+import AddressSelectionDialog from '../components/AddressSelectionDialog';
 import { invoke } from '@tauri-apps/api/core';
+import { MiningConfiguration } from '../types/mining';
 
 export default function Advanced() {
   const theme = useTheme();
@@ -127,9 +129,9 @@ export default function Advanced() {
                 Mining
               </Typography>
               <Typography variant="body2" sx={{ mt: 1, mb: 3 }}>
-                Configure mining thread count and other mining settings.
+                Configure mining settings and control mining operations.
               </Typography>
-              <MiningThreadsSection />
+              <MiningControlSection />
             </CardContent>
           </Card>
         </Box>
@@ -704,27 +706,36 @@ function WalletLocationSection() {  const {
   );
 }
 
-// Mining Threads Settings Component
-function MiningThreadsSection() {
+// Mining Control Section Component
+function MiningControlSection() {
   const { appSettings, updateMiningThreads } = useAppSettings();
   const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [maxCores, setMaxCores] = useState<number>(1);
+  const [miningConfig, setMiningConfig] = useState<MiningConfiguration | null>(null);
+  const [addressDialogOpen, setAddressDialogOpen] = useState(false);
+  const [isMiningToggling, setIsMiningToggling] = useState(false);
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
 
-  // Get available CPU cores on component mount
+  // Get available CPU cores and mining configuration on component mount
   useEffect(() => {
-    const getCpuCores = async () => {
+    const initializeMining = async () => {
       try {
+        // Get CPU cores
         const cores = await invoke<number>('get_cpu_cores');
         setMaxCores(cores);
+
+        // Get mining configuration
+        const config = await invoke<MiningConfiguration | null>('get_mining_configuration');
+        setMiningConfig(config);
       } catch (err) {
-        console.error('Failed to get CPU cores:', err);
+        console.error('Failed to initialize mining:', err);
         setMaxCores(1); // fallback to 1 core
+        setError(err instanceof Error ? err.message : 'Failed to initialize mining');
       }
     };
-    getCpuCores();
+    initializeMining();
   }, []);
 
   const handleThreadsChange = async (_event: Event, newValue: number | number[]) => {
@@ -741,72 +752,253 @@ function MiningThreadsSection() {
     }
   };
 
+  const handleMiningToggle = async (enabled: boolean) => {
+    if (!miningConfig) return;
+    
+    setIsMiningToggling(true);
+    setError(null);
+
+    try {
+      if (enabled) {
+        // Start mining
+        await invoke('start_mining', {
+          walletId: miningConfig.wallet_id,
+          miningAddress: miningConfig.mining_address
+        });
+      } else {
+        // Stop mining
+        await invoke('stop_mining', {
+          walletId: miningConfig.wallet_id
+        });
+      }
+
+      // Refresh mining configuration
+      const updatedConfig = await invoke<MiningConfiguration | null>('get_mining_configuration');
+      setMiningConfig(updatedConfig);
+    } catch (err) {
+      console.error('Failed to toggle mining:', err);
+      setError(err instanceof Error ? err.message : 'Failed to toggle mining');
+    } finally {
+      setIsMiningToggling(false);
+    }
+  };
+
+  const handleAddressChange = async (newAddress: string) => {
+    if (!miningConfig) return;
+    
+    setError(null);
+
+    try {
+      // If mining is active, restart with new address
+      if (miningConfig.is_mining) {
+        await invoke('stop_mining', { walletId: miningConfig.wallet_id });
+        await invoke('start_mining', {
+          walletId: miningConfig.wallet_id,
+          miningAddress: newAddress
+        });
+      }
+
+      // Update local state
+      setMiningConfig(prev => prev ? { ...prev, mining_address: newAddress } : null);
+      
+      // Refresh mining configuration to get latest state
+      const updatedConfig = await invoke<MiningConfiguration | null>('get_mining_configuration');
+      setMiningConfig(updatedConfig);
+    } catch (err) {
+      console.error('Failed to change mining address:', err);
+      setError(err instanceof Error ? err.message : 'Failed to change mining address');
+    }
+  };
+
   const currentThreads = appSettings?.mining_threads || 1;
+  const canMine = miningConfig !== null;
+  const isMining = miningConfig?.is_mining || false;
+
+  if (!canMine) {
+    return (
+      <Box>
+        <Alert severity="info">
+          No wallet is currently open. Open a wallet to configure mining.
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
     <Box>
-      <FormControl component="fieldset" sx={{ width: '100%' }}>
-        <FormLabel component="legend" sx={{ 
-          mb: 2, 
-          color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.87)',
-          fontWeight: 600
-        }}>
-          Mining Threads
-        </FormLabel>
-        
-        <Typography variant="body2" sx={{ 
-          mb: 2, 
-          color: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)' 
-        }}>
-          Number of CPU threads to use for mining operations. Higher values may improve mining performance but increase CPU usage.
-        </Typography>
+      {/* Mining On/Off Control */}
+      <Box sx={{ mb: 3 }}>
+        <FormControl component="fieldset" sx={{ width: '100%' }}>
+          <FormLabel component="legend" sx={{ 
+            mb: 2, 
+            color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.87)',
+            fontWeight: 600
+          }}>
+            Mining Status
+          </FormLabel>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+            <Switch
+              checked={isMining}
+              onChange={(e) => handleMiningToggle(e.target.checked)}
+              disabled={isMiningToggling}
+              color="primary"
+            />
+            <Typography variant="body1" sx={{ 
+              color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.87)',
+              fontWeight: isMining ? 600 : 400
+            }}>
+              {isMining ? 'Mining Active' : 'Mining Stopped'}
+            </Typography>
+            
+            {isMiningToggling && (
+              <CircularProgress size={16} sx={{ color: isDarkMode ? '#90caf9' : '#1976d2' }} />
+            )}
+          </Box>
 
-        <Box sx={{ px: 2, mb: 2 }}>
-          <Slider
-            value={currentThreads}
-            onChange={handleThreadsChange}
-            disabled={isUpdating}
-            min={1}
-            max={maxCores}
-            step={1}
-            marks={Array.from({length: maxCores}, (_, i) => ({
-              value: i + 1,
-              label: i + 1 === 1 ? '1' : i + 1 === maxCores ? `${maxCores}` : ''
-            }))}
-            valueLabelDisplay="on"
-            sx={{
-              color: isDarkMode ? '#90caf9' : '#1976d2',
-              '& .MuiSlider-thumb': {
-                backgroundColor: isDarkMode ? '#90caf9' : '#1976d2',
-              },
-              '& .MuiSlider-track': {
-                backgroundColor: isDarkMode ? '#90caf9' : '#1976d2',
-              },
-              '& .MuiSlider-rail': {
-                backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.26)',
-              }
-            }}
-          />
-        </Box>
+          {isMining && miningConfig && (
+            <Box sx={{ 
+              p: 2, 
+              bgcolor: isDarkMode ? 'rgba(76, 175, 80, 0.1)' : 'rgba(76, 175, 80, 0.05)',
+              borderRadius: 1,
+              border: `1px solid ${isDarkMode ? 'rgba(76, 175, 80, 0.3)' : 'rgba(76, 175, 80, 0.2)'}`
+            }}>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                <strong>Hash Rate:</strong> {miningConfig.hash_rate.toFixed(2)} H/s
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                <strong>Blocks Mined:</strong> {miningConfig.blocks_mined}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Current Difficulty:</strong> {miningConfig.current_difficulty}
+              </Typography>
+            </Box>
+          )}
+        </FormControl>
+      </Box>
 
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+      {/* Mining Address Selection */}
+      <Box sx={{ mb: 3 }}>
+        <FormControl component="fieldset" sx={{ width: '100%' }}>
+          <FormLabel component="legend" sx={{ 
+            mb: 2, 
+            color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.87)',
+            fontWeight: 600
+          }}>
+            Mining Reward Address
+          </FormLabel>
+          
           <Typography variant="body2" sx={{ 
+            mb: 2, 
             color: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)' 
           }}>
-            Current: {currentThreads} thread{currentThreads !== 1 ? 's' : ''} / {maxCores} available
+            Address where mining rewards will be sent
           </Typography>
-          
-          {isUpdating && (
-            <CircularProgress size={16} sx={{ color: isDarkMode ? '#90caf9' : '#1976d2' }} />
-          )}
-        </Box>
 
-        {error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {error}
-          </Alert>
-        )}
-      </FormControl>
+          <Box sx={{ 
+            p: 2, 
+            bgcolor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
+            borderRadius: 1,
+            border: `1px solid ${isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'}`,
+            mb: 2
+          }}>
+            <Typography 
+              variant="body2" 
+              fontFamily="monospace"
+              sx={{ 
+                wordBreak: 'break-all',
+                mb: 1,
+                color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.87)'
+              }}
+            >
+              {miningConfig?.mining_address || 'No address selected'}
+            </Typography>
+            
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => setAddressDialogOpen(true)}
+              sx={{ mt: 1 }}
+            >
+              Change Address
+            </Button>
+          </Box>
+        </FormControl>
+      </Box>
+
+      {/* Thread Count Configuration */}
+      <Box sx={{ mb: 3 }}>
+        <FormControl component="fieldset" sx={{ width: '100%' }}>
+          <FormLabel component="legend" sx={{ 
+            mb: 2, 
+            color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.87)',
+            fontWeight: 600
+          }}>
+            Mining Threads
+          </FormLabel>
+          
+          <Typography variant="body2" sx={{ 
+            mb: 2, 
+            color: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)' 
+          }}>
+            Number of CPU threads to use for mining operations. Higher values may improve mining performance but increase CPU usage.
+          </Typography>
+
+          <Box sx={{ px: 2, mb: 2 }}>
+            <Slider
+              value={currentThreads}
+              onChange={handleThreadsChange}
+              disabled={isUpdating}
+              min={1}
+              max={maxCores}
+              step={1}
+              marks={Array.from({length: maxCores}, (_, i) => ({
+                value: i + 1,
+                label: i + 1 === 1 ? '1' : i + 1 === maxCores ? `${maxCores}` : ''
+              }))}
+              valueLabelDisplay="on"
+              sx={{
+                color: isDarkMode ? '#90caf9' : '#1976d2',
+                '& .MuiSlider-thumb': {
+                  backgroundColor: isDarkMode ? '#90caf9' : '#1976d2',
+                },
+                '& .MuiSlider-track': {
+                  backgroundColor: isDarkMode ? '#90caf9' : '#1976d2',
+                },
+                '& .MuiSlider-rail': {
+                  backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.26)',
+                }
+              }}
+            />
+          </Box>
+
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+            <Typography variant="body2" sx={{ 
+              color: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)' 
+            }}>
+              Current: {currentThreads} thread{currentThreads !== 1 ? 's' : ''} / {maxCores} available
+            </Typography>
+            
+            {isUpdating && (
+              <CircularProgress size={16} sx={{ color: isDarkMode ? '#90caf9' : '#1976d2' }} />
+            )}
+          </Box>
+        </FormControl>
+      </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      {/* Address Selection Dialog */}
+      <AddressSelectionDialog
+        open={addressDialogOpen}
+        onClose={() => setAddressDialogOpen(false)}
+        onSelectAddress={handleAddressChange}
+        currentAddress={miningConfig?.mining_address}
+      />
     </Box>
   );
 }

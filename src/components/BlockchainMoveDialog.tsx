@@ -12,7 +12,9 @@ import {
   CircularProgress,
   LinearProgress,
   Stack,
-  Chip
+  Chip,
+  useTheme,
+  Fade
 } from '@mui/material';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import DriveFileMoveIcon from '@mui/icons-material/DriveFileMove';
@@ -32,6 +34,9 @@ export const BlockchainMoveDialog: React.FC<BlockchainMoveDialogProps> = ({
   onClose,
   onError,
 }) => {
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
+  
   const [isMoving, setIsMoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string>('');
@@ -181,17 +186,32 @@ export const BlockchainMoveDialog: React.FC<BlockchainMoveDialogProps> = ({
       maxWidth="sm"
       fullWidth
       disableEscapeKeyDown={isMoving}
+      TransitionComponent={Fade}
+      TransitionProps={{ timeout: 500 }}
+      PaperProps={{
+        sx: {
+          background: isDarkMode 
+            ? 'linear-gradient(145deg, #0a1929 0%, #132f4c 100%)' 
+            : 'linear-gradient(145deg, #ffffff 0%, #f5f7fa 100%)',
+          borderRadius: '12px',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+          border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.08)',
+        }
+      }}
     >
-      <DialogTitle>
-        <Typography variant="h6" component="h2">
-          Move Blockchain Database
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          This will move your blockchain database files to a new folder location.
-        </Typography>
+      <DialogTitle sx={{ pb: 1, display: 'flex', alignItems: 'center' }}>
+        <DriveFileMoveIcon color="primary" sx={{ mr: 1 }} />
+        <Box>
+          <Typography variant="h6" component="div" fontWeight={600}>
+            Move Blockchain Database
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            This will move your blockchain database files to a new folder location.
+          </Typography>
+        </Box>
       </DialogTitle>
 
-      <DialogContent>
+      <DialogContent sx={{ px: 3 }}>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
@@ -206,12 +226,13 @@ export const BlockchainMoveDialog: React.FC<BlockchainMoveDialogProps> = ({
             <Typography 
               variant="body2" 
               sx={{ 
-                backgroundColor: 'action.hover',
-                p: 1,
-                borderRadius: 1,
+                backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+                p: 1.5,
+                borderRadius: 2,
                 fontFamily: 'monospace',
                 fontSize: '0.8rem',
-                wordBreak: 'break-all'
+                wordBreak: 'break-all',
+                border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.08)',
               }}
             >
               {currentPath}
@@ -249,14 +270,15 @@ export const BlockchainMoveDialog: React.FC<BlockchainMoveDialogProps> = ({
                 <Typography 
                   variant="body2" 
                   sx={{ 
-                    backgroundColor: 'success.main',
-                    color: 'success.contrastText',
-                    p: 1,
-                    borderRadius: 1,
+                    backgroundColor: isDarkMode ? 'rgba(46, 125, 50, 0.2)' : 'rgba(46, 125, 50, 0.1)',
+                    color: isDarkMode ? '#81c784' : '#2e7d32',
+                    p: 1.5,
+                    borderRadius: 2,
                     fontFamily: 'monospace',
                     fontSize: '0.8rem',
                     wordBreak: 'break-all',
-                    mb: 1
+                    mb: 1,
+                    border: isDarkMode ? '1px solid rgba(129, 199, 132, 0.3)' : '1px solid rgba(46, 125, 50, 0.2)',
                   }}
                 >
                   {selectedPath}
@@ -284,19 +306,32 @@ export const BlockchainMoveDialog: React.FC<BlockchainMoveDialogProps> = ({
           </Box>
 
           {isMoving && (
-            <Box>
+            <Box sx={{ 
+              p: 2, 
+              backgroundColor: isDarkMode ? 'rgba(25, 118, 210, 0.1)' : 'rgba(25, 118, 210, 0.05)',
+              borderRadius: 2,
+              border: isDarkMode ? '1px solid rgba(25, 118, 210, 0.3)' : '1px solid rgba(25, 118, 210, 0.2)',
+            }}>
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Progress:
               </Typography>
-              <LinearProgress sx={{ mb: 1 }} />
-              <Typography variant="body2" color="primary">
+              <LinearProgress sx={{ mb: 1, borderRadius: 1 }} />
+              <Typography variant="body2" color="primary" fontWeight={500}>
                 {progress}
               </Typography>
             </Box>
           )}
 
           {!isMoving && (
-            <Alert severity="warning" sx={{ mt: 2 }}>
+            <Alert 
+              severity="warning" 
+              sx={{ 
+                mt: 2,
+                backgroundColor: isDarkMode ? 'rgba(255, 152, 0, 0.1)' : 'rgba(255, 152, 0, 0.05)',
+                border: isDarkMode ? '1px solid rgba(255, 152, 0, 0.3)' : '1px solid rgba(255, 152, 0, 0.2)',
+                borderRadius: 2,
+              }}
+            >
               <Typography variant="body2">
                 <strong>Important:</strong> This operation will temporarily stop blockchain services. 
                 Make sure no wallet operations are in progress before proceeding.
@@ -306,7 +341,7 @@ export const BlockchainMoveDialog: React.FC<BlockchainMoveDialogProps> = ({
         </Stack>
       </DialogContent>
 
-      <DialogActions>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button 
           onClick={handleClose} 
           disabled={isMoving}

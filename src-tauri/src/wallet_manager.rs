@@ -6,7 +6,6 @@ use log::{debug, error, info, warn};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use rand::Rng;
 use bip39::Mnemonic;
 use bitcoin::secp256k1::{Secp256k1, PublicKey};
 use bitcoin::bip32::{Xpriv, Xpub, DerivationPath};
@@ -419,17 +418,8 @@ impl WalletManager {
 
         }
 
-        // Determine if this is a real seed phrase or developer placeholder
-        let is_placeholder_seed = seed_phrase.contains("test word wallet") && seed_phrase.contains("developer mode");
-        
-        // Generate keys based on seed phrase type
-        let (master_public_key, master_private_key, key_pair) = if is_placeholder_seed {
-            // Developer mode placeholder - generate random keys
-            self.generate_dev_mode_keys(name)?
-        } else {
-            // Real seed phrase - derive keys from it
-            self.derive_keys_from_seed(seed_phrase, name)?
-        };
+        // Generate keys from the seed phrase
+        let (master_public_key, master_private_key, key_pair) = self.derive_keys_from_seed(seed_phrase, name)?;
 
         // Create new WalletData object
         let mut wallet_data = WalletData::new(name, &master_public_key, is_secured);
@@ -511,40 +501,9 @@ impl WalletManager {
 
         info!("Successfully created wallet with seed phrase: {}", name);
         Ok(())
-    }    /// Generate keys for developer mode (random keys)
-    fn generate_dev_mode_keys(&self, name: &str) -> Result<(String, String, KeyPair), WalletError> {
-        info!("Generating random keys for developer mode wallet: {}", name);
-        
-        // Generate random bytes for private key (32 bytes for secp256k1)
-        let mut private_key_bytes = [0u8; 32];
-        let mut rng = rand::rng();
-        for byte in &mut private_key_bytes {
-            *byte = rng.random();
-        }
-        
-        // Convert to hex string for storage
-        let private_key_hex = hex::encode(private_key_bytes);
-        
-        // Generate a placeholder public key (in real implementation, derive from private key)
-        let public_key = format!("pubkey_{}_dev", name);
-        
-        // Generate a placeholder address
-        let address = format!("bc1q{}dev", &name.chars().take(10).collect::<String>().to_lowercase());
-        
-        // Create master keys
-        let master_private_key = format!("xprv_dev_{}", private_key_hex);
-        let master_public_key = format!("xpub_dev_{}", public_key);
-        
-        let key_pair = KeyPair {
-            address: address.clone(),
-            key_type: KeyType::NativeSegWit, // Use native segwit for dev mode
-            derivation_path: "m/44'/0'/0'/0/0".to_string(),
-            public_key,
-            private_key: private_key_hex,
-        };
-        
-        Ok((master_public_key, master_private_key, key_pair))
-    }    /// Derive keys from a real seed phrase using BIP39/BIP32 standards
+    }
+
+    /// Derive keys from a real seed phrase using BIP39/BIP32 standards
     fn derive_keys_from_seed(&self, seed_phrase: &str, name: &str) -> Result<(String, String, KeyPair), WalletError> {
         use bitcoin::{Address, PrivateKey};
         

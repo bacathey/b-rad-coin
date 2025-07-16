@@ -119,7 +119,11 @@ pub fn run() {
             cleanup_orphaned_wallets,
             delete_all_wallets,
             get_wallet_private_key,
-            get_cpu_cores
+            get_current_wallet_info,
+            get_cpu_cores,
+            // Mining address commands
+            get_all_wallet_addresses,
+            get_mining_configuration
         ])        .setup(|app| {
             info!("Setting up application");
             

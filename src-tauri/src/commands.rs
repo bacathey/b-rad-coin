@@ -3,6 +3,7 @@ use log::{debug, error, info, warn};
 use std::sync::Arc;  // Add this import for Arc
 use tauri::Emitter;
 use tauri::{command, Manager, State};
+use serde::{Serialize, Deserialize};
 
 use crate::config::{AppSettings, ConfigManager}; // Ensure WalletInfo is imported if not already
 use crate::security::AsyncSecurityManager;
@@ -152,21 +153,9 @@ pub async fn create_wallet(
                phrase.split(' ').last().unwrap_or(""));
         phrase.clone()
     } else {
-        // Check if developer mode is enabled
-        let config = config_manager_arc.inner().get_config();
-        let dev_mode_enabled = config.app_settings.developer_mode;
-        
-        if dev_mode_enabled {
-            // In developer mode, generate a placeholder seed phrase
-            info!("Developer mode enabled. Generating placeholder seed phrase for wallet: {}", wallet_name);
-            // Generate a deterministic placeholder seed phrase
-            let placeholder = format!("test word wallet {} developer mode enabled skip verify testing phrase", wallet_name);
-            placeholder
-        } else {
-            // Not in developer mode, seed phrase is required
-            error!("No seed phrase provided and developer mode is disabled");
-            return Err("Seed phrase is required for wallet creation. Developer mode must be enabled to skip seed phrase.".to_string());
-        }
+        // Seed phrase is required
+        error!("No seed phrase provided");
+        return Err("Seed phrase is required for wallet creation.".to_string());
     };
 
     let mut manager = wallet_manager.get_manager().await;
@@ -1219,6 +1208,89 @@ pub async fn delete_all_wallets(
     Ok(deleted_items)
 }
 
+/// Structure containing current wallet information for the Account page
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CurrentWalletInfo {
+    pub name: String,
+    pub addresses: Vec<AddressDetails>,
+    pub master_public_key: String,
+    pub balance: u64,
+    pub is_secured: bool,
+}
+
+/// Detailed address information
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AddressDetails {
+    pub address: String,
+    pub public_key: String,
+    pub derivation_path: String,
+    pub address_type: String,
+    pub label: Option<String>,
+}
+
+/// Command to get current wallet information for the Account page
+#[command]
+pub async fn get_current_wallet_info(
+    wallet_manager: State<'_, AsyncWalletManager>,
+) -> CommandResult<Option<CurrentWalletInfo>> {
+    info!("Command: get_current_wallet_info");
+
+    let manager = wallet_manager.get_manager().await;
+
+    // Check if a wallet is currently open
+    let current_wallet = match manager.get_current_wallet() {
+        Some(wallet) => wallet,
+        None => {
+            debug!("No wallet is currently open");
+            return Ok(None);
+        }
+    };
+
+    let wallet_name = current_wallet.name.clone();
+    debug!("Getting wallet info for: {}", wallet_name);
+
+    // Get addresses with detailed information
+    let mut addresses = Vec::new();
+    for (address_str, key_pair) in &current_wallet.data.keys {
+        addresses.push(AddressDetails {
+            address: key_pair.address.clone(),
+            public_key: key_pair.public_key.clone(),
+            derivation_path: key_pair.derivation_path.clone(),
+            address_type: match key_pair.key_type {
+                crate::wallet_data::KeyType::Legacy => "Legacy (P2PKH)".to_string(),
+                crate::wallet_data::KeyType::SegWit => "SegWit (P2SH-P2WPKH)".to_string(),
+                crate::wallet_data::KeyType::NativeSegWit => "Native SegWit (P2WPKH)".to_string(),
+                crate::wallet_data::KeyType::Taproot => "Taproot (P2TR)".to_string(),
+            },
+            label: None, // Can be extended in the future
+        });
+    }
+
+    // If no keys in the main keys map, fall back to addresses list
+    if addresses.is_empty() {
+        for (index, addr_info) in current_wallet.data.addresses.iter().enumerate() {
+            addresses.push(AddressDetails {
+                address: addr_info.address.clone(),
+                public_key: "Unknown".to_string(),
+                derivation_path: format!("m/44'/0'/0'/0/{}", index),
+                address_type: "Unknown".to_string(),
+                label: addr_info.label.clone(),
+            });
+        }
+    }
+
+    let wallet_info = CurrentWalletInfo {
+        name: wallet_name.clone(),
+        addresses,
+        master_public_key: current_wallet.data.master_public_key.clone(),
+        balance: current_wallet.data.balance,
+        is_secured: manager.is_current_wallet_secured().unwrap_or(false),
+    };
+
+    info!("Successfully retrieved wallet info for: {}", wallet_name);
+    Ok(Some(wallet_info))
+}
+
 /// Command to get the private key of the currently open wallet
 #[command]
 pub async fn get_wallet_private_key(
@@ -2103,4 +2175,104 @@ fn calculate_directory_size(dir: &std::path::Path, allowed_files: &[&str]) -> u6
     }
     
     total_size
+}
+
+/// Structure to represent a wallet address for mining selection
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WalletAddress {
+    pub wallet_name: String,
+    pub address: String,
+    pub label: Option<String>,
+    pub derivation_path: String,
+}
+
+/// Command to get all addresses from all available wallets
+#[command]
+pub async fn get_all_wallet_addresses(
+    wallet_manager: State<'_, AsyncWalletManager>,
+) -> CommandResult<Vec<WalletAddress>> {
+    debug!("Command: get_all_wallet_addresses");
+    
+    let mut manager = wallet_manager.get_manager().await;
+    let mut all_addresses = Vec::new();
+    
+    // Get all available wallets
+    let wallet_list = manager.list_wallets();
+    let wallet_count = wallet_list.len();
+    
+    for wallet_info in &wallet_list {
+        // Use addresses from wallet info (stored in config)
+        for (index, address) in wallet_info.addresses.iter().enumerate() {
+            all_addresses.push(WalletAddress {
+                wallet_name: wallet_info.name.clone(),
+                address: address.clone(),
+                label: None, // Labels are not stored in WalletInfo, set to None
+                derivation_path: format!("m/44'/0'/0'/0/{}", index), // Generate standard BIP44 path
+            });
+        }
+    }
+    
+    info!("Found {} addresses across {} wallets", all_addresses.len(), wallet_count);
+    Ok(all_addresses)
+}
+
+/// Command to get the current mining configuration including status and reward address
+#[command]
+pub async fn get_mining_configuration(
+    wallet_manager: State<'_, AsyncWalletManager>,
+    mining_service: State<'_, AsyncMiningService>,
+) -> CommandResult<Option<MiningConfiguration>> {
+    debug!("Command: get_mining_configuration");
+    
+    let manager = wallet_manager.get_manager().await;
+    
+    // Check if there's a current wallet
+    if let Some(current_wallet) = manager.get_current_wallet() {
+        let wallet_id = current_wallet.name.clone();
+        
+        // Get mining status
+        let mining_status = mining_service.get_mining_status(&wallet_id).await;
+        
+        match mining_status {
+            Some(status) => {
+                Ok(Some(MiningConfiguration {
+                    wallet_id: status.wallet_id,
+                    is_mining: status.is_mining,
+                    mining_address: status.mining_address,
+                    hash_rate: status.hash_rate,
+                    blocks_mined: status.blocks_mined,
+                    current_difficulty: status.current_difficulty,
+                }))
+            }
+            None => {
+                // No mining status found, but wallet is open
+                // Return default configuration with first address if available
+                if let Some(first_address) = current_wallet.data.addresses.first() {
+                    Ok(Some(MiningConfiguration {
+                        wallet_id: wallet_id.clone(),
+                        is_mining: false,
+                        mining_address: first_address.address.clone(),
+                        hash_rate: 0.0,
+                        blocks_mined: 0,
+                        current_difficulty: 0,
+                    }))
+                } else {
+                    Ok(None) // No addresses in wallet
+                }
+            }
+        }
+    } else {
+        Ok(None) // No wallet is currently open
+    }
+}
+
+/// Mining configuration structure for frontend
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MiningConfiguration {
+    pub wallet_id: String,
+    pub is_mining: bool,
+    pub mining_address: String,
+    pub hash_rate: f64,
+    pub blocks_mined: u32,
+    pub current_difficulty: u64,
 }
