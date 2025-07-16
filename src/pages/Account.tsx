@@ -1,5 +1,5 @@
 // filepath: c:\Users\bacat\source\repos\b-rad-coin\src\pages\Account.tsx
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   Typography, 
@@ -10,7 +10,6 @@ import {
   Card, 
   CardContent,
   useTheme,
-  Divider,
   Chip,
   IconButton,
   Tooltip,
