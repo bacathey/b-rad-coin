@@ -17,14 +17,14 @@ name = "b_rad_coin_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.2.0", features = [] }
+tauri-build = { version = "2.3.0", features = [] }
 
 [dependencies]
 # Tauri dependencies
-tauri = { version = "2.5.1", features = ["tray-icon"] }
-tauri-plugin-fs = "2.3.0"
-tauri-plugin-opener = "2.3.0"
-tauri-plugin-single-instance = { version = "2.2.4" }
+tauri = { version = "2.6.2", features = ["tray-icon"] }
+tauri-plugin-fs = "2.4.0"
+tauri-plugin-opener = "2.4.0"
+tauri-plugin-single-instance = { version = "2.3.0" }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0"
 rand = "0.9.1"
@@ -37,8 +37,8 @@ hmac = "0.12.1"
 sha2 = "0.10.9"
 generic-array = "1.2.0"
 hex = "0.4.3"
-bip39 = "2.1.0"  # For BIP39 mnemonic handling
-bitcoin = { version = "0.32.2", features = ["serde"] }  # For Bitcoin key derivation
+bip39 = "2.2.0"  # For BIP39 mnemonic handling
+bitcoin = { version = "0.32.6", features = ["serde"] }  # For Bitcoin key derivation
 secp256k1 = { version = "0.29.1", features = ["rand", "recovery"] }  # For secp256k1 operations
 
 # Error handling
@@ -46,7 +46,7 @@ anyhow = "1.0.98"
 thiserror = "2.0.12"  # For defining error types
 
 # Async dependencies
-tokio = { version = "1.45.1", features = ["full"] }
+tokio = { version = "1.46.1", features = ["full"] }
 async-trait = "0.1.88"
 
 # Logging dependencies
@@ -67,7 +67,7 @@ sled = "0.34.7"  # Local database for blockchain data
 bincode = { version = "2.0.1", features = ["serde"] }
 
 # File dialog dependencies
-rfd = "0.15.1"  # Native file dialogs
+rfd = "0.15.4"  # Native file dialogs
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
@@ -75,5 +75,5 @@ rfd = "0.15.1"  # Native file dialogs
 custom-protocol = ["tauri/custom-protocol"]
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-updater = "2.8.1"
+tauri-plugin-updater = "2.9.0"
 
