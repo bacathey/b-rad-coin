@@ -185,20 +185,67 @@ pub fn run() {
                                 }
                             }
                         } else {
-                            info!("Blockchain database not found, waiting for user setup");
-                            // Notify frontend that blockchain setup is needed
-                            info!("Emitting blockchain-setup-required event to frontend");
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                info!("Main window found, emitting blockchain-setup-required event to frontend");
-                                match window.emit("blockchain-setup-required", ()) {
-                                    Ok(_) => info!("Successfully emitted blockchain-setup-required event"),
-                                    Err(e) => error!("Failed to emit blockchain-setup-required event: {}", e),
+                            info!("Blockchain database not found, auto-creating in default location for production");
+                            
+                            // Get the default blockchain database path
+                            let default_db_path = match commands::get_default_blockchain_database_path().await {
+                                Ok(path) => path,
+                                Err(e) => {
+                                    error!("Failed to get default blockchain database path: {}", e);
+                                    // Fall back to setup dialog
+                                    if let Some(window) = app_handle.get_webview_window("main") {
+                                        info!("Main window found, emitting blockchain-setup-required event to frontend");
+                                        match window.emit("blockchain-setup-required", ()) {
+                                            Ok(_) => info!("Successfully emitted blockchain-setup-required event"),
+                                            Err(e) => error!("Failed to emit blockchain-setup-required event: {}", e),
+                                        }
+                                    } else {
+                                        warn!("Main window not found, cannot emit blockchain-setup-required event");
+                                    }
+                                    return;
                                 }
-                            } else {
-                                warn!("Main window not found, cannot emit blockchain-setup-required event");
-                                // Try to list all windows for debugging
-                                let windows = app_handle.webview_windows();
-                                info!("Available windows: {:?}", windows.keys().collect::<Vec<_>>());
+                            };
+                            
+                            // Auto-create blockchain database in the default location
+                            let config_manager = app_handle.state::<Arc<ConfigManager>>();
+                            match commands::create_blockchain_database_at_location(default_db_path, config_manager, app_handle.clone()).await {
+                                Ok(_) => {
+                                    info!("Blockchain database auto-created successfully");
+                                    // Now start the blockchain services
+                                    match commands::start_blockchain_services(app_handle.clone()).await {
+                                        Ok(_) => {
+                                            info!("All blockchain services started successfully after auto-setup");
+                                            // Notify frontend that blockchain services are ready
+                                            if let Some(window) = app_handle.get_webview_window("main") {
+                                                let _ = window.emit("blockchain-services-ready", ());
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to start blockchain services after auto-setup: {}", e);
+                                            // Notify frontend about the error
+                                            if let Some(window) = app_handle.get_webview_window("main") {
+                                                let _ = window.emit("blockchain-setup-error", e);
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to auto-create blockchain database: {}", e);
+                                    // Fall back to showing setup dialog for manual configuration
+                                    info!("Falling back to manual blockchain setup dialog");
+                                    if let Some(window) = app_handle.get_webview_window("main") {
+                                        info!("Main window found, emitting blockchain-setup-required event to frontend");
+                                        match window.emit("blockchain-setup-required", ()) {
+                                            Ok(_) => info!("Successfully emitted blockchain-setup-required event"),
+                                            Err(e) => error!("Failed to emit blockchain-setup-required event: {}", e),
+                                        }
+                                    } else {
+                                        warn!("Main window not found, cannot emit blockchain-setup-required event");
+                                        // Try to list all windows for debugging
+                                        let windows = app_handle.webview_windows();
+                                        info!("Available windows: {:?}", windows.keys().collect::<Vec<_>>());
+                                    }
+                                }
                             }
                         }
                     }
