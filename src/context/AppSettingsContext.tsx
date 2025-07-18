@@ -41,9 +41,11 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     try {
       console.log('Setting developer mode to:', enabled);
       
-      // Use snake_case to match the Rust backend expectations
+      // Send as a single request object to match Rust backend struct
       const result = await invoke<boolean>('update_app_settings', {
-        developer_mode: enabled
+        request: {
+          developer_mode: enabled
+        }
       });
       
       if (result) {
@@ -75,9 +77,11 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
         throw new Error('Developer mode must be enabled to skip seed phrase dialogs');
       }
       
-      // Use snake_case to match the Rust backend expectations
+      // Send as a single request object to match Rust backend struct
       const result = await invoke<boolean>('update_app_settings', {
-        skip_seed_phrase_dialogs: skipDialogs
+        request: {
+          skip_seed_phrase_dialogs: skipDialogs
+        }
       });
       
       if (result) {
@@ -105,9 +109,11 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     try {
       console.log('Updating minimize to system tray setting to:', enabled);
       
-      // Use snake_case to match the Rust backend expectations
+      // Send as a single request object to match Rust backend struct
       const result = await invoke<boolean>('update_app_settings', {
-        minimize_to_system_tray: enabled
+        request: {
+          minimize_to_system_tray: enabled
+        }
       });
       
       if (result) {
@@ -134,9 +140,11 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     try {
       console.log('Updating mining threads setting to:', threads);
       
-      // Use snake_case to match the Rust backend expectations
+      // Send as a single request object to match Rust backend struct
       const result = await invoke<boolean>('update_app_settings', {
-        mining_threads: threads
+        request: {
+          mining_threads: threads
+        }
       });
       
       if (result) {

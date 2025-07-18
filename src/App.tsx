@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 
 // Material UI imports
@@ -95,6 +96,17 @@ function App() {
       // The backend will emit either 'blockchain-setup-required' or 'blockchain-services-ready'
       // based on whether the database exists and services can start
       console.log('Frontend: Event listeners set up, waiting for backend to indicate status');
+
+      // Check if blockchain services are already ready (in case we missed the event)
+      try {
+        await invoke('get_network_status');
+        console.log('Frontend: Blockchain services are already ready');
+        setBlockchainReady(true);
+        setBlockchainSetupOpen(false);
+      } catch (error) {
+        console.log('Frontend: Blockchain services not ready yet, waiting for events');
+        // This is expected if services aren't ready yet
+      }
 
       return () => {
         unlistenSetupRequired();

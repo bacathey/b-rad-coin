@@ -229,8 +229,15 @@ pub async fn get_current_wallet_path(
                 // If the path is already absolute, use it directly
                 path.to_path_buf()
             } else {
-                // Otherwise, join it with the wallets directory
-                wallets_dir.join(path_str)
+                // Check if the path already starts with "wallets/" to avoid duplication
+                if path_str.starts_with("wallets/") || path_str.starts_with("wallets\\") {
+                    // The path already includes the wallets directory, so use it as relative to the parent of wallets_dir
+                    let parent_dir = wallets_dir.parent().unwrap_or(&wallets_dir);
+                    parent_dir.join(path_str)
+                } else {
+                    // Otherwise, join it with the wallets directory
+                    wallets_dir.join(path_str)
+                }
             };
             
             debug!("Constructed wallet directory path: {}", wallet_dir.display());
@@ -295,8 +302,8 @@ pub async fn get_current_wallet_path(
 }
 
 /// Command to update application settings
-#[command]
-pub async fn update_app_settings(
+#[derive(Debug, serde::Deserialize)]
+pub struct UpdateSettingsRequest {
     theme: Option<String>,
     auto_backup: Option<bool>,
     notifications_enabled: Option<bool>,
@@ -305,9 +312,14 @@ pub async fn update_app_settings(
     skip_seed_phrase_dialogs: Option<bool>,
     minimize_to_system_tray: Option<bool>,
     mining_threads: Option<u32>,
+}
+
+#[command]
+pub async fn update_app_settings(
+    request: UpdateSettingsRequest,
     config_manager_arc: State<'_, Arc<ConfigManager>>,
 ) -> CommandResult<bool> {
-    info!("Command: update_app_settings");
+    info!("Command: update_app_settings - {:?}", request);
 
     // Get the inner ConfigManager from the Arc
     let config_manager = config_manager_arc.inner();
@@ -316,28 +328,28 @@ pub async fn update_app_settings(
     let mut config = config_manager.get_config().clone();
 
     // Update only the provided settings
-    if let Some(theme) = theme {
-        info!("Updating theme to: {}", theme);
-        config.app_settings.theme = theme;
+    if let Some(theme_val) = request.theme {
+        info!("Updating theme to: {}", theme_val);
+        config.app_settings.theme = theme_val;
     }
 
-    if let Some(auto_backup) = auto_backup {
-        info!("Updating auto_backup to: {}", auto_backup);
-        config.app_settings.auto_backup = auto_backup;
+    if let Some(auto_backup_val) = request.auto_backup {
+        info!("Updating auto_backup to: {}", auto_backup_val);
+        config.app_settings.auto_backup = auto_backup_val;
     }    
     
-    if let Some(notifications) = notifications_enabled {
-        info!("Updating notifications_enabled to: {}", notifications);
-        config.app_settings.notifications_enabled = notifications;
+    if let Some(notifications_val) = request.notifications_enabled {
+        info!("Updating notifications_enabled to: {}", notifications_val);
+        config.app_settings.notifications_enabled = notifications_val;
     }
     
-    if let Some(log_level) = log_level {
-        info!("Updating log_level to: {}", log_level);
-        config.app_settings.log_level = log_level;
+    if let Some(log_level_val) = request.log_level {
+        info!("Updating log_level to: {}", log_level_val);
+        config.app_settings.log_level = log_level_val;
         // TODO: Update actual log level at runtime if needed
     }
     
-    if let Some(dev_mode) = developer_mode {
+    if let Some(dev_mode) = request.developer_mode {
         info!("Updating developer_mode to: {}", dev_mode);
         config.app_settings.developer_mode = dev_mode;
         
@@ -348,7 +360,7 @@ pub async fn update_app_settings(
         }
     }
     
-    if let Some(skip_dialogs) = skip_seed_phrase_dialogs {
+    if let Some(skip_dialogs) = request.skip_seed_phrase_dialogs {
         // Only allow skip_seed_phrase_dialogs to be enabled if developer_mode is enabled
         if skip_dialogs && !config.app_settings.developer_mode {
             error!("Cannot enable skip_seed_phrase_dialogs when developer_mode is disabled");
@@ -359,7 +371,7 @@ pub async fn update_app_settings(
         config.app_settings.skip_seed_phrase_dialogs = skip_dialogs;
     }
 
-    if let Some(minimize_to_tray) = minimize_to_system_tray {
+    if let Some(minimize_to_tray) = request.minimize_to_system_tray {
         info!("Updating minimize_to_system_tray to: {}", minimize_to_tray);
         config.app_settings.minimize_to_system_tray = minimize_to_tray;
         // Note: System tray changes will take effect on next application restart
@@ -370,7 +382,7 @@ pub async fn update_app_settings(
         }
     }
 
-    if let Some(threads) = mining_threads {
+    if let Some(threads) = request.mining_threads {
         // Validate thread count (should be 1 to available CPU cores)
         let max_cores = std::thread::available_parallelism()
             .map(|n| n.get() as u32)
@@ -392,11 +404,11 @@ pub async fn update_app_settings(
 
     // Save the updated config using the inner ConfigManager
     match config_manager
-        .update_app_settings(config.app_settings)
+        .update_app_settings(config.app_settings.clone())
         .await
     {
         Ok(_) => {
-            info!("Settings updated successfully");
+            info!("Settings updated successfully - final developer_mode: {}", config.app_settings.developer_mode);
             Ok(true)
         }
         Err(e) => {
@@ -1251,7 +1263,7 @@ pub async fn get_current_wallet_info(
 
     // Get addresses with detailed information
     let mut addresses = Vec::new();
-    for (address_str, key_pair) in &current_wallet.data.keys {
+    for (_address_str, key_pair) in &current_wallet.data.keys {
         addresses.push(AddressDetails {
             address: key_pair.address.clone(),
             public_key: key_pair.public_key.clone(),
@@ -2275,4 +2287,204 @@ pub struct MiningConfiguration {
     pub hash_rate: f64,
     pub blocks_mined: u32,
     pub current_difficulty: u64,
+}
+
+/// Command to update the label of an address in the current wallet
+#[command]
+pub async fn update_address_label(
+    address: String,
+    label: Option<String>,
+    wallet_manager: State<'_, AsyncWalletManager>,
+) -> CommandResult<bool> {
+    info!("Command: update_address_label for address: {}", address);
+
+    let mut manager = wallet_manager.get_manager().await;
+
+    // First get the wallet name and secured status
+    let (_wallet_name, is_secured, wallet_path) = {
+        let current_wallet = match manager.get_current_wallet() {
+            Some(wallet) => wallet,
+            None => {
+                error!("No wallet is currently open");
+                return Err("No wallet is currently open".to_string());
+            }
+        };
+
+        let wallet_name = current_wallet.name.clone();
+        let wallet_path = current_wallet.path.clone();
+        
+        let is_secured = if let Some(wallet_info) = manager.find_wallet_by_name(&wallet_name) {
+            wallet_info.secured
+        } else {
+            false
+        };
+
+        (wallet_name, is_secured, wallet_path)
+    };
+
+    // Now get mutable access to update the wallet
+    let current_wallet = match manager.get_current_wallet_mut() {
+        Some(wallet) => wallet,
+        None => {
+            error!("No wallet is currently open");
+            return Err("No wallet is currently open".to_string());
+        }
+    };
+
+    // Update the label in the addresses list
+    let mut address_found = false;
+    for addr_info in &mut current_wallet.data.addresses {
+        if addr_info.address == address {
+            addr_info.label = label.clone();
+            address_found = true;
+            break;
+        }
+    }
+
+    if !address_found {
+        error!("Address not found in current wallet: {}", address);
+        return Err(format!("Address '{}' not found in current wallet", address));
+    }
+
+    // Update the modified timestamp
+    current_wallet.data.modified_at = chrono::Utc::now().timestamp();
+
+    // Get the wallet data file path
+    let wallet_data_path = wallet_path.join("wallet.dat");
+
+    // Save the wallet data to disk
+    // Note: Since this is an open wallet, if it's secured, it would have been unlocked already
+    match current_wallet.data.save(&wallet_data_path, if is_secured { Some("") } else { None }) {
+        Ok(_) => {
+            info!("Successfully updated label for address: {}", address);
+            Ok(true)
+        }
+        Err(e) => {
+            error!("Failed to save wallet data: {}", e);
+            Err(format!("Failed to save wallet data: {}", e))
+        }
+    }
+}
+
+/// Command to derive a new address for the current wallet
+#[command]
+pub async fn derive_new_address(
+    label: Option<String>,
+    wallet_manager: State<'_, AsyncWalletManager>,
+) -> CommandResult<String> {
+    info!("Command: derive_new_address with label: {:?}", label);
+
+    let mut manager = wallet_manager.get_manager().await;
+
+    // First get the wallet name and secured status
+    let (_wallet_name, is_secured, wallet_path, master_private_key, next_index) = {
+        let current_wallet = match manager.get_current_wallet() {
+            Some(wallet) => wallet,
+            None => {
+                error!("No wallet is currently open");
+                return Err("No wallet is currently open".to_string());
+            }
+        };
+
+        let wallet_name = current_wallet.name.clone();
+        let wallet_path = current_wallet.path.clone();
+        
+        let master_private_key = match &current_wallet.data.master_private_key {
+            Some(key) => key.clone(),
+            None => {
+                error!("No master private key available for key derivation");
+                return Err("Master private key not available for key derivation".to_string());
+            }
+        };
+
+        let next_index = current_wallet.data.addresses.len() as u32;
+        
+        let is_secured = if let Some(wallet_info) = manager.find_wallet_by_name(&wallet_name) {
+            wallet_info.secured
+        } else {
+            false
+        };
+
+        (wallet_name, is_secured, wallet_path, master_private_key, next_index)
+    };
+
+    // Determine the derivation path
+    let derivation_path = format!("m/44'/0'/0'/0/{}", next_index);
+
+    info!("Deriving new address at path: {}", derivation_path);
+
+    // Parse the master private key
+    use bitcoin::bip32::{Xpriv, DerivationPath};
+    use bitcoin::secp256k1::Secp256k1;
+    use std::str::FromStr;
+
+    let secp = Secp256k1::new();
+    
+    let master_xpriv = Xpriv::from_str(&master_private_key)
+        .map_err(|e| format!("Failed to parse master private key: {}", e))?;
+
+    let derivation_path_parsed = DerivationPath::from_str(&derivation_path)
+        .map_err(|e| format!("Failed to parse derivation path: {}", e))?;
+
+    // Derive the new key pair
+    let derived_xpriv = master_xpriv.derive_priv(&secp, &derivation_path_parsed)
+        .map_err(|e| format!("Failed to derive private key: {}", e))?;
+
+    let private_key = derived_xpriv.private_key;
+    let public_key = private_key.public_key(&secp);
+
+    // Create address (using legacy P2PKH for now)
+    use bitcoin::{Address, Network, PublicKey};
+    let bitcoin_public_key = PublicKey::new(public_key);
+    let address = Address::p2pkh(&bitcoin_public_key, Network::Bitcoin);
+    let address_string = address.to_string();
+
+    // Create the new key pair
+    let key_pair = crate::wallet_data::KeyPair {
+        private_key: bitcoin::PrivateKey::new(private_key, Network::Bitcoin).to_wif(),
+        public_key: bitcoin_public_key.to_string(),
+        address: address_string.clone(),
+        key_type: crate::wallet_data::KeyType::Legacy,
+        derivation_path: derivation_path.clone(),
+    };
+
+    // Create the new address info
+    let address_info = crate::wallet_data::AddressInfo {
+        address: address_string.clone(),
+        key_type: crate::wallet_data::KeyType::Legacy,
+        derivation_path: derivation_path.clone(),
+        label: label.clone(),
+    };
+
+    // Now get mutable access to update the wallet
+    let current_wallet = match manager.get_current_wallet_mut() {
+        Some(wallet) => wallet,
+        None => {
+            error!("No wallet is currently open");
+            return Err("No wallet is currently open".to_string());
+        }
+    };
+
+    // Add to wallet data
+    current_wallet.data.keys.insert(address_string.clone(), key_pair);
+    current_wallet.data.addresses.push(address_info);
+
+    // Update the modified timestamp
+    current_wallet.data.modified_at = chrono::Utc::now().timestamp();
+
+    // Get the wallet data file path
+    let wallet_data_path = wallet_path.join("wallet.dat");
+
+    // Save the wallet data to disk
+    // Note: Since this is an open wallet, if it's secured, it would have been unlocked already
+    match current_wallet.data.save(&wallet_data_path, if is_secured { Some("") } else { None }) {
+        Ok(_) => {
+            info!("Successfully derived new address: {}", address_string);
+            Ok(address_string)
+        }
+        Err(e) => {
+            error!("Failed to save wallet data: {}", e);
+            Err(format!("Failed to save wallet data: {}", e))
+        }
+    }
 }

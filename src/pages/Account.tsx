@@ -17,7 +17,9 @@ import {
   List,
   ListItem,
   ListItemText,
-  Divider
+  Button,
+  CircularProgress,
+  TextField
 } from '@mui/material';
 import { 
   ContentCopy, 
@@ -25,9 +27,11 @@ import {
   Key, 
   ExpandMore,
   Security,
-  Visibility,
-  VisibilityOff,
-  AccountTree
+  AccountTree,
+  Add,
+  Edit,
+  Check,
+  Close
 } from '@mui/icons-material';
 import { useWallet } from '../context/WalletContext';
 import type { CurrentWalletInfo } from '../types/wallet';
@@ -38,7 +42,9 @@ export default function Account() {
   const { isWalletOpen, currentWallet } = useWallet();
   
   const [walletInfo, setWalletInfo] = useState<CurrentWalletInfo | null>(null);
-  const [showMasterPublicKey, setShowMasterPublicKey] = useState(false);
+  const [isAddingKey, setIsAddingKey] = useState(false);
+  const [editingLabel, setEditingLabel] = useState<string | null>(null);
+  const [labelValue, setLabelValue] = useState('');
 
   // Load wallet info when component mounts or wallet changes
   // Note: Public key data is securely stored in the wallet data file (wallet.dat),
@@ -72,6 +78,45 @@ export default function Account() {
 
   const formatBalance = (balance: number) => {
     return (balance / 100000000).toFixed(8); // Convert satoshis to BTC
+  };
+
+  const handleLabelEdit = (address: string, currentLabel?: string) => {
+    setEditingLabel(address);
+    setLabelValue(currentLabel || '');
+  };
+
+  const handleLabelSave = async (address: string) => {
+    try {
+      await invoke('update_address_label', { 
+        address, 
+        label: labelValue.trim() || null 
+      });
+      await loadWalletInfo(); // Reload to get updated data
+      setEditingLabel(null);
+      setLabelValue('');
+    } catch (error) {
+      console.error('Failed to update label:', error);
+    }
+  };
+
+  const handleLabelCancel = () => {
+    setEditingLabel(null);
+    setLabelValue('');
+  };
+
+  const handleAddNewKey = async () => {
+    setIsAddingKey(true);
+    try {
+      // Call backend to derive new address with default label
+      await invoke('derive_new_address', {
+        label: 'New Address'
+      });
+      await loadWalletInfo(); // Reload to show new key
+    } catch (error) {
+      console.error('Failed to add new key:', error);
+    } finally {
+      setIsAddingKey(false);
+    }
   };
 
   return (
@@ -211,29 +256,6 @@ export default function Account() {
                       </ListItem>
                       <ListItem>
                         <ListItemText 
-                          primary="Public Key"
-                          secondary={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Typography 
-                                component="span" 
-                                sx={{ fontFamily: 'monospace', fontSize: '0.8rem', wordBreak: 'break-all' }}
-                              >
-                                {address.public_key}
-                              </Typography>
-                              <Tooltip title="Copy public key">
-                                <IconButton 
-                                  size="small" 
-                                  onClick={() => copyToClipboard(address.public_key, 'Public key')}
-                                >
-                                  <ContentCopy fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                            </Box>
-                          }
-                        />
-                      </ListItem>
-                      <ListItem>
-                        <ListItemText 
                           primary="Derivation Path"
                           secondary={address.derivation_path}
                         />
@@ -260,174 +282,194 @@ export default function Account() {
             })
           }}>
             <CardContent sx={{ p: 3 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                <Key sx={{ mr: 2, color: 'primary.main' }} />
-                <Typography variant="h6" component="h3" sx={{ fontWeight: 600 }}>
-                  Public Keys
-                </Typography>
-              </Box>
+              <Typography variant="h6" component="h3" sx={{ mb: 2, fontWeight: 600 }}>
+                Public Keys
+              </Typography>
               
               {/* Master Public Key Section */}
-              <Box sx={{ mb: 4 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="h6" component="h4" sx={{ fontWeight: 600, flex: 1 }}>
-                    Master Public Key
-                  </Typography>
-                  <Tooltip title={showMasterPublicKey ? "Hide" : "Show"}>
-                    <IconButton onClick={() => setShowMasterPublicKey(!showMasterPublicKey)}>
-                      {showMasterPublicKey ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-                
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    mb: 2, 
-                    color: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)' 
-                  }}
-                >
-                  The root public key for this wallet, used to derive all child keys according to BIP32 standards
-                </Typography>
-                
-                {showMasterPublicKey ? (
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography 
-                      sx={{ 
-                        fontFamily: 'monospace', 
-                        fontSize: '0.8rem', 
-                        wordBreak: 'break-all',
-                        flex: 1,
-                        p: 2,
-                        backgroundColor: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.05)',
-                        borderRadius: 1
-                      }}
-                    >
-                      {walletInfo.master_public_key}
+              <Accordion sx={{ mb: 1 }}>
+                <AccordionSummary expandIcon={<ExpandMore />}>
+                  <Box sx={{ width: '100%', display: 'flex', alignItems: 'center' }}>
+                    <Key sx={{ mr: 2, color: 'primary.main' }} />
+                    <Typography sx={{ fontSize: '0.9rem', flex: 1, fontWeight: 500 }}>
+                      Master Public Key
                     </Typography>
-                    <Tooltip title="Copy master public key">
-                      <IconButton 
-                        onClick={() => copyToClipboard(walletInfo.master_public_key, 'Master public key')}
-                      >
-                        <ContentCopy />
-                      </IconButton>
-                    </Tooltip>
+                    <Chip 
+                      label="xpub" 
+                      size="small" 
+                      variant="outlined"
+                      sx={{ ml: 1 }}
+                    />
                   </Box>
-                ) : (
-                  <Typography 
-                    variant="body2" 
-                    sx={{ color: isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)' }}
-                  >
-                    Click the eye icon to reveal the master public key
-                  </Typography>
-                )}
-              </Box>
-
-              <Divider sx={{ mb: 3, opacity: 0.3 }} />
-
+                </AccordionSummary>
+                <AccordionDetails>
+                  <List dense>
+                    <ListItem>
+                      <ListItemText 
+                        primary="Master Public Key"
+                        secondary={
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography 
+                              component="span" 
+                              sx={{ fontFamily: 'monospace', fontSize: '0.8rem', wordBreak: 'break-all' }}
+                            >
+                              {walletInfo.master_public_key}
+                            </Typography>
+                            <Tooltip title="Copy master public key">
+                              <IconButton 
+                                size="small" 
+                                onClick={() => copyToClipboard(walletInfo.master_public_key, 'Master public key')}
+                              >
+                                <ContentCopy fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+                        }
+                      />
+                    </ListItem>
+                  </List>
+                </AccordionDetails>
+              </Accordion>
+              
               {/* Child Keys Section */}
-              <Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <AccountTree sx={{ mr: 2, color: 'primary.main' }} />
-                  <Typography variant="h6" component="h4" sx={{ fontWeight: 600 }}>
-                    Derived Child Keys
-                  </Typography>
-                </Box>
-                
-                <Typography 
-                  variant="body2" 
+              <Accordion sx={{ mb: 1 }}>
+                <AccordionSummary expandIcon={<ExpandMore />}>
+                  <Box sx={{ width: '100%', display: 'flex', alignItems: 'center' }}>
+                    <AccountTree sx={{ mr: 2, color: 'primary.main' }} />
+                    <Typography sx={{ fontSize: '0.9rem', flex: 1, fontWeight: 500 }}>
+                      Derived Child Keys ({walletInfo.addresses.length})
+                    </Typography>
+                    <Chip 
+                      label="BIP32" 
+                      size="small" 
+                      variant="outlined"
+                      sx={{ ml: 1 }}
+                    />
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <List dense>
+                    {walletInfo.addresses.map((address, index) => (
+                      <ListItem key={index}>
+                        <ListItemText 
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                Key #{index + 1}
+                              </Typography>
+                              {address.label && (
+                                <Chip 
+                                  label={address.label} 
+                                  size="small" 
+                                  color="primary"
+                                  variant="outlined"
+                                />
+                              )}
+                              <Chip 
+                                label={address.address_type} 
+                                size="small" 
+                                variant="outlined"
+                                sx={{ ml: 'auto' }}
+                              />
+                            </Box>
+                          }
+                          secondary={
+                            <Box>
+                              {/* Label editing section */}
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                {editingLabel === address.address ? (
+                                  <>
+                                    <TextField
+                                      size="small"
+                                      value={labelValue}
+                                      onChange={(e) => setLabelValue(e.target.value)}
+                                      placeholder="Enter label"
+                                      sx={{ flex: 1, maxWidth: 200 }}
+                                      autoFocus
+                                    />
+                                    <IconButton 
+                                      size="small" 
+                                      onClick={() => handleLabelSave(address.address)}
+                                      color="primary"
+                                    >
+                                      <Check fontSize="small" />
+                                    </IconButton>
+                                    <IconButton 
+                                      size="small" 
+                                      onClick={handleLabelCancel}
+                                    >
+                                      <Close fontSize="small" />
+                                    </IconButton>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.8rem' }}>
+                                      {address.label ? `Label: ${address.label}` : 'No label'}
+                                    </Typography>
+                                    <IconButton 
+                                      size="small" 
+                                      onClick={() => handleLabelEdit(address.address, address.label)}
+                                    >
+                                      <Edit fontSize="small" />
+                                    </IconButton>
+                                  </>
+                                )}
+                              </Box>
+                              
+                              {/* Public key section */}
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Typography 
+                                  component="span" 
+                                  sx={{ fontFamily: 'monospace', fontSize: '0.8rem', wordBreak: 'break-all' }}
+                                >
+                                  {address.public_key}
+                                </Typography>
+                                <Tooltip title="Copy public key">
+                                  <IconButton 
+                                    size="small" 
+                                    onClick={() => copyToClipboard(address.public_key, 'Public key')}
+                                  >
+                                    <ContentCopy fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              </Box>
+                            </Box>
+                          }
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </AccordionDetails>
+              </Accordion>
+              
+              {/* Add New Public Key Button */}
+              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+                <Button
+                  variant="outlined"
+                  startIcon={isAddingKey ? <CircularProgress size={16} /> : <Add />}
+                  onClick={handleAddNewKey}
+                  disabled={isAddingKey}
                   sx={{ 
-                    mb: 3, 
-                    color: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)' 
+                    minWidth: 160,
+                    ...(isDarkMode ? {
+                      borderColor: 'rgba(255, 255, 255, 0.3)',
+                      color: 'rgba(255, 255, 255, 0.9)',
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        backgroundColor: 'rgba(144, 202, 249, 0.1)'
+                      }
+                    } : {
+                      borderColor: 'rgba(26, 35, 126, 0.3)',
+                      color: '#1a237e',
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        backgroundColor: 'rgba(26, 35, 126, 0.05)'
+                      }
+                    })
                   }}
                 >
-                  Individual keys derived from the master public key using hierarchical deterministic key derivation (BIP32)
-                </Typography>
-
-                {walletInfo.addresses.map((address, index) => (
-                  <Box 
-                    key={index} 
-                    sx={{ 
-                      mb: 2, 
-                      p: 2, 
-                      borderRadius: 1,
-                      backgroundColor: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)',
-                      border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600, mr: 1 }}>
-                        Path:
-                      </Typography>
-                      <Typography 
-                        variant="body2" 
-                        sx={{ 
-                          fontFamily: 'monospace', 
-                          color: 'primary.main',
-                          fontWeight: 500
-                        }}
-                      >
-                        {address.derivation_path}
-                      </Typography>
-                      <Chip 
-                        label={address.address_type} 
-                        size="small" 
-                        variant="outlined"
-                        sx={{ ml: 'auto' }}
-                      />
-                    </Box>
-                    
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 80 }}>
-                        Address:
-                      </Typography>
-                      <Typography 
-                        variant="body2" 
-                        sx={{ 
-                          fontFamily: 'monospace', 
-                          fontSize: '0.8rem', 
-                          wordBreak: 'break-all',
-                          flex: 1
-                        }}
-                      >
-                        {address.address}
-                      </Typography>
-                      <Tooltip title="Copy address">
-                        <IconButton 
-                          size="small" 
-                          onClick={() => copyToClipboard(address.address, 'Address')}
-                        >
-                          <ContentCopy fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                    
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 80 }}>
-                        Public Key:
-                      </Typography>
-                      <Typography 
-                        variant="body2" 
-                        sx={{ 
-                          fontFamily: 'monospace', 
-                          fontSize: '0.8rem', 
-                          wordBreak: 'break-all',
-                          flex: 1
-                        }}
-                      >
-                        {address.public_key}
-                      </Typography>
-                      <Tooltip title="Copy public key">
-                        <IconButton 
-                          size="small" 
-                          onClick={() => copyToClipboard(address.public_key, 'Public key')}
-                        >
-                          <ContentCopy fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </Box>
-                ))}
+                  {isAddingKey ? 'Generating...' : 'Add New Key'}
+                </Button>
               </Box>
             </CardContent>
           </Card>
