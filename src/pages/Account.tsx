@@ -5,8 +5,6 @@ import {
   Typography, 
   Box, 
   Stack, 
-  TextField, 
-  Button, 
   Card, 
   CardContent,
   useTheme,
@@ -18,7 +16,8 @@ import {
   AccordionDetails,
   List,
   ListItem,
-  ListItemText
+  ListItemText,
+  Divider
 } from '@mui/material';
 import { 
   ContentCopy, 
@@ -27,19 +26,13 @@ import {
   ExpandMore,
   Security,
   Visibility,
-  VisibilityOff
+  VisibilityOff,
+  AccountTree
 } from '@mui/icons-material';
 import { useWallet } from '../context/WalletContext';
 import type { CurrentWalletInfo } from '../types/wallet';
 
-interface AccountProps {
-  greetMsg: string;
-  name: string;
-  setName: (name: string) => void;
-  greet: () => void;
-}
-
-export default function Account({ greetMsg, name, setName, greet }: AccountProps) {
+export default function Account() {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
   const { isWalletOpen, currentWallet } = useWallet();
@@ -48,6 +41,8 @@ export default function Account({ greetMsg, name, setName, greet }: AccountProps
   const [showMasterPublicKey, setShowMasterPublicKey] = useState(false);
 
   // Load wallet info when component mounts or wallet changes
+  // Note: Public key data is securely stored in the wallet data file (wallet.dat),
+  // not in the configuration file, ensuring proper key separation
   useEffect(() => {
     if (isWalletOpen && currentWallet) {
       loadWalletInfo();
@@ -250,7 +245,7 @@ export default function Account({ greetMsg, name, setName, greet }: AccountProps
             </CardContent>
           </Card>
 
-          {/* Master Public Key Card */}
+          {/* Public Keys Card */}
           <Card sx={{ 
             borderRadius: 2,
             ...(isDarkMode ? {
@@ -265,51 +260,175 @@ export default function Account({ greetMsg, name, setName, greet }: AccountProps
             })
           }}>
             <CardContent sx={{ p: 3 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
                 <Key sx={{ mr: 2, color: 'primary.main' }} />
                 <Typography variant="h6" component="h3" sx={{ fontWeight: 600 }}>
-                  Master Public Key
+                  Public Keys
                 </Typography>
-                <Box sx={{ ml: 'auto' }}>
+              </Box>
+              
+              {/* Master Public Key Section */}
+              <Box sx={{ mb: 4 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6" component="h4" sx={{ fontWeight: 600, flex: 1 }}>
+                    Master Public Key
+                  </Typography>
                   <Tooltip title={showMasterPublicKey ? "Hide" : "Show"}>
                     <IconButton onClick={() => setShowMasterPublicKey(!showMasterPublicKey)}>
                       {showMasterPublicKey ? <VisibilityOff /> : <Visibility />}
                     </IconButton>
                   </Tooltip>
                 </Box>
-              </Box>
-              
-              {showMasterPublicKey ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography 
-                    sx={{ 
-                      fontFamily: 'monospace', 
-                      fontSize: '0.8rem', 
-                      wordBreak: 'break-all',
-                      flex: 1,
-                      p: 2,
-                      backgroundColor: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.05)',
-                      borderRadius: 1
-                    }}
-                  >
-                    {walletInfo.master_public_key}
-                  </Typography>
-                  <Tooltip title="Copy master public key">
-                    <IconButton 
-                      onClick={() => copyToClipboard(walletInfo.master_public_key, 'Master public key')}
-                    >
-                      <ContentCopy />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              ) : (
+                
                 <Typography 
                   variant="body2" 
-                  sx={{ color: isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)' }}
+                  sx={{ 
+                    mb: 2, 
+                    color: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)' 
+                  }}
                 >
-                  Click the eye icon to reveal the master public key
+                  The root public key for this wallet, used to derive all child keys according to BIP32 standards
                 </Typography>
-              )}
+                
+                {showMasterPublicKey ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography 
+                      sx={{ 
+                        fontFamily: 'monospace', 
+                        fontSize: '0.8rem', 
+                        wordBreak: 'break-all',
+                        flex: 1,
+                        p: 2,
+                        backgroundColor: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.05)',
+                        borderRadius: 1
+                      }}
+                    >
+                      {walletInfo.master_public_key}
+                    </Typography>
+                    <Tooltip title="Copy master public key">
+                      <IconButton 
+                        onClick={() => copyToClipboard(walletInfo.master_public_key, 'Master public key')}
+                      >
+                        <ContentCopy />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                ) : (
+                  <Typography 
+                    variant="body2" 
+                    sx={{ color: isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)' }}
+                  >
+                    Click the eye icon to reveal the master public key
+                  </Typography>
+                )}
+              </Box>
+
+              <Divider sx={{ mb: 3, opacity: 0.3 }} />
+
+              {/* Child Keys Section */}
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <AccountTree sx={{ mr: 2, color: 'primary.main' }} />
+                  <Typography variant="h6" component="h4" sx={{ fontWeight: 600 }}>
+                    Derived Child Keys
+                  </Typography>
+                </Box>
+                
+                <Typography 
+                  variant="body2" 
+                  sx={{ 
+                    mb: 3, 
+                    color: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.6)' 
+                  }}
+                >
+                  Individual keys derived from the master public key using hierarchical deterministic key derivation (BIP32)
+                </Typography>
+
+                {walletInfo.addresses.map((address, index) => (
+                  <Box 
+                    key={index} 
+                    sx={{ 
+                      mb: 2, 
+                      p: 2, 
+                      borderRadius: 1,
+                      backgroundColor: isDarkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)',
+                      border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'}`
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mr: 1 }}>
+                        Path:
+                      </Typography>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontFamily: 'monospace', 
+                          color: 'primary.main',
+                          fontWeight: 500
+                        }}
+                      >
+                        {address.derivation_path}
+                      </Typography>
+                      <Chip 
+                        label={address.address_type} 
+                        size="small" 
+                        variant="outlined"
+                        sx={{ ml: 'auto' }}
+                      />
+                    </Box>
+                    
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 80 }}>
+                        Address:
+                      </Typography>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontFamily: 'monospace', 
+                          fontSize: '0.8rem', 
+                          wordBreak: 'break-all',
+                          flex: 1
+                        }}
+                      >
+                        {address.address}
+                      </Typography>
+                      <Tooltip title="Copy address">
+                        <IconButton 
+                          size="small" 
+                          onClick={() => copyToClipboard(address.address, 'Address')}
+                        >
+                          <ContentCopy fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                    
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 80 }}>
+                        Public Key:
+                      </Typography>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontFamily: 'monospace', 
+                          fontSize: '0.8rem', 
+                          wordBreak: 'break-all',
+                          flex: 1
+                        }}
+                      >
+                        {address.public_key}
+                      </Typography>
+                      <Tooltip title="Copy public key">
+                        <IconButton 
+                          size="small" 
+                          onClick={() => copyToClipboard(address.public_key, 'Public key')}
+                        >
+                          <ContentCopy fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
             </CardContent>
           </Card>
         </Stack>
@@ -364,138 +483,6 @@ export default function Account({ greetMsg, name, setName, greet }: AccountProps
           </CardContent>
         </Card>
       )}
-
-      {/* Demo Section */}
-      <Card sx={{ 
-        width: '100%', 
-        maxWidth: 500, 
-        mt: 4, 
-        mb: 'auto',
-        mx: 'auto',
-        borderRadius: 2,
-        ...(isDarkMode ? {
-          background: 'rgba(19, 47, 76, 0.6)',
-          backdropFilter: 'blur(10px)',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-          border: '1px solid rgba(255, 255, 255, 0.1)'
-        } : {
-          background: 'linear-gradient(180deg, #ffffff 0%, #f5f7fa 100%)',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
-          border: '1px solid rgba(0, 0, 0, 0.08)',
-          transition: 'all 0.2s ease-in-out',
-          '&:hover': {
-            transform: 'translateY(-4px)',
-            boxShadow: '0 6px 25px rgba(0, 0, 0, 0.2)',
-          }
-        })
-      }}>
-        <CardContent sx={{ 
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          padding: '24px'
-        }}>
-          <Typography variant="h6" sx={{ mb: 2 }}>
-            Demo Section
-          </Typography>
-          
-          <Box
-            component="form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              greet();
-            }}
-            sx={{ 
-              width: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center'
-            }}
-          >
-            <TextField
-              fullWidth
-              id="greet-input"
-              label="Enter a name..."
-              variant="outlined"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              sx={{ 
-                m: 1, 
-                width: '100%', 
-                maxWidth: '450px',
-                ...(isDarkMode ? {
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': {
-                      borderColor: 'rgba(255, 255, 255, 0.15)',
-                    },
-                    '&:hover fieldset': {
-                      borderColor: 'rgba(255, 255, 255, 0.25)',
-                    },
-                    '&.Mui-focused fieldset': {
-                      borderColor: 'rgba(144, 202, 249, 0.6)',
-                    }
-                  },
-                  '& .MuiInputLabel-root': {
-                    color: 'rgba(255, 255, 255, 0.7)',
-                  },
-                  '& .MuiInputBase-input': {
-                    color: 'rgba(255, 255, 255, 0.9)',
-                  }
-                } : {
-                  '& .MuiOutlinedInput-root': {
-                    '&.Mui-focused fieldset': {
-                      borderColor: '#1a237e',
-                    }
-                  },
-                  '& .MuiInputLabel-root.Mui-focused': {
-                    color: '#1a237e',
-                  }
-                })
-              }}
-            />
-            <Button 
-              variant="contained" 
-              type="submit"
-              sx={{ 
-                m: 1, 
-                width: '100%', 
-                maxWidth: '450px',
-                fontWeight: 600,
-                padding: '10px',
-                ...(isDarkMode ? {
-                  background: 'linear-gradient(90deg, #0d2b59, #2979ff)',
-                  '&:hover': {
-                    background: 'linear-gradient(90deg, #0d3074, #448aff)',
-                    boxShadow: '0 4px 20px rgba(41, 121, 255, 0.5)',
-                  }
-                } : {
-                  background: 'linear-gradient(90deg, #3949ab, #42a5f5)',
-                  boxShadow: '0 2px 10px rgba(57, 73, 171, 0.3)',
-                  '&:hover': {
-                    background: 'linear-gradient(90deg, #3f51b5, #64b5f6)',
-                    boxShadow: '0 4px 15px rgba(57, 73, 171, 0.4)',
-                  }
-                })
-              }}
-            >
-              Greet
-            </Button>
-          </Box>
-          {greetMsg && (
-            <Typography 
-              variant="h6" 
-              sx={{ 
-                mt: 2, 
-                textAlign: 'center',
-                color: isDarkMode ? 'rgba(255, 255, 255, 0.9)' : '#1a237e',
-                fontWeight: 600
-              }}
-            >
-              {greetMsg}
-            </Typography>
-          )}
-        </CardContent>
-      </Card>
     </Box>
   );
 }

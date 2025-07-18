@@ -1,6 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 
@@ -39,9 +38,6 @@ import { WalletDialogProvider } from "./context/WalletDialogContext";
 const drawerWidth = 240;
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
-  
   // Add state for theme mode
   const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
   const [mode, setMode] = useState<'light' | 'dark'>(prefersDarkMode ? 'dark' : 'light');
@@ -265,10 +261,7 @@ function App() {
   // Debug logging for dialog states
   console.log('App render - blockchainReady:', blockchainReady, 'blockchainSetupOpen:', blockchainSetupOpen);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }  return (
+  return (
     <WalletProvider>
       <AppSettingsProvider>
         <ThemeProvider theme={theme}>
@@ -280,10 +273,6 @@ function App() {
                 toggleColorMode={toggleColorMode} 
                 mobileOpen={mobileOpen}
                 handleDrawerToggle={handleDrawerToggle}
-                greetMsg={greetMsg}
-                name={name}
-                setName={setName}
-                greet={greet}
                 blockchainReady={blockchainReady}
               />
               <OpenCreateWalletDialog blockchainReady={blockchainReady} />
@@ -338,10 +327,6 @@ function AppContentWrapper(props: {
   toggleColorMode: () => void,
   mobileOpen: boolean,
   handleDrawerToggle: () => void,
-  greetMsg: string,
-  name: string,
-  setName: (name: string) => void,
-  greet: () => void,
   blockchainReady: boolean
 }) {
   const { isWalletOpen } = useWallet();
@@ -365,14 +350,10 @@ interface AppContentProps {
   toggleColorMode: () => void;
   mobileOpen: boolean;
   handleDrawerToggle: () => void;
-  greetMsg: string;
-  name: string;
-  setName: (name: string) => void;
-  greet: () => void;
 }
 
 // Separate component to use React Router hooks
-function AppContent({ mode, toggleColorMode, mobileOpen, handleDrawerToggle, greetMsg, name, setName, greet }: AppContentProps) {
+function AppContent({ mode, toggleColorMode, mobileOpen, handleDrawerToggle }: AppContentProps) {
   const location = useLocation();
 
   return (
@@ -457,7 +438,8 @@ function AppContent({ mode, toggleColorMode, mobileOpen, handleDrawerToggle, gre
               }
             }
           }}
-        >          <Routes location={location}>            <Route path="/" element={<Account greetMsg={greetMsg} name={name} setName={setName} greet={greet} />} />
+        >          <Routes location={location}>
+            <Route path="/" element={<Account />} />
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/send-receive" element={<SendReceive />} />
             <Route path="/advanced" element={<Advanced />} />
