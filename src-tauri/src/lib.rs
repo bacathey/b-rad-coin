@@ -121,7 +121,9 @@ pub fn run() {
             get_wallet_private_key,
             get_current_wallet_info,
             get_cpu_cores,
-            // Mining address commands
+            // Wallet address commands
+            derive_new_address,
+            update_address_label,
             get_all_wallet_addresses,
             get_mining_configuration
         ])        .setup(|app| {

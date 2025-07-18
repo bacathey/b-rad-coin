@@ -1261,35 +1261,46 @@ pub async fn get_current_wallet_info(
     let wallet_name = current_wallet.name.clone();
     debug!("Getting wallet info for: {}", wallet_name);
 
-    // Get addresses with detailed information
+    // Get addresses with detailed information from the addresses list
+    // Use addresses list as primary source to maintain proper ordering
     let mut addresses = Vec::new();
-    for (_address_str, key_pair) in &current_wallet.data.keys {
-        addresses.push(AddressDetails {
-            address: key_pair.address.clone(),
-            public_key: key_pair.public_key.clone(),
-            derivation_path: key_pair.derivation_path.clone(),
-            address_type: match key_pair.key_type {
+    for addr_info in &current_wallet.data.addresses {
+        // Look up corresponding key pair details
+        let key_pair = current_wallet.data.keys.get(&addr_info.address);
+        
+        let (public_key, address_type) = if let Some(kp) = key_pair {
+            let addr_type = match kp.key_type {
                 crate::wallet_data::KeyType::Legacy => "Legacy (P2PKH)".to_string(),
                 crate::wallet_data::KeyType::SegWit => "SegWit (P2SH-P2WPKH)".to_string(),
                 crate::wallet_data::KeyType::NativeSegWit => "Native SegWit (P2WPKH)".to_string(),
                 crate::wallet_data::KeyType::Taproot => "Taproot (P2TR)".to_string(),
-            },
-            label: None, // Can be extended in the future
+            };
+            (kp.public_key.clone(), addr_type)
+        } else {
+            // Fallback if key pair not found
+            ("Unknown".to_string(), "Unknown".to_string())
+        };
+            
+        addresses.push(AddressDetails {
+            address: addr_info.address.clone(),
+            public_key,
+            derivation_path: addr_info.derivation_path.clone(),
+            address_type,
+            label: addr_info.label.clone(),
         });
     }
 
-    // If no keys in the main keys map, fall back to addresses list
-    if addresses.is_empty() {
-        for (index, addr_info) in current_wallet.data.addresses.iter().enumerate() {
-            addresses.push(AddressDetails {
-                address: addr_info.address.clone(),
-                public_key: "Unknown".to_string(),
-                derivation_path: format!("m/44'/0'/0'/0/{}", index),
-                address_type: "Unknown".to_string(),
-                label: addr_info.label.clone(),
-            });
+    // Sort addresses so Native SegWit addresses appear first, then by derivation path
+    addresses.sort_by(|a, b| {
+        let a_is_native_segwit = a.address_type == "Native SegWit (P2WPKH)";
+        let b_is_native_segwit = b.address_type == "Native SegWit (P2WPKH)";
+        
+        match (a_is_native_segwit, b_is_native_segwit) {
+            (true, false) => std::cmp::Ordering::Less,    // Native SegWit comes first
+            (false, true) => std::cmp::Ordering::Greater, // Native SegWit comes first
+            _ => a.derivation_path.cmp(&b.derivation_path), // Same type, sort by derivation path
         }
-    }
+    });
 
     let wallet_info = CurrentWalletInfo {
         name: wallet_name.clone(),
