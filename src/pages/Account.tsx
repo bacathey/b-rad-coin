@@ -19,7 +19,12 @@ import {
   ListItemText,
   Button,
   CircularProgress,
-  TextField
+  TextField,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Fade
 } from '@mui/material';
 import { 
   ContentCopy, 
@@ -31,7 +36,8 @@ import {
   Add,
   Edit,
   Check,
-  Close
+  Close,
+  Label
 } from '@mui/icons-material';
 import { useWallet } from '../context/WalletContext';
 import type { CurrentWalletInfo } from '../types/wallet';
@@ -45,6 +51,8 @@ export default function Account() {
   const [isAddingKey, setIsAddingKey] = useState(false);
   const [editingLabel, setEditingLabel] = useState<string | null>(null);
   const [labelValue, setLabelValue] = useState('');
+  const [showAddKeyDialog, setShowAddKeyDialog] = useState(false);
+  const [newKeyLabel, setNewKeyLabel] = useState('');
 
   // Load wallet info when component mounts or wallet changes
   // Note: Public key data is securely stored in the wallet data file (wallet.dat),
@@ -105,18 +113,29 @@ export default function Account() {
   };
 
   const handleAddNewKey = async () => {
+    setShowAddKeyDialog(true);
+  };
+
+  const handleConfirmAddKey = async () => {
     setIsAddingKey(true);
     try {
-      // Call backend to derive new address with default label
+      // Call backend to derive new address with custom label
       await invoke('derive_new_address', {
-        label: 'New Address'
+        label: newKeyLabel.trim() || null
       });
       await loadWalletInfo(); // Reload to show new key
+      setShowAddKeyDialog(false);
+      setNewKeyLabel(''); // Reset the label field
     } catch (error) {
       console.error('Failed to add new key:', error);
     } finally {
       setIsAddingKey(false);
     }
+  };
+
+  const handleCancelAddKey = () => {
+    setShowAddKeyDialog(false);
+    setNewKeyLabel(''); // Reset the label field
   };
 
   return (
@@ -218,9 +237,16 @@ export default function Account() {
                 <Accordion key={index} sx={{ mb: 1 }}>
                   <AccordionSummary expandIcon={<ExpandMore />}>
                     <Box sx={{ width: '100%', display: 'flex', alignItems: 'center' }}>
-                      <Typography sx={{ fontFamily: 'monospace', fontSize: '0.9rem', flex: 1 }}>
-                        {address.address}
-                      </Typography>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography sx={{ fontFamily: 'monospace', fontSize: '0.9rem', fontWeight: 500 }}>
+                          {address.address}
+                        </Typography>
+                        {address.label && (
+                          <Typography sx={{ fontSize: '0.8rem', color: 'text.secondary', mt: 0.5 }}>
+                            {address.label}
+                          </Typography>
+                        )}
+                      </Box>
                       <Chip 
                         label={address.address_type} 
                         size="small" 
@@ -231,6 +257,57 @@ export default function Account() {
                   </AccordionSummary>
                   <AccordionDetails>
                     <List dense>
+                      <ListItem>
+                        <ListItemText 
+                          primary="Label"
+                          secondary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              {editingLabel === address.address ? (
+                                <>
+                                  <TextField
+                                    size="small"
+                                    value={labelValue}
+                                    onChange={(e) => setLabelValue(e.target.value)}
+                                    placeholder="Enter label"
+                                    sx={{ flex: 1, maxWidth: 200 }}
+                                    autoFocus
+                                  />
+                                  <IconButton 
+                                    size="small" 
+                                    onClick={() => handleLabelSave(address.address)}
+                                    color="primary"
+                                  >
+                                    <Check fontSize="small" />
+                                  </IconButton>
+                                  <IconButton 
+                                    size="small" 
+                                    onClick={handleLabelCancel}
+                                  >
+                                    <Close fontSize="small" />
+                                  </IconButton>
+                                </>
+                              ) : (
+                                <>
+                                  <Typography 
+                                    component="span" 
+                                    sx={{ fontSize: '0.8rem' }}
+                                  >
+                                    {address.label || 'No label'}
+                                  </Typography>
+                                  <Tooltip title="Edit label">
+                                    <IconButton 
+                                      size="small" 
+                                      onClick={() => handleLabelEdit(address.address, address.label || '')}
+                                    >
+                                      <Edit fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </>
+                              )}
+                            </Box>
+                          }
+                        />
+                      </ListItem>
                       <ListItem>
                         <ListItemText 
                           primary="Address"
@@ -256,6 +333,29 @@ export default function Account() {
                       </ListItem>
                       <ListItem>
                         <ListItemText 
+                          primary="Public Key"
+                          secondary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography 
+                                component="span" 
+                                sx={{ fontFamily: 'monospace', fontSize: '0.8rem', wordBreak: 'break-all' }}
+                              >
+                                {address.public_key}
+                              </Typography>
+                              <Tooltip title="Copy public key">
+                                <IconButton 
+                                  size="small" 
+                                  onClick={() => copyToClipboard(address.public_key, 'Public key')}
+                                >
+                                  <ContentCopy fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          }
+                        />
+                      </ListItem>
+                      <ListItem>
+                        <ListItemText 
                           primary="Derivation Path"
                           secondary={address.derivation_path}
                         />
@@ -264,6 +364,35 @@ export default function Account() {
                   </AccordionDetails>
                 </Accordion>
               ))}
+              
+              {/* Add New Address Button */}
+              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+                <Button
+                  variant="outlined"
+                  startIcon={<Add />}
+                  onClick={handleAddNewKey}
+                  sx={{ 
+                    minWidth: 160,
+                    ...(isDarkMode ? {
+                      borderColor: 'rgba(255, 255, 255, 0.3)',
+                      color: 'rgba(255, 255, 255, 0.9)',
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        backgroundColor: 'rgba(144, 202, 249, 0.1)'
+                      }
+                    } : {
+                      borderColor: 'rgba(26, 35, 126, 0.3)',
+                      color: '#1a237e',
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        backgroundColor: 'rgba(26, 35, 126, 0.05)'
+                      }
+                    })
+                  }}
+                >
+                  Add New Address
+                </Button>
+              </Box>
             </CardContent>
           </Card>
 
@@ -441,36 +570,6 @@ export default function Account() {
                   </List>
                 </AccordionDetails>
               </Accordion>
-              
-              {/* Add New Public Key Button */}
-              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
-                <Button
-                  variant="outlined"
-                  startIcon={isAddingKey ? <CircularProgress size={16} /> : <Add />}
-                  onClick={handleAddNewKey}
-                  disabled={isAddingKey}
-                  sx={{ 
-                    minWidth: 160,
-                    ...(isDarkMode ? {
-                      borderColor: 'rgba(255, 255, 255, 0.3)',
-                      color: 'rgba(255, 255, 255, 0.9)',
-                      '&:hover': {
-                        borderColor: 'primary.main',
-                        backgroundColor: 'rgba(144, 202, 249, 0.1)'
-                      }
-                    } : {
-                      borderColor: 'rgba(26, 35, 126, 0.3)',
-                      color: '#1a237e',
-                      '&:hover': {
-                        borderColor: 'primary.main',
-                        backgroundColor: 'rgba(26, 35, 126, 0.05)'
-                      }
-                    })
-                  }}
-                >
-                  {isAddingKey ? 'Generating...' : 'Add New Key'}
-                </Button>
-              </Box>
             </CardContent>
           </Card>
         </Stack>
@@ -525,6 +624,75 @@ export default function Account() {
           </CardContent>
         </Card>
       )}
+
+      {/* Add New Address Dialog */}
+      <Dialog 
+        open={showAddKeyDialog} 
+        onClose={handleCancelAddKey}
+        maxWidth="xs"
+        fullWidth
+        TransitionComponent={Fade}
+        TransitionProps={{ timeout: 400 }}
+        sx={{
+          '& .MuiPaper-root': {
+            background: isDarkMode 
+              ? 'linear-gradient(145deg, #0a1929 0%, #132f4c 100%)' 
+              : 'linear-gradient(145deg, #ffffff 0%, #f5f7fa 100%)',
+            borderRadius: '12px',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+            border: isDarkMode ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.08)',
+            transition: 'all 400ms cubic-bezier(0.4, 0, 0.2, 1) !important'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1,
+          pb: 1
+        }}>
+          <Label 
+            color="primary" 
+            sx={{ mr: 1 }} 
+          />
+          <Typography variant="h6" component="div">
+            Add New Address
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 1 }}>
+            <TextField
+              fullWidth
+              label="Label (Optional)"
+              value={newKeyLabel}
+              onChange={(e) => setNewKeyLabel(e.target.value)}
+              placeholder="Enter a label for this address"
+              helperText="You can leave this empty to add a label later"
+              autoFocus
+              sx={{ mb: 1 }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button 
+            onClick={handleCancelAddKey}
+            disabled={isAddingKey}
+            sx={{ textTransform: 'none' }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleConfirmAddKey} 
+            variant="contained"
+            color="primary"
+            disabled={isAddingKey}
+            startIcon={isAddingKey ? <CircularProgress size={20} /> : <Add />}
+            sx={{ textTransform: 'none' }}
+          >
+            {isAddingKey ? 'Generating...' : 'Add Address'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

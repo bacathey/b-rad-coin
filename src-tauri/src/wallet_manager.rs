@@ -618,7 +618,38 @@ impl WalletManager {
                     debug!("No ConfigManager available, wallet security status will not persist across sessions");
                 }
 
-                // In a real implementation, we would encrypt the wallet data here
+                // Actually encrypt the wallet data with the password
+                // Load the current wallet data, encrypt it, and save it back
+                let wallet_path = std::path::PathBuf::from(format!("wallets/{}/wallet.dat", name));
+                match WalletData::load(&wallet_path, None) {
+                    Ok(mut wallet_data) => {
+                        // Set the wallet as encrypted and save with the password
+                        wallet_data.is_encrypted = true;
+                        match wallet_data.save(&wallet_path, Some(password)) {
+                            Ok(_) => {
+                                info!("Wallet data encrypted and saved with password for: {}", name);
+                            }
+                            Err(e) => {
+                                error!("Failed to encrypt wallet data: {}", e);
+                                // Revert the secured status
+                                self.config.wallets[index].secured = false;
+                                return Err(WalletError::Generic(format!(
+                                    "Failed to encrypt wallet data: {}",
+                                    e
+                                )));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to load wallet data for encryption: {}", e);
+                        // Revert the secured status
+                        self.config.wallets[index].secured = false;
+                        return Err(WalletError::Generic(format!(
+                            "Failed to load wallet data for encryption: {}",
+                            e
+                        )));
+                    }
+                }
 
                 info!("Successfully secured wallet: {}", name);
                 Ok(())

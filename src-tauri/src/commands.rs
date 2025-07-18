@@ -472,7 +472,7 @@ pub async fn open_wallet(
 
         // Authenticate with security manager first
         let mut sec_manager = security_manager.get_manager().await;
-        match sec_manager.authenticate(&password) {
+        match sec_manager.authenticate_wallet(&wallet_name, &password) {
             Ok(_) => {
                 debug!(
                     "Authentication succeeded for secured wallet: {}",
@@ -594,9 +594,17 @@ pub async fn secure_wallet(
     wallet_name: String,
     password: String,
     wallet_manager: State<'_, AsyncWalletManager>,
+    security_manager: State<'_, AsyncSecurityManager>,
 ) -> CommandResult<bool> {
     info!("Command: secure_wallet for wallet: {}", wallet_name);
 
+    // Store the password in the security manager first
+    {
+        let mut sec_manager = security_manager.get_manager().await;
+        sec_manager.store_wallet_password(&wallet_name, &password);
+    }
+
+    // Then secure the wallet
     let mut manager = wallet_manager.get_manager().await;
     match manager.secure_wallet(&wallet_name, &password) {
         Ok(_) => {
@@ -2444,25 +2452,28 @@ pub async fn derive_new_address(
     let private_key = derived_xpriv.private_key;
     let public_key = private_key.public_key(&secp);
 
-    // Create address (using legacy P2PKH for now)
-    use bitcoin::{Address, Network, PublicKey};
-    let bitcoin_public_key = PublicKey::new(public_key);
-    let address = Address::p2pkh(&bitcoin_public_key, Network::Bitcoin);
+    // Create address (using P2WPKH - native segwit)
+    use bitcoin::{Address, Network, PublicKey, PrivateKey, CompressedPublicKey, KnownHrp};
+    let bitcoin_private_key = PrivateKey::new(private_key, Network::Bitcoin);
+    let compressed_pubkey = CompressedPublicKey::from_private_key(&secp, &bitcoin_private_key)
+        .map_err(|e| format!("Failed to create compressed public key: {}", e))?;
+    let address = Address::p2wpkh(&compressed_pubkey, KnownHrp::Mainnet);
     let address_string = address.to_string();
 
     // Create the new key pair
+    let bitcoin_public_key = PublicKey::new(public_key);
     let key_pair = crate::wallet_data::KeyPair {
-        private_key: bitcoin::PrivateKey::new(private_key, Network::Bitcoin).to_wif(),
+        private_key: bitcoin_private_key.to_wif(),
         public_key: bitcoin_public_key.to_string(),
         address: address_string.clone(),
-        key_type: crate::wallet_data::KeyType::Legacy,
+        key_type: crate::wallet_data::KeyType::NativeSegWit,
         derivation_path: derivation_path.clone(),
     };
 
     // Create the new address info
     let address_info = crate::wallet_data::AddressInfo {
         address: address_string.clone(),
-        key_type: crate::wallet_data::KeyType::Legacy,
+        key_type: crate::wallet_data::KeyType::NativeSegWit,
         derivation_path: derivation_path.clone(),
         label: label.clone(),
     };

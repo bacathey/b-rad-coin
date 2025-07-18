@@ -1,5 +1,6 @@
 use crate::errors::SecurityError;
 use log::{debug, error, info};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -12,6 +13,8 @@ pub struct SecurityManager {
     last_auth_time: Option<Instant>,
     /// Whether authentication is currently valid
     authenticated: bool,
+    /// Storage for wallet passwords (wallet_name -> password_hash)
+    wallet_passwords: HashMap<String, String>,
 }
 
 impl SecurityManager {
@@ -25,6 +28,7 @@ impl SecurityManager {
             auth_timeout_seconds,
             last_auth_time: None,
             authenticated: false,
+            wallet_passwords: HashMap::new(),
         }
     }
 
@@ -113,6 +117,56 @@ impl SecurityManager {
             .collect();
 
         Ok(decrypted)
+    }
+
+    /// Store a wallet password (using simple hash for demo)
+    pub fn store_wallet_password(&mut self, wallet_name: &str, password: &str) {
+        let password_hash = self.simple_hash(password);
+        self.wallet_passwords.insert(wallet_name.to_string(), password_hash);
+        info!("Stored password for wallet: {}", wallet_name);
+    }
+
+    /// Authenticate against a specific wallet's password
+    pub fn authenticate_wallet(&mut self, wallet_name: &str, password: &str) -> Result<bool, SecurityError> {
+        debug!("Authenticating wallet: {}", wallet_name);
+
+        if password.is_empty() {
+            error!("Authentication failed: Empty password");
+            return Err(SecurityError::InvalidCredentials(
+                "Password cannot be empty".to_string(),
+            ));
+        }
+
+        // Check if we have a stored password for this wallet
+        if let Some(stored_hash) = self.wallet_passwords.get(wallet_name) {
+            let provided_hash = self.simple_hash(password);
+            if &provided_hash == stored_hash {
+                self.authenticated = true;
+                self.last_auth_time = Some(Instant::now());
+                info!("Authentication successful for wallet: {}", wallet_name);
+                Ok(true)
+            } else {
+                error!("Authentication failed: Invalid password for wallet: {}", wallet_name);
+                Err(SecurityError::InvalidCredentials(
+                    "Invalid password".to_string(),
+                ))
+            }
+        } else {
+            // For unsecured wallets, use the old behavior
+            debug!("No stored password for wallet: {}, using legacy authentication", wallet_name);
+            self.authenticate(password)
+        }
+    }
+
+    /// Simple hash function for demo purposes
+    fn simple_hash(&self, input: &str) -> String {
+        // In a real implementation, use a proper password hashing library like argon2
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        input.hash(&mut hasher);
+        format!("{:x}", hasher.finish())
     }
 }
 
