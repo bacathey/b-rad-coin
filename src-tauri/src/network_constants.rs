@@ -37,7 +37,9 @@ pub const NODE_NETWORK_LIMITED: u64 = 1 << 10; // Pruned node, limited blocks
 /// Protocol version constants
 pub const PROTOCOL_VERSION: u32 = 10001;       // B-rad-coin protocol version
 pub const MIN_PROTOCOL_VERSION: u32 = 10000;   // Minimum supported version
-pub const USER_AGENT: &str = "/BradCoin:0.2.4/";
+
+/// User agent for network identification
+pub const USER_AGENT: &str = "/BradCoin:0.2.5/";
 
 /// Network timeouts and limits
 pub const CONNECTION_TIMEOUT_SECS: u64 = 10;

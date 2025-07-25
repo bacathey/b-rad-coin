@@ -12,7 +12,8 @@ import {
   useTheme,
   Grid
 } from '@mui/material';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 
 // Icons
 import SendIcon from '@mui/icons-material/Send';
@@ -24,6 +25,9 @@ import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import PersonIcon from '@mui/icons-material/Person';
 import NoteAltIcon from '@mui/icons-material/NoteAlt';
 
+// Components
+import QRCodeGenerator from '../components/QRCodeGenerator';
+
 export default function SendReceive() {
   const theme = useTheme();
   const isDarkMode = theme.palette.mode === 'dark';
@@ -34,8 +38,69 @@ export default function SendReceive() {
   const [sendAmount, setSendAmount] = useState('');
   const [sendNote, setSendNote] = useState('');
   
-  // Sample receive address for the wallet
-  const walletAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+  // State for receiving addresses
+  const [walletAddress, setWalletAddress] = useState('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa'); // Default placeholder
+  const [isGeneratingAddress, setIsGeneratingAddress] = useState(false);
+
+  // Load current wallet info when component mounts
+  useEffect(() => {
+    loadWalletInfo();
+  }, []);
+
+  const loadWalletInfo = async () => {
+    try {
+      const info = await invoke<any>('get_current_wallet_info');
+      if (info && info.addresses && info.addresses.length > 0) {
+        // Use the most recent address
+        const latestAddress = info.addresses[info.addresses.length - 1];
+        setWalletAddress(latestAddress.address);
+      }
+    } catch (error) {
+      console.error('Failed to load wallet info:', error);
+    }
+  };
+
+  // Function to generate a new receiving address
+  const generateNewAddress = async () => {
+    setIsGeneratingAddress(true);
+    try {
+      const newAddress = await invoke<string>('derive_new_address', {
+        label: `Receive Address ${new Date().toLocaleDateString()}`
+      });
+      setWalletAddress(newAddress);
+    } catch (error) {
+      console.error('Failed to generate new address:', error);
+    } finally {
+      setIsGeneratingAddress(false);
+    }
+  };
+
+  // Function to save QR code as image
+  const saveQRCode = () => {
+    // Create a temporary canvas to capture the QR code
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = 220; // QR code size + padding
+    canvas.height = 220;
+    
+    // Fill white background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 220, 220);
+    
+    // Find the QR code canvas
+    const qrCanvas = document.querySelector('canvas') as HTMLCanvasElement;
+    if (qrCanvas) {
+      ctx.drawImage(qrCanvas, 10, 10); // 10px padding
+    }
+
+    // Download the image
+    const link = document.createElement('a');
+    link.download = `bradcoin-address-${walletAddress.substring(0, 8)}.png`;
+    link.href = canvas.toDataURL();
+    link.click();
+  };
 
   // Paper style - used for the main container
   const paperStyle = isDarkMode ? {
@@ -317,24 +382,21 @@ export default function SendReceive() {
                 justifyContent: 'center',
                 alignItems: 'center'
               }}>
-                {/* QR Code placeholder - in a real app, this would be an actual QR code */}
+                {/* QR Code for the current wallet address */}
                 <Box sx={{ 
-                  width: 200, 
-                  height: 200, 
+                  p: 2,
                   border: '1px solid',
                   borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
                   bgcolor: 'white',
                   borderRadius: 1,
-                  display: 'flex', 
-                  alignItems: 'center',
-                  justifyContent: 'center',
                   mb: 2
                 }}>
-                  <QrCodeIcon sx={{ fontSize: 120, color: '#000' }} />
+                  <QRCodeGenerator value={walletAddress} size={200} />
                 </Box>
                 <Button
                   variant="outlined"
                   startIcon={<DownloadIcon />}
+                  onClick={saveQRCode}
                   sx={{ mb: 1 }}
                 >
                   Save QR Code
@@ -349,7 +411,7 @@ export default function SendReceive() {
                     mb: 2
                   }}
                 >
-                  Your Bitcoin Address
+                  Your Bradcoin Address
                 </Typography>
                 
                 <TextField
@@ -424,12 +486,14 @@ export default function SendReceive() {
                   <Button
                     variant="outlined"
                     startIcon={<FileUploadIcon />}
+                    onClick={generateNewAddress}
+                    disabled={isGeneratingAddress}
                     sx={{ 
                       py: 1.5,
                       fontWeight: 500
                     }}
                   >
-                    Generate New Address
+                    {isGeneratingAddress ? 'Generating...' : 'Generate New Address'}
                   </Button>
                 </Stack>
               </Grid>

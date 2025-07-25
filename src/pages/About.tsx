@@ -171,7 +171,7 @@ export default function About() {
                   Version
                 </Typography>
                 <Typography variant="body1">
-                  Current Version: 0.1.0
+                  Current Version: 0.2.5
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                   © 2023-2025 B-Rad Coin
