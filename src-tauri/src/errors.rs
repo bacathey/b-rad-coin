@@ -74,6 +74,12 @@ impl From<String> for AppError {
     }
 }
 
+impl From<anyhow::Error> for AppError {
+    fn from(error: anyhow::Error) -> Self {
+        AppError::Generic(error.to_string())
+    }
+}
+
 /// Wallet-specific error types
 #[derive(Debug, Clone)]
 pub enum WalletError {

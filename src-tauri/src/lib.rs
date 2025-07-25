@@ -26,8 +26,11 @@ pub mod blockchain_database;
 pub mod wallet_sync_service;
 pub mod mining_service;
 pub mod network_service;
+pub mod network_monitor;
 pub mod network_constants;
 pub mod dns_seeder;
+pub mod mempool_service;
+pub mod fee_estimator;
 
 use commands::*;
 use developer_commands::*;
@@ -40,6 +43,9 @@ use blockchain_database::AsyncBlockchainDatabase;
 use wallet_sync_service::AsyncWalletSyncService;
 use mining_service::AsyncMiningService;
 use network_service::AsyncNetworkService;
+use mempool_service::AsyncMempoolService;
+use fee_estimator::AsyncFeeEstimator;
+use network_monitor::AsyncNetworkMonitor;
 
 /// Application version
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -125,7 +131,21 @@ pub fn run() {
             derive_new_address,
             update_address_label,
             get_all_wallet_addresses,
-            get_mining_configuration
+            get_mining_configuration,
+            // Transaction and mempool commands
+            submit_transaction,
+            get_mempool_status,
+            get_pending_transactions,
+            // Fee estimation commands
+            get_fee_estimates,
+            calculate_transaction_fee,
+            // Network monitoring commands
+            get_network_diagnostics,
+            get_network_diagnostic_history,
+            record_bandwidth_usage,
+            // RBF commands
+            replace_transaction_rbf,
+            get_replaceable_transactions
         ])        .setup(|app| {
             info!("Setting up application");
             
@@ -358,6 +378,9 @@ struct AppState {
     wallet_sync: AsyncWalletSyncService,
     mining_service: AsyncMiningService,
     network_service: AsyncNetworkService,
+    mempool_service: AsyncMempoolService,
+    fee_estimator: AsyncFeeEstimator,
+    network_monitor: AsyncNetworkMonitor,
 }
 
 /// Basic application state container (without blockchain services)
@@ -422,9 +445,21 @@ async fn initialize_app() -> AppResult<AppState> {
     debug!("Initializing mining service");
     let mining_service = AsyncMiningService::new(blockchain_db.clone());
     
+    // Initialize mempool service
+    debug!("Initializing mempool service");
+    let mempool_service = AsyncMempoolService::new(blockchain_db.clone());
+    
     // Initialize network service
     debug!("Initializing network service");
     let network_service = AsyncNetworkService::new(blockchain_db.clone(), None); // Use default port
+    
+    // Initialize fee estimator
+    debug!("Initializing fee estimator");
+    let fee_estimator = AsyncFeeEstimator::new(blockchain_db.clone());
+    
+    // Initialize network monitor
+    debug!("Initializing network monitor");
+    let network_monitor = AsyncNetworkMonitor::new();
     
     // Note: blockchain sync will be started in setup() after app handle is available
 
@@ -440,6 +475,9 @@ async fn initialize_app() -> AppResult<AppState> {
         wallet_sync,
         mining_service,
         network_service,
+        mempool_service,
+        fee_estimator,
+        network_monitor,
     })
 }
 

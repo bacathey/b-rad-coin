@@ -61,15 +61,15 @@ const pieData = [
 
 // Sample data for the tables
 const pendingTransactions = [
-  { txid: '3a1b2c...8f9e0d', time: '10:23 AM', amount: '-0.5 BTC', confirmations: 0 },
-  { txid: '7e6d5c...1a2b3c', time: '09:15 AM', amount: '+1.2 BTC', confirmations: 1 },
-  { txid: '9f8e7d...4c5b6a', time: 'Yesterday', amount: '-0.05 BTC', confirmations: 2 }
+  { txid: '3a1b2c...8f9e0d', time: '10:23 AM', amount: '-0.5 BRAD', confirmations: 0 },
+  { txid: '7e6d5c...1a2b3c', time: '09:15 AM', amount: '+1.2 BRAD', confirmations: 1 },
+  { txid: '9f8e7d...4c5b6a', time: 'Yesterday', amount: '-0.05 BRAD', confirmations: 2 }
 ];
 
 const transactionSummary = [
-  { period: 'Today', sent: '0.55 BTC', received: '1.2 BTC', fees: '0.003 BTC' },
-  { period: 'This Week', sent: '2.34 BTC', received: '1.89 BTC', fees: '0.012 BTC' },
-  { period: 'This Month', sent: '5.67 BTC', received: '3.45 BTC', fees: '0.028 BTC' }
+  { period: 'Today', sent: '0.55 BRAD', received: '1.2 BRAD', fees: '0.003 BRAD' },
+  { period: 'This Week', sent: '2.34 BRAD', received: '1.89 BRAD', fees: '0.012 BRAD' },
+  { period: 'This Month', sent: '5.67 BRAD', received: '3.45 BRAD', fees: '0.028 BRAD' }
 ];
 
 // Custom colors for pie chart
@@ -245,7 +245,7 @@ export default function Transactions() {
                   color={isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)'}
                   sx={{ mb: 2 }}
                 >
-                  Overview of your Bitcoin transaction history and balances.
+                  Overview of your Bradcoin transaction history and balances.
                 </Typography>                {/* Transaction Summary Table */}
                 <TableContainer sx={{ 
                   height: 200,
@@ -424,9 +424,9 @@ export default function Transactions() {
                         color: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)'
                       }} 
                     />
-                    <Bar dataKey="incoming" name="Incoming (BTC)" barSize={20} fill={isDarkMode ? "#8884d8" : "#3f51b5"} />
-                    <Bar dataKey="outgoing" name="Outgoing (BTC)" barSize={20} fill={isDarkMode ? "#ff5722" : "#f44336"} />
-                    <Line type="monotone" dataKey="total" name="Net Flow (BTC)" stroke={isDarkMode ? "#64b5f6" : "#1565c0"} strokeWidth={2} />
+                    <Bar dataKey="incoming" name="Incoming (BRAD)" barSize={20} fill={isDarkMode ? "#8884d8" : "#3f51b5"} />
+                    <Bar dataKey="outgoing" name="Outgoing (BRAD)" barSize={20} fill={isDarkMode ? "#ff5722" : "#f44336"} />
+                    <Line type="monotone" dataKey="total" name="Net Flow (BRAD)" stroke={isDarkMode ? "#64b5f6" : "#1565c0"} strokeWidth={2} />
                   </ComposedChart>
                 </ResponsiveContainer>
               ) : (
@@ -452,7 +452,7 @@ export default function Transactions() {
                         borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : '#ccc',
                         color: isDarkMode ? 'white' : 'black',
                       }}
-                      formatter={(value: any) => [`${value} BTC`, 'Amount']}
+                      formatter={(value: any) => [`${value} BRAD`, 'Amount']}
                     />
                     <Legend 
                       wrapperStyle={{ 

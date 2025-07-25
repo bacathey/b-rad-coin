@@ -70,14 +70,14 @@ export default function About() {
                       B-Rad Coin Wallet
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      A modern, secure wallet for managing your crypto assets
+                      A modern, secure wallet for managing your Bradcoin assets
                     </Typography>
                   </Box>
                 </Stack>
                 
                 <Typography variant="body1" paragraph>
-                  B-Rad Coin Wallet is a secure, easy-to-use cryptocurrency wallet built with modern technologies.
-                  Our wallet offers complete control over your digital assets with advanced security features
+                  B-Rad Coin Wallet is a secure, easy-to-use Bradcoin wallet built with modern technologies.
+                  Our wallet offers complete control over your Bradcoin assets with advanced security features
                   and an intuitive user interface.
                 </Typography>
                 

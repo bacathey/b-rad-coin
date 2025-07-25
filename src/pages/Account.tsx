@@ -85,7 +85,7 @@ export default function Account() {
   };
 
   const formatBalance = (balance: number) => {
-    return (balance / 100000000).toFixed(8); // Convert satoshis to BTC
+    return (balance / 100000000).toFixed(8); // Convert satoshis to BRAD
   };
 
   const handleLabelEdit = (address: string, currentLabel?: string) => {
@@ -209,7 +209,7 @@ export default function Account() {
                   fontWeight: 500
                 }}
               >
-                Balance: {formatBalance(walletInfo.balance)} BTC
+                Balance: {formatBalance(walletInfo.balance)} BRAD
               </Typography>
             </CardContent>
           </Card>

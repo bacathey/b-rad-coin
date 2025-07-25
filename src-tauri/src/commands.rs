@@ -13,6 +13,10 @@ use rand::Rng;
 use crate::blockchain_sync::{AsyncBlockchainSyncService, NetworkStatus};
 use crate::wallet_sync_service::{AsyncWalletSyncService, WalletSyncStatus};
 use crate::mining_service::{AsyncMiningService, MiningStatus};
+use crate::mempool_service::{AsyncMempoolService, ReplacementReason, ReplacementResult};
+use crate::network_monitor::{AsyncNetworkMonitor, NetworkDiagnostics};
+use crate::blockchain_database::{Transaction, TransactionInput, TransactionOutput};
+use crate::fee_estimator::{AsyncFeeEstimator, FeeTarget};
 
 /// Response type for commands with proper error handling
 type CommandResult<T> = Result<T, String>;
@@ -1972,8 +1976,28 @@ pub async fn start_blockchain_services(
     let mining_service = crate::mining_service::AsyncMiningService::new(blockchain_db.clone());
     app_handle.manage(mining_service);
     
+    // Initialize and store mempool service
+    let mempool_service = crate::mempool_service::AsyncMempoolService::new(blockchain_db.clone());
+    app_handle.manage(mempool_service.clone());
+    
+    // Initialize and store fee estimator
+    let fee_estimator = crate::fee_estimator::AsyncFeeEstimator::new(blockchain_db.clone());
+    fee_estimator.set_mempool(mempool_service.clone()).await;
+    app_handle.manage(fee_estimator);
+    
+    // Initialize and store network monitor
+    let network_monitor = crate::network_monitor::AsyncNetworkMonitor::new();
+    app_handle.manage(network_monitor.clone());
+    
     // Initialize and store network service
-    let network_service = crate::network_service::AsyncNetworkService::new(blockchain_db.clone(), None);
+    let mut network_service = crate::network_service::AsyncNetworkService::new(blockchain_db.clone(), None);
+    
+    // Connect mempool to network service for transaction propagation
+    network_service.set_mempool(mempool_service);
+    
+    // Connect network monitor to network service
+    network_monitor.set_network_service(network_service.clone()).await;
+    
     app_handle.manage(network_service);
     
     // Start network service with retry logic for port binding
@@ -2023,6 +2047,17 @@ pub async fn start_blockchain_services(
         error!("Failed to start blockchain sync: {}", e);
         return Err(format!("Failed to start blockchain sync: {}", e));
     }
+    
+    // Start network monitoring
+    let network_monitor = app_handle.state::<crate::network_monitor::AsyncNetworkMonitor>();
+    tokio::spawn({
+        let monitor = network_monitor.inner().clone();
+        async move {
+            if let Err(e) = monitor.start_monitoring().await {
+                error!("Network monitoring stopped: {}", e);
+            }
+        }
+    });
     
     info!("All blockchain services started successfully");
     
@@ -2509,4 +2544,218 @@ pub async fn derive_new_address(
             Err(format!("Failed to save wallet data: {}", e))
         }
     }
+}
+
+// Transaction submission and mempool commands
+
+/// Transaction submission data from frontend
+#[derive(Serialize, Deserialize)]
+pub struct TransactionSubmission {
+    pub inputs: Vec<TransactionInput>,
+    pub outputs: Vec<TransactionOutput>,
+    pub fee: u64,
+}
+
+/// Submit a transaction to the mempool
+#[command]
+pub async fn submit_transaction(
+    state: State<'_, crate::AppState>,
+    transaction_data: TransactionSubmission,
+) -> CommandResult<String> {
+    info!("Submitting transaction to mempool");
+    
+    // Create transaction from submission data
+    let transaction = Transaction {
+        txid: String::new(), // Will be calculated during validation
+        inputs: transaction_data.inputs,
+        outputs: transaction_data.outputs,
+        timestamp: chrono::Utc::now().timestamp() as u64,
+        fee: transaction_data.fee,
+    };
+    
+    // Submit to mempool
+    match state.mempool_service.add_transaction(transaction).await {
+        Ok(tx_hash) => {
+            info!("Transaction submitted successfully: {}", tx_hash);
+            Ok(tx_hash)
+        }
+        Err(e) => {
+            error!("Failed to submit transaction: {}", e);
+            Err(format!("Failed to submit transaction: {}", e))
+        }
+    }
+}
+
+/// Get mempool status and transaction count
+#[command]
+pub async fn get_mempool_status(
+    state: State<'_, crate::AppState>,
+) -> CommandResult<serde_json::Value> {
+    debug!("Getting mempool status");
+    
+    match state.mempool_service.get_mempool_info().await {
+        Ok(info) => {
+            let status = serde_json::json!({
+                "transaction_count": info.transaction_count,
+                "total_size": info.total_size_bytes,
+                "total_fees": 0, // Will need to calculate from mempool
+                "highest_fee_rate": info.max_fee_rate,
+                "lowest_fee_rate": info.min_fee_rate
+            });
+            Ok(status)
+        }
+        Err(e) => {
+            error!("Failed to get mempool status: {}", e);
+            Err(format!("Failed to get mempool status: {}", e))
+        }
+    }
+}
+
+/// Get pending transactions from mempool
+#[command]
+pub async fn get_pending_transactions(
+    state: State<'_, crate::AppState>,
+    limit: Option<usize>,
+) -> CommandResult<Vec<Transaction>> {
+    debug!("Getting pending transactions from mempool");
+    
+    let limit = limit.unwrap_or(100);
+    
+    let transactions = state.mempool_service.get_transactions_for_mining(limit, 1000000).await;
+    debug!("Retrieved {} pending transactions", transactions.len());
+    Ok(transactions)
+}
+
+/// Get fee estimates for different confirmation targets
+#[command]
+pub async fn get_fee_estimates(
+    state: State<'_, crate::AppState>,
+) -> CommandResult<serde_json::Value> {
+    debug!("Getting fee estimates");
+    
+    match state.fee_estimator.estimate_fees().await {
+        Ok(estimates) => {
+            let estimates_json = serde_json::to_value(estimates)
+                .map_err(|e| format!("Failed to serialize fee estimates: {}", e))?;
+            Ok(estimates_json)
+        }
+        Err(e) => {
+            error!("Failed to get fee estimates: {}", e);
+            Err(format!("Failed to get fee estimates: {}", e))
+        }
+    }
+}
+
+/// Calculate recommended fee for transaction
+#[command]
+pub async fn calculate_transaction_fee(
+    state: State<'_, crate::AppState>,
+    tx_size_bytes: usize,
+    priority: String, // "slow", "normal", "fast", "urgent"
+) -> CommandResult<u64> {
+    debug!("Calculating fee for {} byte transaction with {} priority", tx_size_bytes, priority);
+    
+    let target = match priority.to_lowercase().as_str() {
+        "urgent" => FeeTarget::NextBlock,
+        "fast" => FeeTarget::Fast,
+        "normal" => FeeTarget::Normal,
+        "slow" => FeeTarget::Slow,
+        _ => FeeTarget::Normal,
+    };
+    
+    match state.fee_estimator.get_recommended_fee(tx_size_bytes, target).await {
+        Ok(fee) => {
+            debug!("Recommended fee: {} satoshis for {} priority", fee, priority);
+            Ok(fee)
+        }
+        Err(e) => {
+            error!("Failed to calculate transaction fee: {}", e);
+            Err(format!("Failed to calculate transaction fee: {}", e))
+        }
+    }
+}
+
+/// Get comprehensive network diagnostics
+#[command]
+pub async fn get_network_diagnostics(
+    state: State<'_, crate::AppState>,
+) -> CommandResult<NetworkDiagnostics> {
+    debug!("Getting network diagnostics");
+    
+    match state.network_monitor.collect_diagnostics().await {
+        Ok(diagnostics) => {
+            debug!("Successfully collected network diagnostics");
+            Ok(diagnostics)
+        }
+        Err(e) => {
+            error!("Failed to collect network diagnostics: {}", e);
+            Err(format!("Failed to collect network diagnostics: {}", e))
+        }
+    }
+}
+
+/// Get network diagnostic history
+#[command]
+pub async fn get_network_diagnostic_history(
+    state: State<'_, crate::AppState>,
+) -> CommandResult<Vec<NetworkDiagnostics>> {
+    debug!("Getting network diagnostic history");
+    
+    let history = state.network_monitor.get_diagnostic_history().await;
+    debug!("Retrieved {} diagnostic snapshots", history.len());
+    Ok(history)
+}
+
+/// Record bandwidth usage for monitoring
+#[command]
+pub async fn record_bandwidth_usage(
+    state: State<'_, crate::AppState>,
+    bytes_sent: u64,
+    bytes_received: u64,
+) -> CommandResult<()> {
+    debug!("Recording bandwidth usage: {} sent, {} received", bytes_sent, bytes_received);
+    
+    state.network_monitor.record_bandwidth(bytes_sent, bytes_received).await;
+    Ok(())
+}
+
+/// Replace a transaction with higher fee (RBF)
+#[command]
+pub async fn replace_transaction_rbf(
+    state: State<'_, crate::AppState>,
+    old_tx_hash: String,
+    new_transaction: Transaction,
+    reason: String, // "rbf", "higher_fee", "user_request"
+) -> CommandResult<ReplacementResult> {
+    debug!("Replacing transaction {} with RBF", old_tx_hash);
+    
+    let replacement_reason = match reason.to_lowercase().as_str() {
+        "rbf" => ReplacementReason::RbfFlag,
+        "higher_fee" => ReplacementReason::HigherFee,
+        "user_request" => ReplacementReason::UserRequest,
+        _ => ReplacementReason::UserRequest,
+    };
+    
+    match state.mempool_service.replace_transaction(&old_tx_hash, new_transaction, replacement_reason).await {
+        Ok(result) => {
+            info!("Transaction replacement successful: {} -> {}", old_tx_hash, result.new_tx_hash);
+            Ok(result)
+        }
+        Err(e) => {
+            error!("Failed to replace transaction: {}", e);
+            Err(format!("Failed to replace transaction: {}", e))
+        }
+    }
+}
+
+/// Get transactions that can be replaced
+#[command]
+pub async fn get_replaceable_transactions(
+    state: State<'_, crate::AppState>,
+) -> CommandResult<Vec<(String, Transaction, bool)>> {
+    debug!("Getting replaceable transactions");
+    
+    let replaceable = state.mempool_service.get_replaceable_transactions().await;
+    debug!("Found {} replaceable transactions", replaceable.len());
+    Ok(replaceable)
 }

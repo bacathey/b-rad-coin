@@ -150,7 +150,7 @@ export default function SendReceive() {
                     required
                     id="recipient"
                     label="Recipient Address"
-                    placeholder="Enter Bitcoin address"
+                    placeholder="Enter Bradcoin address"
                     variant="outlined"
                     value={recipientAddress}
                     onChange={(e) => setRecipientAddress(e.target.value)}
@@ -203,7 +203,7 @@ export default function SendReceive() {
                       ),
                       endAdornment: (
                         <InputAdornment position="end">
-                          <Typography color={isDarkMode ? "primary" : "primary"}>BTC</Typography>
+                          <Typography color={isDarkMode ? "primary" : "primary"}>BRAD</Typography>
                         </InputAdornment>
                       ),
                     }}
@@ -301,7 +301,7 @@ export default function SendReceive() {
                       })
                     }}
                   >
-                    Send Bitcoin
+                    Send Bradcoin
                   </Button>
                 </Grid>
               </Grid>

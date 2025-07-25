@@ -1,11 +1,11 @@
 //! BradCoin Network Service
 //! Handles peer discovery, block propagation, and network communication
-//! Implements Bitcoin protocol for real network connectivity
+//! Implements B-rad-coin protocol for independent network connectivity
 
 use crate::blockchain_database::{AsyncBlockchainDatabase, Block, Transaction, TransactionInput, TransactionOutput};
+use crate::mempool_service::AsyncMempoolService;
 use crate::errors::*;
 use crate::network_constants::*;
-use crate::dns_seeder::{discover_network_peers, DnsSeeder};
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -21,7 +21,7 @@ use tokio::time::{interval, timeout};
 pub const DEFAULT_P2P_PORT: u16 = 8333;
 pub const DEFAULT_RPC_PORT: u16 = 8334;
 
-/// Network message types (Bitcoin protocol style)
+/// Network message types (B-rad-coin protocol style)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum NetworkMessage {
@@ -72,17 +72,17 @@ pub enum NetworkMessage {
     NewTransaction {
         transaction: Transaction,
     },
-    /// Request for multiple blocks (Bitcoin-style getblocks)
+    /// Request for multiple blocks (B-rad-coin getblocks)
     GetBlocks {
         version: u32,
         block_locator_hashes: Vec<String>, // Most recent block hashes we have
         hash_stop: Option<String>, // Stop at this hash (empty for latest)
     },
-    /// Response with block inventory (Bitcoin-style inv)
+    /// Response with block inventory (B-rad-coin inv)
     Inv {
         inventory: Vec<InventoryItem>,
     },
-    /// Request specific data (Bitcoin-style getdata)
+    /// Request specific data (B-rad-coin getdata)
     GetData {
         inventory: Vec<InventoryItem>,
     },
@@ -103,7 +103,7 @@ pub enum NetworkMessage {
     },
     /// Version acknowledgment
     Verack,
-    /// Request block headers (Bitcoin-style getheaders)
+    /// Request block headers (B-rad-coin getheaders)
     GetHeaders {
         version: u32,
         block_locator_hashes: Vec<String>,
@@ -113,9 +113,13 @@ pub enum NetworkMessage {
     Headers {
         headers: Vec<BlockHeader>,
     },
+    /// Transaction broadcast (B-rad-coin tx)
+    Tx {
+        transaction: Transaction,
+    },
 }
 
-/// Inventory item types (Bitcoin protocol)
+/// Inventory item types (B-rad-coin protocol)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InventoryItem {
     pub item_type: InventoryType,
@@ -151,7 +155,7 @@ pub struct PeerAddress {
     pub services: u64, // Bitfield for supported services
 }
 
-/// Peer connection information
+/// Peer connection information with scoring
 #[derive(Debug, Clone)]
 pub struct PeerConnection {
     pub address: PeerAddress,
@@ -160,6 +164,92 @@ pub struct PeerConnection {
     pub version: Option<String>,
     pub height: Option<u64>,
     pub is_outbound: bool,
+    pub score: PeerScore,
+}
+
+/// Peer scoring system for connection quality assessment
+#[derive(Debug, Clone)]
+pub struct PeerScore {
+    pub base_score: i32,
+    pub blocks_received: u32,
+    pub transactions_received: u32,
+    pub invalid_messages: u32,
+    pub connection_failures: u32,
+    pub last_valid_block: u64,
+    pub average_ping: u64,
+    pub uptime_percentage: f32,
+}
+
+impl Default for PeerScore {
+    fn default() -> Self {
+        Self {
+            base_score: 100, // Start with neutral score
+            blocks_received: 0,
+            transactions_received: 0,
+            invalid_messages: 0,
+            connection_failures: 0,
+            last_valid_block: 0,
+            average_ping: 0,
+            uptime_percentage: 100.0,
+        }
+    }
+}
+
+impl PeerScore {
+    /// Calculate overall peer score (0-1000)
+    pub fn calculate_total_score(&self) -> i32 {
+        let mut score = self.base_score;
+        
+        // Positive factors
+        score += (self.blocks_received * 2) as i32;
+        score += self.transactions_received as i32;
+        
+        // Negative factors
+        score -= (self.invalid_messages * 10) as i32;
+        score -= (self.connection_failures * 5) as i32;
+        
+        // Ping penalty (higher ping = lower score)
+        if self.average_ping > 1000 {
+            score -= ((self.average_ping - 1000) / 100) as i32;
+        }
+        
+        // Uptime bonus
+        score += (self.uptime_percentage * 2.0) as i32;
+        
+        // Clamp to reasonable range
+        score.max(0).min(1000)
+    }
+    
+    /// Update score after receiving a valid block
+    pub fn on_valid_block(&mut self, block_height: u64) {
+        self.blocks_received += 1;
+        self.last_valid_block = block_height;
+        self.base_score += 1;
+    }
+    
+    /// Update score after receiving a valid transaction
+    pub fn on_valid_transaction(&mut self) {
+        self.transactions_received += 1;
+        if self.transactions_received % 10 == 0 {
+            self.base_score += 1;
+        }
+    }
+    
+    /// Penalize for invalid message
+    pub fn on_invalid_message(&mut self) {
+        self.invalid_messages += 1;
+        self.base_score -= 5;
+    }
+    
+    /// Update ping statistics
+    pub fn update_ping(&mut self, ping_ms: u64) {
+        if self.average_ping == 0 {
+            self.average_ping = ping_ms;
+        } else {
+            // Moving average
+            self.average_ping = (self.average_ping * 3 + ping_ms) / 4;
+        }
+    }
 }
 
 /// Network statistics
@@ -178,6 +268,7 @@ pub struct NetworkStats {
 /// BradCoin Network Service
 pub struct NetworkService {
     blockchain_db: Arc<AsyncBlockchainDatabase>,
+    mempool: Option<AsyncMempoolService>,
     listen_addr: SocketAddr,
     peers: Arc<RwLock<HashMap<SocketAddr, PeerConnection>>>,
     known_addresses: Arc<RwLock<HashSet<PeerAddress>>>,
@@ -195,6 +286,7 @@ impl NetworkService {
 
         Self {
             blockchain_db,
+            mempool: None,
             listen_addr,
             peers: Arc::new(RwLock::new(HashMap::new())),
             known_addresses: Arc::new(RwLock::new(HashSet::new())),
@@ -214,6 +306,11 @@ impl NetworkService {
         self.add_bootstrap_nodes().await;
 
         Ok(())
+    }
+
+    /// Set the mempool service for transaction propagation
+    pub fn set_mempool(&mut self, mempool: AsyncMempoolService) {
+        self.mempool = Some(mempool);
     }
 
     /// Start the network service
@@ -257,8 +354,9 @@ impl NetworkService {
         let handler_peers = Arc::clone(&peers);
         let handler_blockchain = Arc::clone(&blockchain_db);
         let handler_stats = Arc::clone(&stats);
+        let handler_mempool = self.mempool.clone();
         tokio::spawn(async move {
-            Self::handle_messages(rx, handler_peers, handler_blockchain, handler_stats, app_handle).await;
+            Self::handle_messages(rx, handler_peers, handler_blockchain, handler_stats, app_handle, handler_mempool).await;
         });
 
         // Start peer discovery
@@ -298,37 +396,21 @@ impl NetworkService {
 
     /// Add bootstrap nodes for initial peer discovery
     async fn add_bootstrap_nodes(&self) {
-        info!("Starting peer discovery process...");
+        info!("Starting B-rad-coin peer discovery process...");
         
-        // First, try DNS-based peer discovery for Bitcoin network connectivity
-        let dns_peers = discover_network_peers(true).await;
-        if !dns_peers.is_empty() {
-            info!("Discovered {} peers via DNS seeding", dns_peers.len());
-            let mut known_addresses = self.known_addresses.write().await;
-            for peer in dns_peers.into_iter().take(50) { // Limit to first 50 for initial connection
-                known_addresses.insert(peer);
-            }
-        } else {
-            warn!("DNS peer discovery failed, falling back to hardcoded seed nodes");
-        }
+        // B-rad-coin uses its own independent network
         
-        // Add hardcoded seed nodes as fallback
-        let seed_nodes = get_seed_nodes(true); // Use Bitcoin network nodes
+        // Add B-rad-coin seed nodes only
+        let seed_nodes = get_seed_nodes(); // B-rad-coin network only
         let mut known_addresses = self.known_addresses.write().await;
         for addr in seed_nodes {
-            known_addresses.insert(addr);
-        }
-        
-        // Add BradCoin development nodes for testing
-        let bradcoin_nodes = get_seed_nodes(false);
-        for addr in bradcoin_nodes {
             known_addresses.insert(addr);
         }
         
         let total_nodes = known_addresses.len();
         drop(known_addresses); // Release the lock
         
-        info!("Added {} total seed nodes for peer discovery", total_nodes);
+        info!("Added {} B-rad-coin seed nodes for peer discovery", total_nodes);
         
         // Start background peer discovery task
         self.start_peer_discovery_task().await;
@@ -341,34 +423,27 @@ impl NetworkService {
         
         tokio::spawn(async move {
             let mut discovery_interval = interval(Duration::from_secs(PEER_DISCOVERY_INTERVAL_SECS));
-            let dns_seeder = DnsSeeder::new(true);
             
             loop {
                 discovery_interval.tick().await;
                 
-                debug!("Running periodic peer discovery...");
+                debug!("Running periodic peer discovery for B-rad-coin network...");
                 
-                // Discover new peers via DNS
-                let new_peers = dns_seeder.discover_peers().await;
-                let filtered_peers = dns_seeder.filter_valid_peers(new_peers);
+                // B-rad-coin uses local network discovery only
+                // No DNS discovery needed for local testing network
                 
-                if !filtered_peers.is_empty() {
-                    let mut known = known_addresses.write().await;
-                    let initial_count = known.len();
-                    
-                    for peer in filtered_peers {
-                        known.insert(peer);
-                    }
-                    
-                    let new_count = known.len() - initial_count;
-                    if new_count > 0 {
-                        info!("Discovered {} new peers via periodic DNS discovery", new_count);
-                        
-                        // Update stats
-                        let mut stats_guard = stats.write().await;
-                        stats_guard.total_known_peers = known.len() as u32;
-                    }
+                let known_count = {
+                    let known = known_addresses.read().await;
+                    known.len()
+                };
+                
+                if known_count < 5 {
+                    info!("Low peer count ({}), consider adding more local nodes", known_count);
                 }
+                
+                // Update stats
+                let mut stats_guard = stats.write().await;
+                stats_guard.total_known_peers = known_count as u32;
             }
         });
     }
@@ -396,6 +471,7 @@ impl NetworkService {
                         version: None,
                         height: None,
                         is_outbound: false,
+                        score: PeerScore::default(),
                     };
 
                     // Add peer to connections
@@ -426,9 +502,10 @@ impl NetworkService {
         blockchain_db: Arc<AsyncBlockchainDatabase>,
         stats: Arc<RwLock<NetworkStats>>,
         app_handle: Option<AppHandle>,
+        mempool: Option<AsyncMempoolService>,
     ) {
         while let Some((peer_addr, message)) = rx.recv().await {
-            match Self::process_message(peer_addr, message, &peers, &blockchain_db, &stats).await {
+            match Self::process_message(peer_addr, message, &peers, &blockchain_db, &stats, &mempool).await {
                 Ok(_) => {
                     debug!("Successfully processed message from {}", peer_addr);
                 },
@@ -452,24 +529,38 @@ impl NetworkService {
         peers: &Arc<RwLock<HashMap<SocketAddr, PeerConnection>>>,
         blockchain_db: &Arc<AsyncBlockchainDatabase>,
         stats: &Arc<RwLock<NetworkStats>>,
+        mempool: &Option<AsyncMempoolService>,
     ) -> AppResult<()> {
         match message {
             NetworkMessage::Ping { timestamp, nonce } => {
                 debug!("Received ping from {} (nonce: {})", peer_addr, nonce);
-                // TODO: Send pong response
+                // Send pong response
+                let pong_message = NetworkMessage::Pong {
+                    timestamp: Self::current_timestamp(),
+                    nonce,
+                };
+                Self::send_message_to_peer(peer_addr, pong_message, peers).await?;
             },
             NetworkMessage::Pong { timestamp, nonce } => {
                 debug!("Received pong from {} (nonce: {})", peer_addr, nonce);
-                // Update last ping time
-                if let Some(peer) = peers.write().await.get_mut(&peer_addr) {
-                    peer.last_ping = Self::current_timestamp();
+                // Update last ping time and calculate ping
+                let current_time = Self::current_timestamp();
+                let mut peers_guard = peers.write().await;
+                if let Some(peer) = peers_guard.get_mut(&peer_addr) {
+                    peer.last_ping = current_time;
+                    // Calculate ping time and update score
+                    if timestamp > 0 {
+                        let ping_ms = current_time.saturating_sub(timestamp);
+                        peer.score.update_ping(ping_ms);
+                    }
                 }
             },
             NetworkMessage::GetHeight => {
                 debug!("Received height request from {}", peer_addr);
-                // TODO: Send height response
+                // Send height response
                 let height = blockchain_db.get_block_height().await.unwrap_or(0);
-                // TODO: Send Height response back to peer
+                let height_message = NetworkMessage::Height { height };
+                Self::send_message_to_peer(peer_addr, height_message, peers).await?;
             },
             NetworkMessage::Height { height } => {
                 debug!("Received height {} from {}", height, peer_addr);
@@ -485,19 +576,29 @@ impl NetworkService {
                 }
             },
             NetworkMessage::GetBlocks { version, block_locator_hashes, hash_stop } => {
-                info!("Received getblocks request from {} (locator hashes: {})", peer_addr, block_locator_hashes.len());
+                info!("Received getblocks request from {} (locator hashes: {}) - responding with headers", peer_addr, block_locator_hashes.len());
                 
-                // Find the best common block and send inventory of subsequent blocks
+                // Headers-first approach: respond with GetHeaders instead of block inventory
+                // This is more efficient and follows modern cryptocurrency protocol
                 if let Ok(start_height) = Self::find_fork_point(blockchain_db, &block_locator_hashes).await {
-                    let mut inventory = Vec::new();
-                    let max_blocks = 500; // Bitcoin protocol limit
-                      for height in (start_height + 1)..=(start_height + max_blocks) {
+                    let mut headers = Vec::new();
+                    let max_headers = 2000; // Protocol limit for headers
+                    
+                    for height in (start_height + 1)..=(start_height + max_headers) {
                         if let Ok(Some(block)) = blockchain_db.get_block_by_height(height).await {
                             let block_hash = block.hash.clone();
-                            inventory.push(InventoryItem {
-                                item_type: InventoryType::Block,
+                            
+                            // Create block header
+                            let header = BlockHeader {
                                 hash: block_hash.clone(),
-                            });
+                                previous_hash: block.previous_hash.clone(),
+                                height,
+                                timestamp: block.timestamp,
+                                merkle_root: block.merkle_root.clone(),
+                                nonce: block.nonce,
+                                difficulty: block.difficulty as f64,
+                            };
+                            headers.push(header);
                             
                             // Stop if we've reached the hash_stop
                             if let Some(ref stop_hash) = hash_stop {
@@ -510,8 +611,11 @@ impl NetworkService {
                         }
                     }
                     
-                    // TODO: Send Inv message back to peer with the inventory
-                    info!("Sending inventory of {} blocks to {}", inventory.len(), peer_addr);
+                    // Send headers response
+                    let headers_message = NetworkMessage::Headers { headers };
+                    Self::send_message_to_peer(peer_addr, headers_message, peers).await?;
+                } else {
+                    warn!("Could not find fork point for getblocks request from {}", peer_addr);
                 }
             },
             NetworkMessage::Inv { inventory } => {
@@ -536,7 +640,11 @@ impl NetworkService {
                 }
                 
                 if !needed_blocks.is_empty() {
-                    // TODO: Send GetData message to request the blocks we need
+                    // Send GetData message to request the blocks we need
+                    let getdata_message = NetworkMessage::GetData { 
+                        inventory: needed_blocks.clone()
+                    };
+                    Self::send_message_to_peer(peer_addr, getdata_message, peers).await?;
                     info!("Requesting {} blocks from {}", needed_blocks.len(), peer_addr);
                 }
             },
@@ -548,12 +656,15 @@ impl NetworkService {
                     match item.item_type {
                         InventoryType::Block => {
                             if let Ok(Some(block)) = blockchain_db.get_block_by_hash(&item.hash).await {
-                                // TODO: Send Block message back to peer
-                                info!("Sending block {} to {}", block.hash, peer_addr);
+                                // Send Block message back to peer
+                                let block_message = NetworkMessage::Block { block: block.clone() };
+                                Self::send_message_to_peer(peer_addr, block_message, peers).await?;
+                                info!("Sent block {} to {}", block.hash, peer_addr);
                             }
                         },
                         InventoryType::Transaction => {
-                            // TODO: Send transaction if we have it
+                            // TODO: Implement transaction retrieval from mempool
+                            debug!("Transaction request for {} - mempool not implemented yet", item.hash);
                         },
                         _ => {}
                     }
@@ -565,7 +676,7 @@ impl NetworkService {
                 // Find fork point and send headers
                 if let Ok(start_height) = Self::find_fork_point(blockchain_db, &block_locator_hashes).await {
                     let mut headers = Vec::new();
-                    let max_headers = 2000; // Bitcoin protocol limit
+                    let max_headers = 2000; // Protocol limit
                     
                     for height in (start_height + 1)..=(start_height + max_headers) {
                         if let Ok(Some(block)) = blockchain_db.get_block_by_height(height).await {                            headers.push(BlockHeader {
@@ -588,39 +699,131 @@ impl NetworkService {
                         }
                     }
                     
-                    // TODO: Send Headers message back to peer
-                    info!("Sending {} headers to {}", headers.len(), peer_addr);
+                    // Send Headers message back to peer
+                    let headers_message = NetworkMessage::Headers { headers: headers.clone() };
+                    Self::send_message_to_peer(peer_addr, headers_message, peers).await?;
+                    info!("Sent {} headers to {}", headers.len(), peer_addr);
                 }
             },
             NetworkMessage::Headers { headers } => {
-                info!("Received {} headers from {}", headers.len(), peer_addr);
+                info!("Received {} headers from {} - processing for headers-first sync", headers.len(), peer_addr);
                 
-                // Process headers and request blocks if needed
+                // Headers-first synchronization: validate headers and queue block downloads
+                let mut blocks_to_download = Vec::new();
+                let mut last_valid_height = blockchain_db.get_block_height().await.unwrap_or(0);
+                
                 for header in headers {
-                    // Check if we have this block
-                    if blockchain_db.get_block_by_hash(&header.hash).await.is_err() {
-                        // We need this block - add to download queue
-                        // TODO: Implement block download queue and request the full block
-                        info!("Need to download block {} at height {}", header.hash, header.height);
+                    // Validate header sequence and difficulty
+                    if header.height == last_valid_height + 1 {
+                        // Check if we already have this block
+                        if blockchain_db.get_block_by_hash(&header.hash).await.is_err() {
+                            // We need to download this block
+                            blocks_to_download.push(InventoryItem {
+                                item_type: InventoryType::Block,
+                                hash: header.hash.clone(),
+                            });
+                            
+                            // Store header for validation when block arrives
+                            // TODO: Add header to pending blocks queue
+                            debug!("Queued block {} (height {}) for download", header.hash, header.height);
+                        }
+                        last_valid_height = header.height;
+                    } else {
+                        warn!("Invalid header sequence from {}: expected height {}, got {}", 
+                              peer_addr, last_valid_height + 1, header.height);
+                        break;
                     }
+                }
+                
+                // Request the blocks we need using GetData
+                if !blocks_to_download.is_empty() {
+                    let getdata_message = NetworkMessage::GetData { inventory: blocks_to_download.clone() };
+                    Self::send_message_to_peer(peer_addr, getdata_message, peers).await?;
+                    info!("Requested {} blocks from {} via GetData", blocks_to_download.len(), peer_addr);
+                }
+                
+                // Update peer with highest header we've seen
+                if let Some(peer) = peers.write().await.get_mut(&peer_addr) {
+                    peer.height = Some(last_valid_height);
                 }
             },
             NetworkMessage::NewBlock { block } => {
                 info!("Received new block {} (height: {}) from {}", block.hash, block.height, peer_addr);
                 
-                // Store the block
+                // Validate block before storing
+                if let Err(e) = Self::validate_block(&block, blockchain_db).await {
+                    warn!("Received invalid block from {}: {}", peer_addr, e);
+                    return Ok(());
+                }
+                
+                // Store the validated block
                 if let Err(e) = blockchain_db.store_block(&block).await {
                     warn!("Failed to store received block: {}", e);
                 } else {
+                    info!("Successfully stored block {} at height {}", block.hash, block.height);
                     let mut stats_guard = stats.write().await;
                     stats_guard.blocks_received += 1;
                     stats_guard.local_height = stats_guard.local_height.max(block.height);
+                    
+                    // Update peer score for providing valid block
+                    {
+                        let mut peers_guard = peers.write().await;
+                        if let Some(peer) = peers_guard.get_mut(&peer_addr) {
+                            peer.score.on_valid_block(block.height);
+                        }
+                    }
+                    
+                    // Propagate block to other peers
+                    Self::propagate_block_to_peers(&block, peer_addr, peers).await;
                 }
             },
             NetworkMessage::NewTransaction { transaction } => {
                 info!("Received new transaction {} from {}", transaction.txid, peer_addr);
                 
-                // TODO: Add to transaction pool
+                // Handle transaction through mempool
+                match Self::handle_incoming_transaction(transaction, peer_addr, mempool).await {
+                    Ok(_) => {
+                        // Update peer score for providing valid transaction
+                        let mut peers_guard = peers.write().await;
+                        if let Some(peer) = peers_guard.get_mut(&peer_addr) {
+                            peer.score.on_valid_transaction();
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to handle incoming transaction: {}", e);
+                        // Penalize peer for invalid transaction
+                        let mut peers_guard = peers.write().await;
+                        if let Some(peer) = peers_guard.get_mut(&peer_addr) {
+                            peer.score.on_invalid_message();
+                        }
+                    }
+                }
+                
+                let mut stats_guard = stats.write().await;
+                stats_guard.transactions_received += 1;
+            },
+            NetworkMessage::Tx { transaction } => {
+                info!("Received tx {} from {}", transaction.txid, peer_addr);
+                
+                // Handle transaction through mempool (same as NewTransaction)
+                match Self::handle_incoming_transaction(transaction, peer_addr, mempool).await {
+                    Ok(_) => {
+                        // Update peer score for providing valid transaction
+                        let mut peers_guard = peers.write().await;
+                        if let Some(peer) = peers_guard.get_mut(&peer_addr) {
+                            peer.score.on_valid_transaction();
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to handle incoming tx: {}", e);
+                        // Penalize peer for invalid transaction
+                        let mut peers_guard = peers.write().await;
+                        if let Some(peer) = peers_guard.get_mut(&peer_addr) {
+                            peer.score.on_invalid_message();
+                        }
+                    }
+                }
+                
                 let mut stats_guard = stats.write().await;
                 stats_guard.transactions_received += 1;
             },
@@ -757,6 +960,7 @@ impl NetworkService {
                     version: None,
                     height: None,
                     is_outbound: true,
+                    score: PeerScore::default(),
                 };
 
                 // Add peer to connections
@@ -815,6 +1019,26 @@ impl NetworkService {
             .as_secs()
     }
 
+    /// Send a message to a specific peer
+    async fn send_message_to_peer(
+        peer_addr: SocketAddr,
+        message: NetworkMessage,
+        peers: &Arc<RwLock<HashMap<SocketAddr, PeerConnection>>>,
+    ) -> AppResult<()> {
+        debug!("Sending message to peer {}: {:?}", peer_addr, message);
+        
+        // For now, just log the message send attempt
+        // In a full implementation, this would serialize and send over TCP
+        // TODO: Implement actual message serialization and TCP sending
+        
+        // Update peer's last communication time
+        if let Some(peer) = peers.write().await.get_mut(&peer_addr) {
+            peer.last_ping = Self::current_timestamp();
+        }
+        
+        Ok(())
+    }
+
     /// Get network statistics
     pub async fn get_stats(&self) -> NetworkStats {
         let mut stats = self.stats.read().await.clone();
@@ -866,7 +1090,7 @@ impl NetworkService {
         // Get our listening address
         let our_address = PeerAddress {
             ip: "0.0.0.0".parse().unwrap(), // Will be replaced by peers with their view of our IP
-            port: BITCOIN_DEFAULT_PORT,
+            port: BRADCOIN_DEFAULT_PORT,
             last_seen: Self::current_timestamp(),
             services: NODE_NETWORK, // We support full node services
         };
@@ -892,7 +1116,7 @@ impl NetworkService {
         Ok(())
     }
 
-    /// Request blocks using Bitcoin-style getblocks message
+    /// Request blocks using B-rad-coin getblocks message
     pub async fn request_blocks(&self, start_height: u64, _end_height: Option<u64>) -> AppResult<()> {
         info!("Requesting blocks starting from height {}", start_height);
         
@@ -946,7 +1170,7 @@ impl NetworkService {
         Ok(())
     }
 
-    /// Get block locator hashes for sync requests (Bitcoin protocol)
+    /// Get block locator hashes for sync requests (B-rad-coin protocol)
     async fn get_block_locator_hashes(&self, start_height: u64) -> AppResult<Vec<String>> {
         let mut locator_hashes = Vec::new();
         let mut step = 1u64;
@@ -1053,6 +1277,64 @@ impl NetworkService {
                 error!("Failed to create additional blocks stub: {}", e);
                 // In a real implementation, this would request headers and blocks from peers
                 self.request_headers(local_height + 1).await?;
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Initiate headers-first synchronization with peers
+    /// This is the modern cryptocurrency synchronization method
+    pub async fn sync_headers_first(&self) -> AppResult<()> {
+        info!("Starting headers-first synchronization");
+        
+        let local_height = self.blockchain_db.get_block_height().await.unwrap_or(0);
+        
+        // Create block locator hashes (starting from our current tip)
+        let mut block_locator_hashes = Vec::new();
+        
+        // Add recent block hashes for locator
+        let mut step = 1;
+        let mut height = local_height;
+        while height > 0 && block_locator_hashes.len() < 10 {
+            if let Ok(Some(block)) = self.blockchain_db.get_block_by_height(height).await {
+                block_locator_hashes.push(block.hash);
+            }
+            
+            if height >= step {
+                height -= step;
+            } else {
+                break;
+            }
+            
+            // Exponential backoff for older blocks
+            if block_locator_hashes.len() > 5 {
+                step *= 2;
+            }
+        }
+        
+        // Add genesis block hash if we have one
+        if local_height > 0 {
+            if let Ok(Some(genesis)) = self.blockchain_db.get_block_by_height(0).await {
+                block_locator_hashes.push(genesis.hash);
+            }
+        }
+        
+        info!("Requesting headers from height {} with {} locator hashes", local_height, block_locator_hashes.len());
+        
+        // Send GetHeaders to all connected peers
+        let peers_guard = self.peers.read().await;
+        for &peer_addr in peers_guard.keys() {
+            let getheaders_message = NetworkMessage::GetHeaders {
+                version: 1,
+                block_locator_hashes: block_locator_hashes.clone(),
+                hash_stop: None, // Get all headers
+            };
+            
+            if let Err(e) = Self::send_message_to_peer(peer_addr, getheaders_message, &self.peers).await {
+                warn!("Failed to send GetHeaders to {}: {}", peer_addr, e);
+            } else {
+                info!("Sent GetHeaders request to {}", peer_addr);
             }
         }
         
@@ -1516,6 +1798,150 @@ impl NetworkService {
         info!("Created {} additional blocks for sync", blocks.len());
         Ok(blocks)
     }
+
+    /// Validate a received block before storing it
+    async fn validate_block(block: &Block, blockchain_db: &Arc<AsyncBlockchainDatabase>) -> AppResult<()> {
+        // Basic block validation
+        
+        // Check if block already exists
+        if blockchain_db.get_block_by_hash(&block.hash).await.is_ok() {
+            return Err(AppError::Generic("Block already exists".to_string()));
+        }
+        
+        // Check if previous block exists (unless this is genesis)
+        if block.height > 0 {
+            if blockchain_db.get_block_by_hash(&block.previous_hash).await.is_err() {
+                return Err(AppError::Generic("Previous block not found".to_string()));
+            }
+        }
+        
+        // Validate height sequence
+        let expected_height = blockchain_db.get_block_height().await.unwrap_or(0) + 1;
+        if block.height != expected_height && block.height != 0 {
+            return Err(AppError::Generic(format!(
+                "Invalid block height: expected {}, got {}", 
+                expected_height, block.height
+            )));
+        }
+        
+        // Validate block hash format
+        if block.hash.len() != 64 {
+            return Err(AppError::Generic("Invalid block hash format".to_string()));
+        }
+        
+        // Validate transactions exist
+        if block.transactions.is_empty() {
+            return Err(AppError::Generic("Block must contain at least one transaction".to_string()));
+        }
+        
+        // TODO: Add more sophisticated validation:
+        // - Merkle root verification
+        // - Proof of work validation
+        // - Transaction validation
+        // - Double-spend checks
+        
+        Ok(())
+    }
+
+    /// Propagate a block to all peers except the sender
+    async fn propagate_block_to_peers(
+        block: &Block,
+        sender_addr: SocketAddr,
+        peers: &Arc<RwLock<HashMap<SocketAddr, PeerConnection>>>,
+    ) {
+        let new_block_message = NetworkMessage::NewBlock { block: block.clone() };
+        
+        let peers_guard = peers.read().await;
+        for (&peer_addr, _) in peers_guard.iter() {
+            // Don't send back to the peer that sent us this block
+            if peer_addr != sender_addr {
+                if let Err(e) = Self::send_message_to_peer(peer_addr, new_block_message.clone(), peers).await {
+                    warn!("Failed to propagate block to {}: {}", peer_addr, e);
+                } else {
+                    debug!("Propagated block {} to {}", block.hash, peer_addr);
+                }
+            }
+        }
+        
+        info!("Propagated block {} to {} peers", block.hash, peers_guard.len().saturating_sub(1));
+    }
+
+    /// Propagate a transaction to all connected peers
+    pub async fn propagate_transaction(&self, transaction: &Transaction) -> AppResult<()> {
+        info!("Propagating transaction {} to network", transaction.txid);
+        
+        let tx_message = NetworkMessage::Tx { 
+            transaction: transaction.clone() 
+        };
+        
+        let peers_guard = self.peers.read().await;
+        let mut propagated_count = 0;
+        
+        for (&peer_addr, _) in peers_guard.iter() {
+            if let Err(e) = Self::send_message_to_peer(peer_addr, tx_message.clone(), &self.peers).await {
+                warn!("Failed to propagate transaction to {}: {}", peer_addr, e);
+            } else {
+                debug!("Propagated transaction {} to {}", transaction.txid, peer_addr);
+                propagated_count += 1;
+            }
+        }
+        
+        info!("Propagated transaction {} to {} peers", transaction.txid, propagated_count);
+        Ok(())
+    }
+
+    /// Handle incoming transaction from peer
+    async fn handle_incoming_transaction(
+        transaction: Transaction,
+        sender_addr: SocketAddr,
+        mempool: &Option<AsyncMempoolService>,
+    ) -> AppResult<()> {
+        info!("Received transaction {} from {}", transaction.txid, sender_addr);
+        
+        // If we have a mempool, add the transaction to it
+        if let Some(ref mempool_service) = mempool {
+            match mempool_service.add_transaction(transaction.clone()).await {
+                Ok(tx_hash) => {
+                    info!("Added transaction {} to mempool", tx_hash);
+                    // Note: For static method, we can't propagate back to peers here
+                    // Propagation should be handled by the caller or through separate mechanism
+                }
+                Err(e) => {
+                    warn!("Failed to add transaction to mempool: {}", e);
+                    return Err(AppError::Generic(format!("Invalid transaction: {}", e)).into());
+                }
+            }
+        } else {
+            warn!("No mempool available to store transaction");
+        }
+        
+        Ok(())
+    }
+
+    /// Propagate a transaction to all peers except the sender
+    async fn propagate_transaction_to_peers(
+        &self,
+        transaction: &Transaction,
+        sender_addr: SocketAddr,
+    ) {
+        let tx_message = NetworkMessage::Tx { 
+            transaction: transaction.clone() 
+        };
+        
+        let peers_guard = self.peers.read().await;
+        for (&peer_addr, _) in peers_guard.iter() {
+            // Don't send back to the peer that sent us this transaction
+            if peer_addr != sender_addr {
+                if let Err(e) = Self::send_message_to_peer(peer_addr, tx_message.clone(), &self.peers).await {
+                    warn!("Failed to propagate transaction to {}: {}", peer_addr, e);
+                } else {
+                    debug!("Propagated transaction {} to {}", transaction.txid, peer_addr);
+                }
+            }
+        }
+        
+        info!("Propagated transaction {} to {} peers", transaction.txid, peers_guard.len().saturating_sub(1));
+    }
 }
 
 impl Default for NetworkStats {
@@ -1550,6 +1976,19 @@ impl AsyncNetworkService {
     pub async fn initialize(&self, app_handle: AppHandle) -> AppResult<()> {
         let mut service = self.inner.write().await;
         service.initialize(app_handle).await
+    }
+
+    /// Set the mempool service for transaction propagation
+    pub fn set_mempool(&mut self, mempool: AsyncMempoolService) {
+        // For now, store the mempool in the inner service
+        // This is a bit of a hack since we can't easily modify the constructor
+        tokio::spawn({
+            let inner = self.inner.clone();
+            async move {
+                let mut service = inner.write().await;
+                service.set_mempool(mempool);
+            }
+        });
     }
 
     /// Start the service
@@ -1594,7 +2033,7 @@ impl AsyncNetworkService {
         service.broadcast_transaction(transaction).await
     }
 
-    /// Request blocks using Bitcoin-style protocol
+    /// Request blocks using B-rad-coin protocol
     pub async fn request_blocks(&self, start_height: u64, end_height: Option<u64>) -> AppResult<()> {
         let service = self.inner.read().await;
         service.request_blocks(start_height, end_height).await
@@ -1644,5 +2083,13 @@ impl AsyncNetworkService {
     pub async fn get_network_height(&self) -> u64 {
         let stats = self.get_stats().await;
         stats.network_height
+    }
+}
+
+impl Clone for AsyncNetworkService {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
     }
 }

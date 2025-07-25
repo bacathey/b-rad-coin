@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{RwLock, Mutex};
 use sha2::{Sha256, Digest};
 
@@ -285,7 +285,7 @@ impl MiningService {    /// Create new mining service
             }
 
             // Try to mine a block
-            if let Ok(true) = Self::try_mine_block(&wallet_id, &mining_address, &blockchain_db, &active_miners).await {
+            if let Ok(true) = Self::try_mine_block_with_app_handle(&wallet_id, &mining_address, &blockchain_db, &active_miners, &app_handle).await {
                 info!("Block successfully mined by wallet: {}", wallet_id);
                 
                 // Update blocks mined count
@@ -354,11 +354,12 @@ impl MiningService {    /// Create new mining service
     }
 
     /// Try to mine a single block using Bitcoin-style Proof of Work
-    async fn try_mine_block(
+    async fn try_mine_block_with_app_handle(
         wallet_id: &str,
         mining_address: &str,
         blockchain_db: &Arc<AsyncBlockchainDatabase>,
         active_miners: &Arc<RwLock<HashMap<String, MiningStatus>>>,
+        app_handle: &Option<AppHandle>,
     ) -> AppResult<bool> {
         // Get current block height and last block hash
         let current_height = blockchain_db.get_block_height().await
@@ -404,11 +405,23 @@ impl MiningService {    /// Create new mining service
             fee: 0,
         };
 
-        // Get pending transactions (in a real implementation, this would come from mempool)
-        let transactions = vec![coinbase_tx.clone()];
+        // Get pending transactions from mempool if available
+        let mut transactions = vec![coinbase_tx.clone()];
         
-        // TODO: Add pending transactions from mempool while respecting size limits
-        // For now, we'll just mine with the coinbase transaction
+        // Try to get mempool transactions through app handle
+        if let Some(app) = app_handle {
+            if let Some(mempool) = app.try_state::<crate::mempool_service::AsyncMempoolService>() {
+                let mempool_txs = mempool.get_transactions_for_mining(100, MAX_BLOCK_SIZE - 1000).await;
+                if !mempool_txs.is_empty() {
+                    info!("Including {} transactions from mempool in block", mempool_txs.len());
+                    transactions.extend(mempool_txs);
+                } else {
+                    debug!("No transactions available in mempool");
+                }
+            } else {
+                debug!("Mempool service not available, mining with coinbase only");
+            }
+        }
         
         // Calculate merkle root
         let merkle_root = calculate_merkle_root(&transactions);
@@ -460,6 +473,17 @@ impl MiningService {    /// Create new mining service
                 // Store the mined block
                 blockchain_db.store_block(&new_block).await
                     .map_err(|e| AppError::Generic(format!("Failed to store mined block: {}", e)))?;
+
+                // Submit block to network
+                if let Some(app_handle) = app_handle {
+                    if let Some(network_service) = app_handle.try_state::<crate::network_service::AsyncNetworkService>() {
+                        if let Err(e) = network_service.announce_new_block(new_block.hash.clone()).await {
+                            warn!("Failed to announce mined block to network: {}", e);
+                        } else {
+                            info!("Successfully announced mined block {} to network", new_block.hash);
+                        }
+                    }
+                }
 
                 info!(
                     "Block {} mined successfully! Hash: {}, Difficulty: {}, Reward: {} satoshis",

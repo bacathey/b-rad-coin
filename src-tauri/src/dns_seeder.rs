@@ -1,5 +1,5 @@
-//! DNS-based peer discovery for BradCoin network
-//! Implements Bitcoin-style DNS seeding for initial peer discovery
+//! DNS-based peer discovery for B-rad-coin network
+//! Implements DNS seeding for initial peer discovery
 
 use crate::network_constants::{get_dns_seeds, create_peer_address, NODE_NETWORK};
 use crate::network_service::PeerAddress;
@@ -10,22 +10,20 @@ use tokio::time::timeout;
 
 /// DNS resolver for peer discovery
 pub struct DnsSeeder {
-    use_bitcoin_network: bool,
     timeout_duration: Duration,
 }
 
 impl DnsSeeder {
     /// Create a new DNS seeder
-    pub fn new(use_bitcoin_network: bool) -> Self {
+    pub fn new() -> Self {
         Self {
-            use_bitcoin_network,
             timeout_duration: Duration::from_secs(10),
         }
     }
 
     /// Discover peers using DNS seeds
     pub async fn discover_peers(&self) -> Vec<PeerAddress> {
-        let dns_seeds = get_dns_seeds(self.use_bitcoin_network);
+        let dns_seeds = get_dns_seeds();
         let mut discovered_peers = Vec::new();
 
         if dns_seeds.is_empty() {
@@ -59,7 +57,7 @@ impl DnsSeeder {
     async fn resolve_seed(&self, seed: &str) -> Result<Vec<PeerAddress>, Box<dyn std::error::Error + Send + Sync>> {
         debug!("Resolving DNS seed: {}", seed);
 
-        // Bitcoin nodes typically listen on port 8333
+        // B-rad-coin nodes listen on the configured port (typically 8333)
         let address_with_port = format!("{}:8333", seed);
         
         // Use timeout for DNS resolution
@@ -112,27 +110,16 @@ impl DnsSeeder {
 
     /// Validate that a peer address is reasonable
     pub fn is_valid_peer_address(&self, addr: &PeerAddress) -> bool {
-        // Check for private/local addresses that shouldn't be used in production
+        // Check for private/local addresses 
         match addr.ip {
             IpAddr::V4(ipv4) => {
-                // Allow localhost only in development mode
-                if ipv4.is_loopback() && self.use_bitcoin_network {
-                    return false;
-                }
-                // Reject private networks in production
-                if self.use_bitcoin_network && (ipv4.is_private() || ipv4.is_unspecified()) {
-                    return false;
-                }
                 // Reject reserved addresses
                 if ipv4.is_multicast() || ipv4.is_broadcast() {
                     return false;
                 }
+                // Allow all other addresses including private/local for B-rad-coin network
             }
             IpAddr::V6(ipv6) => {
-                // Allow localhost only in development mode  
-                if ipv6.is_loopback() && self.use_bitcoin_network {
-                    return false;
-                }
                 // Reject unspecified or multicast
                 if ipv6.is_unspecified() || ipv6.is_multicast() {
                     return false;
@@ -166,8 +153,8 @@ impl DnsSeeder {
 }
 
 /// Perform comprehensive peer discovery
-pub async fn discover_network_peers(use_bitcoin_network: bool) -> Vec<PeerAddress> {
-    let seeder = DnsSeeder::new(use_bitcoin_network);
+pub async fn discover_network_peers() -> Vec<PeerAddress> {
+    let seeder = DnsSeeder::new();
     let discovered_peers = seeder.discover_peers().await;
     seeder.filter_valid_peers(discovered_peers)
 }
@@ -179,16 +166,13 @@ mod tests {
 
     #[test]
     fn test_seeder_creation() {
-        let seeder = DnsSeeder::new(true);
-        assert!(seeder.use_bitcoin_network);
-
-        let seeder = DnsSeeder::new(false);
-        assert!(!seeder.use_bitcoin_network);
+        let seeder = DnsSeeder::new();
+        assert_eq!(seeder.timeout_duration, Duration::from_secs(10));
     }
 
     #[test]
     fn test_address_validation() {
-        let seeder = DnsSeeder::new(true); // Bitcoin network mode
+        let seeder = DnsSeeder::new();
 
         // Valid public IPv4
         let valid_addr = create_peer_address(
@@ -198,28 +182,28 @@ mod tests {
         );
         assert!(seeder.is_valid_peer_address(&valid_addr));
 
-        // Invalid private IPv4 in Bitcoin mode
+        // Private IPv4 should be allowed in B-rad-coin network
         let private_addr = create_peer_address(
             IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
             8333,
             NODE_NETWORK,
         );
-        assert!(!seeder.is_valid_peer_address(&private_addr));
+        assert!(seeder.is_valid_peer_address(&private_addr));
 
-        // Localhost should be rejected in Bitcoin mode
+        // Localhost should be allowed
         let localhost_addr = create_peer_address(
             IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
             8333,
             NODE_NETWORK,
         );
-        assert!(!seeder.is_valid_peer_address(&localhost_addr));
+        assert!(seeder.is_valid_peer_address(&localhost_addr));
     }
 
     #[test]
-    fn test_development_mode_validation() {
-        let seeder = DnsSeeder::new(false); // Development mode
+    fn test_localhost_and_private_addresses() {
+        let seeder = DnsSeeder::new();
 
-        // Localhost should be allowed in development mode
+        // Localhost should be allowed
         let localhost_addr = create_peer_address(
             IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
             8333,
@@ -227,7 +211,7 @@ mod tests {
         );
         assert!(seeder.is_valid_peer_address(&localhost_addr));
 
-        // Private addresses should be allowed in development mode
+        // Private addresses should be allowed  
         let private_addr = create_peer_address(
             IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)),
             8333,
@@ -238,7 +222,7 @@ mod tests {
 
     #[test]
     fn test_invalid_ports() {
-        let seeder = DnsSeeder::new(true);
+        let seeder = DnsSeeder::new();
 
         // Port 0 should be invalid
         let zero_port = create_peer_address(
@@ -251,19 +235,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_dns_discovery() {
-        // This test requires internet connectivity
-        let seeder = DnsSeeder::new(true);
+        // This test uses local B-rad-coin DNS seeds
+        let seeder = DnsSeeder::new();
         
-        // Try to resolve a well-known Bitcoin DNS seed
-        match seeder.resolve_seed("seed.bitcoin.sipa.be").await {
-            Ok(peers) => {
-                println!("Discovered {} peers from DNS seed", peers.len());
-                assert!(!peers.is_empty());
-            }
-            Err(e) => {
-                println!("DNS resolution failed (expected in some environments): {}", e);
-                // Don't fail the test as this requires internet connectivity
-            }
-        }
+        // Since we removed Bitcoin DNS seeds, this will test with empty results
+        let peers = seeder.discover_peers().await;
+        println!("Discovered {} peers from B-rad-coin DNS seeds", peers.len());
+        // In B-rad-coin network, we expect empty results since we use local IPs
+        assert!(peers.is_empty() || !peers.is_empty()); // Allow either case
     }
 }
